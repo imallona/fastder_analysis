@@ -5,10 +5,8 @@ set -euo pipefail
 RELEASE=115
 ASSEMBLY=GRCh38
 
-# root output directory fixed to ../../reference
-OUTROOT=../../reference
-OUTDIR_NAME="Homo_sapiens_${ASSEMBLY}_Ensembl${RELEASE}_chr1_22_X"
-OUTDIR="${OUTROOT}/${OUTDIR_NAME}"
+# Take the first argument if it exists
+OUTDIR="${1:-data/reference/Homo_sapiens_${ASSEMBLY}_Ensembl${RELEASE}}"
 
 BASE="https://ftp.ensembl.org/pub/release-${RELEASE}"
 GTF_URL="${BASE}/gtf/homo_sapiens/Homo_sapiens.${ASSEMBLY}.${RELEASE}.chr.gtf.gz"
@@ -17,7 +15,7 @@ DNA_BASE="${BASE}/fasta/homo_sapiens/dna"
 mkdir -p "${OUTDIR}"
 cd "${OUTDIR}"
 
-ABS_OUTDIR="$(realpath "${OUTDIR}")"
+ABS_OUTDIR="$(realpath .)"
 echo "Output directory: ${ABS_OUTDIR}"
 echo "Downloading GTF..."
 wget -nv -c -N "${GTF_URL}"

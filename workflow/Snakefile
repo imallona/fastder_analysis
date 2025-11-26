@@ -1,0 +1,255 @@
+import os
+from pathlib import Path
+
+# config (edit here if needed)
+REF_VERSION = "hg38"
+NUM_CPUS = 8
+PROJECT_NAME = "asim"
+PROJECT_ID = 101
+
+# paths
+WORKFLOW_DIR = Path(workflow.basedir)
+DATA_DIR = WORKFLOW_DIR / "data"
+ASIM_OUT_DIR = DATA_DIR / "asim_out"
+MONORAIL_REF_DIR = DATA_DIR / "monorail_refs"
+PUMP_INPUT_DIR = DATA_DIR / "pump_input"
+PUMP_OUTPUT_DIR = DATA_DIR / "pump_output"
+UNIFY_WORK_DIR = DATA_DIR / "unify_work"
+FINAL_OUTPUT_DIR = DATA_DIR / "monorail_output"
+
+CONTAINERS_DIR = WORKFLOW_DIR / "containers"
+PUMP_SIF = str(CONTAINERS_DIR / "recount-pump-1.1.3.sif")
+UNIFY_SIF = str(CONTAINERS_DIR / "recount-unify-1.1.1.sif")
+
+MONORAIL_EXTERNAL = WORKFLOW_DIR / "external" / "monorail-external"
+
+
+# Helper functions
+def get_asim_dirs():
+    """Find sample directories in ASimulatoR output."""
+    if not ASIM_OUT_DIR.exists():
+        return []
+    dirs = []
+    for entry in ASIM_OUT_DIR.iterdir():
+        if entry.is_dir() and entry.name != "DONE":
+            if list(entry.glob("*_1.fastq")) or list(entry.glob("*_1.fastq.gz")):
+                dirs.append(entry.name)
+    return dirs
+
+
+def get_final_output(wildcards):
+    checkpoint_output = checkpoints.discover_samples.get().output[0]
+    return str(UNIFY_WORK_DIR / "DONE")
+
+
+def get_all_pump_outputs(wildcards):
+    checkpoint_output = checkpoints.discover_samples.get().output[0]
+    with open(checkpoint_output) as f:
+        samples = [line.strip().split('\t')[0] for line in f if line.strip()]
+    return expand(str(PUMP_OUTPUT_DIR / "{sample}_att0" / "DONE"), sample=samples)
+
+
+# Final output
+rule all:
+    input:
+        get_final_output
+    default_target: True
+
+
+# 1. Download reference
+rule download_reference:
+    output:
+        directory("data/reference/Homo_sapiens_GRCh38_Ensembl115")
+    conda:
+        "envs/reference.yaml"
+    shell:
+        "bash scripts/download_reference_ensembl.sh '{output}'"
+
+
+# 2. Run ASimulatoR
+rule run_asimulator:
+    input:
+        rules.download_reference.output
+    output:
+        str(ASIM_OUT_DIR / "DONE")
+    container:
+        "docker://biomedbigdata/asimulator"
+    shell:
+        """
+        mkdir -p {ASIM_OUT_DIR}
+        Rscript scripts/runASimulatoR.R {input} {ASIM_OUT_DIR}
+        touch {output}
+        """
+
+
+# 3. Checkpoint: discover samples and create simple IDs
+checkpoint discover_samples:
+    input:
+        str(ASIM_OUT_DIR / "DONE")
+    output:
+        str(DATA_DIR / "samples.txt")
+    run:
+        asim_dirs = get_asim_dirs()
+        with open(output[0], 'w') as f:
+            for i, dirname in enumerate(sorted(asim_dirs), 1):
+                # Create simple sample ID: sample_01, sample_02, etc.
+                simple_id = f"sample_{i:02d}"
+                f.write(f"{simple_id}\t{dirname}\n")
+        print(f"Discovered {len(asim_dirs)} samples")
+
+
+# 4. Download Monorail references
+rule download_monorail_refs:
+    output:
+        str(MONORAIL_REF_DIR / "refs.DONE")
+    params:
+        ref_dir = str(MONORAIL_REF_DIR),
+        monorail = str(MONORAIL_EXTERNAL)
+    shell:
+        """
+        mkdir -p {params.ref_dir}
+        cd {params.ref_dir}
+        bash {params.monorail}/get_human_ref_indexes.sh
+        bash {params.monorail}/get_unify_refs.sh {REF_VERSION}
+        touch {output}
+        """
+
+
+# 5. Prepare input: copy FASTQs to simple-named directory
+rule prepare_input:
+    input:
+        samples = str(DATA_DIR / "samples.txt")
+    output:
+        str(PUMP_INPUT_DIR / "{sample}" / "input.DONE")
+    params:
+        sample = "{sample}",
+        asim_dir = str(ASIM_OUT_DIR),
+        input_dir = str(PUMP_INPUT_DIR),
+        samples_file = str(DATA_DIR / "samples.txt")
+    run:
+        import shutil
+        
+        # find original directory name from samples.txt
+        original_name = None
+        with open(params.samples_file) as f:
+            for line in f:
+                parts = line.strip().split('\t')
+                if parts[0] == params.sample:
+                    original_name = parts[1]
+                    break
+        
+        if not original_name:
+            raise ValueError(f"Sample {params.sample} not found in samples.txt")
+        
+        original_dir = Path(params.asim_dir) / original_name
+        target_dir = Path(params.input_dir) / params.sample
+        target_dir.mkdir(parents=True, exist_ok=True)
+        
+        # copy FASTQ files
+        for fq in list(original_dir.glob("*.fastq")) + list(original_dir.glob("*.fastq.gz")):
+            dest = target_dir / fq.name
+            if not dest.exists():
+                shutil.copy2(fq, dest)
+        
+        Path(output[0]).touch()
+
+
+# 6. Run recount-pump per sample
+rule run_pump:
+    input:
+        input_done = str(PUMP_INPUT_DIR / "{sample}" / "input.DONE"),
+        refs = str(MONORAIL_REF_DIR / "refs.DONE")
+    output:
+        str(PUMP_OUTPUT_DIR / "{sample}_att0" / "DONE")
+    params:
+        sample = "{sample}",
+        input_dir = str(PUMP_INPUT_DIR),
+        pump_out = str(PUMP_OUTPUT_DIR),
+        ref_dir = str(MONORAIL_REF_DIR),
+        monorail = str(MONORAIL_EXTERNAL),
+        pump_sif = PUMP_SIF,
+        ref_version = REF_VERSION,
+        project_name = PROJECT_NAME
+    threads: NUM_CPUS
+    shell:
+        """
+        SAMPLE_DIR="{params.input_dir}/{params.sample}"
+        FASTQ1="$SAMPLE_DIR/sample_01_1.fastq"
+        FASTQ2="$SAMPLE_DIR/sample_01_2.fastq"
+        
+        mkdir -p {params.pump_out}
+        cd {params.pump_out}
+        
+        bash {params.monorail}/singularity/run_recount_pump.sh \
+            {params.pump_sif} \
+            {params.sample} \
+            local \
+            {params.ref_version} \
+            {threads} \
+            {params.ref_dir} \
+            "$FASTQ1" \
+            "$FASTQ2" \
+            {params.project_name}
+        
+        mkdir -p {params.pump_out}/{params.sample}_att0
+        touch {output}
+        """
+
+
+# 7. Create metadata for unify
+rule create_metadata:
+    input:
+        get_all_pump_outputs
+    output:
+        str(UNIFY_WORK_DIR / "sample_metadata.tsv")
+    params:
+        pump_dir = str(PUMP_OUTPUT_DIR),
+        project_name = PROJECT_NAME
+    run:
+        os.makedirs(os.path.dirname(output[0]), exist_ok=True)
+        samples = [d.replace("_att0", "") for d in os.listdir(params.pump_dir) 
+                   if d.endswith("_att0") and os.path.isdir(os.path.join(params.pump_dir, d))]
+        with open(output[0], 'w') as f:
+            f.write("study_id\tsample_id\n")
+            for s in sorted(samples):
+                f.write(f"{params.project_name}\t{s}\n")
+        print(f"Created metadata for {len(samples)} samples")
+
+
+# 8. Run recount-unify
+rule run_unify:
+    input:
+        metadata = rules.create_metadata.output,
+        refs = str(MONORAIL_REF_DIR / "refs.DONE")
+    output:
+        str(UNIFY_WORK_DIR / "DONE")
+    params:
+        ref_dir = str(MONORAIL_REF_DIR),
+        work_dir = str(UNIFY_WORK_DIR),
+        pump_dir = str(PUMP_OUTPUT_DIR),
+        monorail = str(MONORAIL_EXTERNAL),
+        unify_sif = UNIFY_SIF,
+        ref_version = REF_VERSION,
+        project_name = PROJECT_NAME,
+        project_id = PROJECT_ID
+    threads: NUM_CPUS
+    shell:
+        """
+        mkdir -p {params.work_dir}
+        
+        bash {params.monorail}/singularity/link_unifier_input_from_pump_output.sh \
+            {params.pump_dir} \
+            {params.work_dir}/linked_input
+        
+        bash {params.monorail}/singularity/run_recount_unify.sh \
+            {params.unify_sif} \
+            {params.ref_version} \
+            {params.ref_dir} \
+            {params.work_dir} \
+            {params.work_dir}/linked_input \
+            {input.metadata} \
+            {threads} \
+            {params.project_name}:{params.project_id}
+        
+        touch {output}
+        """  

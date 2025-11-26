@@ -1,1 +1,4 @@
-reference/
+workflow/data
+workflow/.snakemake
+workflow/containers
+

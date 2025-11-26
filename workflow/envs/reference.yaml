@@ -1,0 +1,12 @@
+name: reference_download
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - bash
+  - wget
+  - coreutils
+  - gawk
+  - sed
+  - gzip
