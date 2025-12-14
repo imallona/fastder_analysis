@@ -15,6 +15,7 @@ MONORAIL_REF_DIR = DATA_DIR / "monorail_refs"
 PUMP_INPUT_DIR = DATA_DIR / "pump_input"
 PUMP_OUTPUT_DIR = DATA_DIR / "pump_output"
 UNIFY_WORK_DIR = DATA_DIR / "unify_work"
+FASTDER_INPUT_DIR = DATA_DIR / "fastder_input"
 
 CONTAINERS_DIR = WORKFLOW_DIR / "containers"
 PUMP_SIF = str(CONTAINERS_DIR / "recount-pump-1.1.3.sif")
@@ -36,11 +37,6 @@ def get_asim_dirs():
     return dirs
 
 
-def get_final_output(wildcards):
-    checkpoint_output = checkpoints.discover_samples.get().output[0]
-    return str(UNIFY_WORK_DIR / "DONE")
-
-
 def get_all_pump_outputs(wildcards):
     checkpoint_output = checkpoints.discover_samples.get().output[0]
     with open(checkpoint_output) as f:
@@ -51,7 +47,7 @@ def get_all_pump_outputs(wildcards):
 # Final output
 rule all:
     input:
-        get_final_output
+        str(FASTDER_INPUT_DIR / "DONE")
     default_target: True
 
 
@@ -269,3 +265,73 @@ rule run_unify:
         
         touch {output}
         """
+
+
+# 10. Extract files for FASTDER
+rule extract_fastder_inputs:
+    input:
+        unify_done = str(UNIFY_WORK_DIR / "DONE"),
+        samples_file = str(DATA_DIR / "samples.txt")
+    output:
+        str(FASTDER_INPUT_DIR / "DONE")
+    params:
+        fastder_dir = str(FASTDER_INPUT_DIR),
+        unify_dir = str(UNIFY_WORK_DIR),
+        pump_output = str(PUMP_OUTPUT_DIR),
+        asim_out = str(ASIM_OUT_DIR),
+        samples_file = str(DATA_DIR / "samples.txt"),
+        project_name = PROJECT_NAME,
+        ref_version = REF_VERSION
+    run:
+        import shutil
+        import subprocess
+        from pathlib import Path
+        
+        fastder_dir = Path(params.fastder_dir)
+        
+        # Create directory structure
+        unified_dir = fastder_dir / "unified"
+        samples_dir = fastder_dir / "samples"
+        unified_dir.mkdir(parents=True, exist_ok=True)
+        samples_dir.mkdir(parents=True, exist_ok=True)
+        
+        # 1. Copy unified/aggregate files (MM, RR)
+        junction_dir = Path(params.unify_dir) / "junction_counts_per_study" / "im" / params.project_name
+        
+        mm_file = junction_dir / f"{params.project_name}.junctions.{params.project_name}.ALL.MM.gz"
+        rr_file = junction_dir / f"{params.project_name}.junctions.{params.project_name}.ALL.RR.gz"
+
+        shutil.copy2(mm_file, unified_dir / mm_file.name)
+        shutil.copy2(rr_file, unified_dir / rr_file.name)
+        
+        # 2. Process each sample
+        with open(params.samples_file) as f:
+            for line in f:
+                if not line.strip():
+                    continue
+                simple_id, original_name = line.strip().split('\t')
+                
+                sample_output_dir = samples_dir / simple_id
+                sample_output_dir.mkdir(parents=True, exist_ok=True)
+                
+                # Copy bigWig file from pump output
+                pump_sample_dir = Path(params.pump_output) / "output" / f"{simple_id}_att0"
+                
+                # The bigWig filename pattern: sample_01!asim!hg38!local.all.bw (exclude unmapped)
+                bigwig_file = pump_sample_dir / f"{simple_id}!{params.project_name}!{params.ref_version}!local.all.bw"
+
+                shutil.copy2(bigwig_file, sample_output_dir / bigwig_file.name)
+                
+                # Copy GTF file from ASimulatoR output
+                asim_sample_dir = Path(params.asim_out) / original_name
+                gtf_file = asim_sample_dir / "splicing_variants.gtf"
+                
+                shutil.copy2(gtf_file, sample_output_dir / f"{simple_id}_splicing_variants.gtf")
+        
+        print(f"FASTDER input extraction complete. Files organized in {fastder_dir}")
+        
+        # 3. Generate BigWig list CSV
+        subprocess.run(["bash", "./scripts/create_bigwig_list.sh"], check=True)
+        
+        # Create DONE file
+        Path(output[0]).touch()
