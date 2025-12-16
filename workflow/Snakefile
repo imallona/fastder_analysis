@@ -309,7 +309,7 @@ rule extract_fastder_inputs:
             with open(rr_output, 'wb') as f_out:
                 shutil.copyfileobj(f_in, f_out)
 
-        # 2. Process each sample - copy files to flat directory with clear naming
+        # 2. Process each sample: copy files to flat directory with clear naming
         with open(params.samples_file) as f:
             for line in f:
                 if not line.strip():
@@ -319,7 +319,7 @@ rule extract_fastder_inputs:
                 # Copy bigWig file from pump output to flat directory
                 pump_sample_dir = Path(params.pump_output) / "output" / f"{simple_id}_att0"
 
-                # The bigWig filename pattern: sample_01!asim!hg38!local.all.bw (exclude unmapped)
+                # The bigWig filename pattern: sample_01!asim!hg38!local.all.bw
                 bigwig_file = pump_sample_dir / f"{simple_id}!{params.project_name}!{params.ref_version}!local.all.bw"
                 bigwig_output = fastder_dir / f"{simple_id}.all.bw"
 
@@ -328,7 +328,7 @@ rule extract_fastder_inputs:
                 # Copy GTF file from ASimulatoR output to flat directory
                 asim_sample_dir = Path(params.asim_out) / original_name
                 gtf_file = asim_sample_dir / "splicing_variants.gtf"
-                gtf_output = fastder_dir / f"{simple_id}_splicing_variants.gtf"
+                gtf_output = fastder_dir / f"{simple_id}_label_splicing_variants.gtf"
 
                 shutil.copy2(gtf_file, gtf_output)
 
