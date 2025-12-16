@@ -6,8 +6,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WORKFLOW_DIR="$(dirname "$SCRIPT_DIR")"
 
 INPUT="$WORKFLOW_DIR/data/unify_work/samples.tsv"
-OUTPUT="$WORKFLOW_DIR/data/fastder_input/recount3_study-explorer_BigWig_list.csv"
-FASTDER_DIR="$WORKFLOW_DIR/data/fastder_input"
+OUTPUT="$WORKFLOW_DIR/data/fastder/recount3_study-explorer_BigWig_list.csv"
+FASTDER_DIR="$WORKFLOW_DIR/data/fastder"
 
 [ ! -f "$INPUT" ] && echo "Error: $INPUT not found" && exit 1
 
