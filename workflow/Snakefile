@@ -16,6 +16,8 @@ PUMP_INPUT_DIR = DATA_DIR / "pump_input"
 PUMP_OUTPUT_DIR = DATA_DIR / "pump_output"
 UNIFY_WORK_DIR = DATA_DIR / "unify_work"
 FASTDER_INPUT_DIR = DATA_DIR / "fastder_input"
+FASTDER_OUTPUT_DIR = DATA_DIR / "fastder_output"
+FASTDER_BUILD_DIR = WORKFLOW_DIR / "external" / "fastder" / "build"
 
 CONTAINERS_DIR = WORKFLOW_DIR / "containers"
 PUMP_SIF = str(CONTAINERS_DIR / "recount-pump-1.1.3.sif")
@@ -47,7 +49,7 @@ def get_all_pump_outputs(wildcards):
 # Final output
 rule all:
     input:
-        str(FASTDER_INPUT_DIR / "bedgraph.DONE")
+        str(FASTDER_OUTPUT_DIR / "DONE")
     default_target: True
 
 
@@ -357,5 +359,39 @@ rule bigwig_to_bedgraph:
         for i in *.bw; do
             bigWigToBedGraph "$i" "${{i/%bw/bedGraph}}"
         done
+        touch {output}
+        """
+
+
+# 12. Build fastder
+rule build_fastder:
+    output:
+        str(FASTDER_BUILD_DIR / "mls")
+    params:
+        fastder_dir = str(WORKFLOW_DIR / "external" / "fastder"),
+        build_script = str(WORKFLOW_DIR / "external" / "fastder" / "conda" / "recipe" / "build.sh")
+    conda:
+        "envs/fastder_build.yaml"
+    shell:
+        """
+        cd {params.fastder_dir}
+        bash {params.build_script}
+        """
+
+
+# 13. Run fastder
+rule run_fastder:
+    input:
+        fastder_exe = str(FASTDER_BUILD_DIR / "mls"),
+        input_data = str(FASTDER_INPUT_DIR / "bedgraph.DONE")
+    output:
+        str(FASTDER_OUTPUT_DIR / "DONE")
+    params:
+        fastder_exe = str(FASTDER_BUILD_DIR / "mls"),
+        input_dir = str(FASTDER_INPUT_DIR)
+    shell:
+        """
+        {params.fastder_exe} \
+            --dir {params.input_dir}
         touch {output}
         """
