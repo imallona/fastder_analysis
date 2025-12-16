@@ -15,8 +15,7 @@ MONORAIL_REF_DIR = DATA_DIR / "monorail_refs"
 PUMP_INPUT_DIR = DATA_DIR / "pump_input"
 PUMP_OUTPUT_DIR = DATA_DIR / "pump_output"
 UNIFY_WORK_DIR = DATA_DIR / "unify_work"
-FASTDER_INPUT_DIR = DATA_DIR / "fastder_input"
-FASTDER_OUTPUT_DIR = DATA_DIR / "fastder_output"
+FASTDER_DIR = DATA_DIR / "fastder"
 FASTDER_BUILD_DIR = WORKFLOW_DIR / "external" / "fastder" / "build"
 
 CONTAINERS_DIR = WORKFLOW_DIR / "containers"
@@ -49,7 +48,7 @@ def get_all_pump_outputs(wildcards):
 # Final output
 rule all:
     input:
-        str(FASTDER_OUTPUT_DIR / "DONE")
+        str(FASTDER_DIR / "run_fastder.DONE")
     default_target: True
 
 
@@ -275,9 +274,9 @@ rule extract_fastder_inputs:
         unify_done = str(UNIFY_WORK_DIR / "DONE"),
         samples_file = str(DATA_DIR / "samples.txt")
     output:
-        str(FASTDER_INPUT_DIR / "DONE")
+        str(FASTDER_DIR / "extract.DONE")
     params:
-        fastder_dir = str(FASTDER_INPUT_DIR),
+        fastder_dir = str(FASTDER_DIR),
         unify_dir = str(UNIFY_WORK_DIR),
         pump_output = str(PUMP_OUTPUT_DIR),
         asim_out = str(ASIM_OUT_DIR),
@@ -346,11 +345,11 @@ rule extract_fastder_inputs:
 # 11. Convert BigWig to BedGraph
 rule bigwig_to_bedgraph:
     input:
-        str(FASTDER_INPUT_DIR / "DONE")
+        str(FASTDER_DIR / "extract.DONE")
     output:
-        str(FASTDER_INPUT_DIR / "bedgraph.DONE")
+        str(FASTDER_DIR / "convert_bedgraph.DONE")
     params:
-        fastder_dir = str(FASTDER_INPUT_DIR)
+        fastder_dir = str(FASTDER_DIR)
     conda:
         "envs/ucsc_tools.yaml"
     shell:
@@ -383,15 +382,15 @@ rule build_fastder:
 rule run_fastder:
     input:
         fastder_exe = str(FASTDER_BUILD_DIR / "mls"),
-        input_data = str(FASTDER_INPUT_DIR / "bedgraph.DONE")
+        input_data = str(FASTDER_DIR / "convert_bedgraph.DONE")
     output:
-        str(FASTDER_OUTPUT_DIR / "DONE")
+        str(FASTDER_DIR / "run_fastder.DONE")
     params:
         fastder_exe = str(FASTDER_BUILD_DIR / "mls"),
-        input_dir = str(FASTDER_INPUT_DIR)
+        fastder_dir = str(FASTDER_DIR)
     shell:
         """
         {params.fastder_exe} \
-            --dir {params.input_dir}
+            --dir {params.fastder_dir}
         touch {output}
         """
