@@ -47,7 +47,7 @@ def get_all_pump_outputs(wildcards):
 # Final output
 rule all:
     input:
-        str(FASTDER_INPUT_DIR / "DONE")
+        str(FASTDER_INPUT_DIR / "bedgraph.DONE")
     default_target: True
 
 
@@ -339,3 +339,23 @@ rule extract_fastder_inputs:
 
         # Create DONE file
         Path(output[0]).touch()
+
+
+# 11. Convert BigWig to BedGraph
+rule bigwig_to_bedgraph:
+    input:
+        str(FASTDER_INPUT_DIR / "DONE")
+    output:
+        str(FASTDER_INPUT_DIR / "bedgraph.DONE")
+    params:
+        fastder_dir = str(FASTDER_INPUT_DIR)
+    conda:
+        "envs/ucsc_tools.yaml"
+    shell:
+        """
+        cd {params.fastder_dir}
+        for i in *.bw; do
+            bigWigToBedGraph "$i" "${{i/%bw/bedGraph}}"
+        done
+        touch {output}
+        """

@@ -32,3 +32,11 @@ This script retrieves Ensembl GRCh38 release 115 reference data, downloading chr
 ## Known issues
 
 With old conda versions, the workflow may fail during environment activation with an assertion involving `CONDA_SHLVL` / `old_conda_shlvl`. A workaround is to run `export CONDA_SHLVL=0` before starting Snakemake, or to use a recent conda version.
+
+# Note
+
+By default, git clone <big-repo> does not fetch the contents of submodules.
+
+To clone including submodules: `git clone --recurse-submodules <big-repo-url>`
+
+If you already cloned the big repo and want to populate submodules afterward: `git submodule update --init --recursive`
