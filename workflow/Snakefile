@@ -365,7 +365,7 @@ rule bigwig_to_bedgraph:
 # 12. Build fastder
 rule build_fastder:
     output:
-        str(FASTDER_BUILD_DIR / "mls")
+        str(FASTDER_BUILD_DIR / "fastder")
     params:
         fastder_dir = str(WORKFLOW_DIR / "external" / "fastder"),
         build_script = str(WORKFLOW_DIR / "external" / "fastder" / "conda" / "recipe" / "build.sh")
@@ -381,12 +381,12 @@ rule build_fastder:
 # 13. Run fastder
 rule run_fastder:
     input:
-        fastder_exe = str(FASTDER_BUILD_DIR / "mls"),
+        fastder_exe = str(FASTDER_BUILD_DIR / "fastder"),
         input_data = str(FASTDER_DIR / "convert_bedgraph.DONE")
     output:
         str(FASTDER_DIR / "run_fastder.DONE")
     params:
-        fastder_exe = str(FASTDER_BUILD_DIR / "mls"),
+        fastder_exe = str(FASTDER_BUILD_DIR / "fastder"),
         fastder_dir = str(FASTDER_DIR)
     shell:
         """
