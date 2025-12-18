@@ -4,4 +4,4 @@
 [submodule "workflow/external/fastder"]
 	path = workflow/external/fastder
 	url = git@github.com:martina-lavanya/fastder.git
-	branch = build
+	branch = main
