@@ -326,12 +326,12 @@ rule extract_fastder_inputs:
 
                 shutil.copy2(bigwig_file, bigwig_output)
 
-                # Copy GTF file from ASimulatoR output to flat directory
+                # Copy GFF file from ASimulatoR output to flat directory
                 asim_sample_dir = Path(params.asim_out) / original_name
-                gtf_file = asim_sample_dir / "splicing_variants.gtf"
-                gtf_output = fastder_dir / f"{simple_id}_label_splicing_variants.gtf"
+                gff_file = asim_sample_dir / "splicing_variants.gff3"
+                gff_output = fastder_dir / f"{simple_id}_label_splicing_variants.gff3"
 
-                shutil.copy2(gtf_file, gtf_output)
+                shutil.copy2(gff_file, gff_output)
 
         print(f"FASTDER input extraction complete. Files organized in flat structure at {fastder_dir}")
 
