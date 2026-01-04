@@ -48,7 +48,7 @@ def get_all_pump_outputs(wildcards):
 # Final output
 rule all:
     input:
-        str(FASTDER_DIR / "gffcompare.DONE")
+        str(DATA_DIR / "results" / "extract_stats.DONE")
     default_target: True
 
 
@@ -468,5 +468,22 @@ rule run_gffcompare:
         """
         cd {params.fastder_dir}
         gffcompare -r *_label_splicing_variants.strand_plus.gff3 -R -M -o {params.output_prefix} FASTDER_RESULT*.strand_plus.gtf
+        touch {output}
+        """
+
+
+# 17. Extract gffcompare stats files to results directory
+rule extract_stats:
+    input:
+        str(FASTDER_DIR / "gffcompare.DONE")
+    output:
+        str(DATA_DIR / "results" / "extract_stats.DONE")
+    params:
+        fastder_dir = str(FASTDER_DIR),
+        results_dir = str(DATA_DIR / "results")
+    shell:
+        """
+        mkdir -p {params.results_dir}
+        cp {params.fastder_dir}/*.stats {params.results_dir}/
         touch {output}
         """
