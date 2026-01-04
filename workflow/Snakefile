@@ -48,7 +48,7 @@ def get_all_pump_outputs(wildcards):
 # Final output
 rule all:
     input:
-        str(FASTDER_DIR / "run_fastder.DONE")
+        str(FASTDER_DIR / "gffcompare.DONE")
     default_target: True
 
 
@@ -342,7 +342,30 @@ rule extract_fastder_inputs:
         Path(output[0]).touch()
 
 
-# 11. Convert BigWig to BedGraph
+# 11. Add chr prefix to GFF3 files (if not already present)
+rule add_chr_prefix_gff3:
+    input:
+        str(FASTDER_DIR / "extract.DONE")
+    output:
+        str(FASTDER_DIR / "chr_prefix.DONE")
+    params:
+        fastder_dir = str(FASTDER_DIR),
+        script = str(WORKFLOW_DIR / "scripts" / "add_chr_prefix_to_gff3.sh")
+    shell:
+        """
+        cd {params.fastder_dir}
+        for file in *_label_splicing_variants.gff3; do
+            if [ -f "$file" ]; then
+                temp_file="${{file}}.tmp"
+                bash {params.script} "$file" "$temp_file"
+                mv "$temp_file" "$file"
+            fi
+        done
+        touch {output}
+        """
+
+
+# 12. Convert BigWig to BedGraph
 rule bigwig_to_bedgraph:
     input:
         str(FASTDER_DIR / "extract.DONE")
@@ -362,7 +385,7 @@ rule bigwig_to_bedgraph:
         """
 
 
-# 12. Build fastder
+# 13. Build fastder
 rule build_fastder:
     output:
         str(FASTDER_BUILD_DIR / "fastder")
@@ -378,7 +401,7 @@ rule build_fastder:
         """
 
 
-# 13. Run fastder
+# 14. Run fastder
 rule run_fastder:
     input:
         fastder_exe = str(FASTDER_BUILD_DIR / "fastder"),
@@ -392,5 +415,58 @@ rule run_fastder:
         """
         {params.fastder_exe} \
             --dir {params.fastder_dir}
+        touch {output}
+        """
+
+
+# 15. Force strand to + for label GFF3 and FASTDER result GTF files
+rule force_strand:
+    input:
+        chr_prefix = str(FASTDER_DIR / "chr_prefix.DONE"),
+        fastder = str(FASTDER_DIR / "run_fastder.DONE")
+    output:
+        str(FASTDER_DIR / "force_strand.DONE")
+    params:
+        fastder_dir = str(FASTDER_DIR),
+        script = str(WORKFLOW_DIR / "scripts" / "force_strand.sh")
+    shell:
+        """
+        cd {params.fastder_dir}
+
+        # Force strand on label GFF3 files -> create .strand_plus.gff3
+        for file in *_label_splicing_variants.gff3; do
+            if [ -f "$file" ]; then
+                output_file="${{file%.gff3}}.strand_plus.gff3"
+                bash {params.script} "$file" "$output_file"
+            fi
+        done
+
+        # Force strand on FASTDER result GTF files -> create .strand_plus.gtf
+        for file in FASTDER_RESULT*.gtf; do
+            if [ -f "$file" ]; then
+                output_file="${{file%.gtf}}.strand_plus.gtf"
+                bash {params.script} "$file" "$output_file"
+            fi
+        done
+
+        touch {output}
+        """
+
+
+# 16. Run gffcompare
+rule run_gffcompare:
+    input:
+        str(FASTDER_DIR / "force_strand.DONE")
+    output:
+        str(FASTDER_DIR / "gffcompare.DONE")
+    params:
+        fastder_dir = str(FASTDER_DIR),
+        output_prefix = "gffcompare_results"
+    conda:
+        "envs/gffcompare.yaml"
+    shell:
+        """
+        cd {params.fastder_dir}
+        gffcompare -r *_label_splicing_variants.strand_plus.gff3 -R -M -o {params.output_prefix} FASTDER_RESULT*.strand_plus.gtf
         touch {output}
         """
