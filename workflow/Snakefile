@@ -467,7 +467,7 @@ rule run_gffcompare:
     shell:
         """
         cd {params.fastder_dir}
-        gffcompare -r *_label_splicing_variants.strand_plus.gff3 -R -M -o {params.output_prefix} FASTDER_RESULT*.strand_plus.gtf
+        gffcompare -r *_label_splicing_variants.strand_plus.gff3 -o {params.output_prefix} FASTDER_RESULT*.strand_plus.gtf
         touch {output}
         """
 
