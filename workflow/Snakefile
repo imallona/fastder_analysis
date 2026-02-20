@@ -22,7 +22,7 @@ rule download_reference:
     output:
         directory("data/reference/Homo_sapiens_GRCh38_Ensembl115")
     conda:
-        "envs/reference.yaml"
+        "envs/reference_download.yaml"
     shell:
         "bash scripts/download_reference_ensembl.sh '{output}'"
 
