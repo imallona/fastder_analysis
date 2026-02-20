@@ -19,7 +19,7 @@ simulate_alternative_splicing(
   input_dir             = input_dir,
   outdir                = outdir,
   event_probs           = event_probs,
-  num_reps              = c(1),
+  num_reps              = c(1, 0),
   seed                  = seed,
   ncores                = ncores,
   seq_depth             = seq_depth,
