@@ -1,0 +1,28 @@
+# Project-wide configuration for fastder-evaluation
+
+# Reproducibility
+seed: 42  # Global random seed
+cores: 8  # Global CPU core count
+
+# ASimulatoR simulation
+asimulator:
+  seq_depth: 100000000  # Reads per sample (100 million)
+  multi_events_per_exon: false
+  strand_specific: true
+  probs_as_freq: true   # Treat event_probs values as frequencies
+
+  # Experimental design: one entry per sample, with its AS event distribution.
+  samples:
+    es:
+      es: 1.0
+    mes:
+      mes: 1.0
+    afe:
+      afe: 1.0
+    ale:
+      ale: 1.0
+    mixed:
+      es: 0.25
+      mes: 0.25
+      afe: 0.25
+      ale: 0.25

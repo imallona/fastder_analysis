@@ -1,18 +1,19 @@
 import os
 from pathlib import Path
 
-# config
-NUM_CPUS = 8
+configfile: "../config/config.yaml"
 
-# paths
+# Internal path constants
 WORKFLOW_DIR = Path(workflow.basedir)
 DATA_DIR = WORKFLOW_DIR / "data"
-ASIM_OUT_DIR = DATA_DIR / "asim_out"
 
-# Final output
+# Experimental design
+ASIM_SAMPLES = list(config["asimulator"]["samples"].keys())
+
+
 rule all:
     input:
-        str(ASIM_OUT_DIR / "DONE")
+        expand(str(DATA_DIR / "asim" / "{sample}"), sample=ASIM_SAMPLES)
     default_target: True
 
 
@@ -29,16 +30,19 @@ rule download_reference:
 # 2. Run ASimulatoR
 rule run_asimulator:
     input:
-        rules.download_reference.output
+        reference=rules.download_reference.output[0]
     output:
-        str(ASIM_OUT_DIR / "DONE")
+        directory(str(DATA_DIR / "asim" / "{sample}"))
+    params:
+        outdir=lambda wc: str(DATA_DIR / "asim" / wc.sample),
+        events=lambda wc: config["asimulator"]["samples"][wc.sample],
+        seq_depth=config["asimulator"]["seq_depth"],
+        multi_events_per_exon=config["asimulator"]["multi_events_per_exon"],
+        strand_specific=config["asimulator"]["strand_specific"],
+        probs_as_freq=config["asimulator"]["probs_as_freq"],
+        seed=config["seed"],
+        ncores=config["cores"],
     container:
         "docker://biomedbigdata/asimulator"
-    shell:
-        """
-        mkdir -p {ASIM_OUT_DIR}
-        Rscript scripts/runASimulatoR.R {input} {ASIM_OUT_DIR}
-        touch {output}
-        """
-
-
+    script:
+        "scripts/runASimulatoR.R"
