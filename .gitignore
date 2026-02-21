@@ -1,4 +1,5 @@
 workflow/data
 workflow/.snakemake
 workflow/containers
+workflow/logs
 
