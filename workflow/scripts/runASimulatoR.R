@@ -27,3 +27,22 @@ simulate_alternative_splicing(
   strand_specific       = strand_specific,
   probs_as_freq         = probs_as_freq
 )
+
+# Save metadata (written after successful simulation only)
+library(yaml)
+
+metadata <- list(
+  timestamp = format(Sys.time(), "%Y-%m-%dT%H:%M:%S%z"),
+  params = list(
+    input_dir             = input_dir,
+    seed                  = seed,
+    ncores                = ncores,
+    seq_depth             = seq_depth,
+    multi_events_per_exon = multi_events_per_exon,
+    strand_specific       = strand_specific,
+    probs_as_freq         = probs_as_freq,
+    event_probs           = as.list(event_probs)
+  )
+)
+
+write_yaml(metadata, file.path(outdir, "simulation_metadata.yaml"))
