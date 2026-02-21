@@ -1,3 +1,8 @@
+# Redirect all output to Snakemake log file
+log <- file(snakemake@log[[1]], open = "wt")
+sink(log, type = "output")
+sink(log, type = "message")
+
 input_dir <- snakemake@input[["reference"]]
 outdir    <- snakemake@params[["outdir"]]
 

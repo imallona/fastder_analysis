@@ -6,6 +6,7 @@ configfile: "../config/config.yaml"
 # Internal path constants
 WORKFLOW_DIR = Path(workflow.basedir)
 DATA_DIR = WORKFLOW_DIR / "data"
+LOG_DIR = WORKFLOW_DIR / "logs"
 
 # Experimental design
 ASIM_SAMPLES = list(config["asimulator"]["samples"].keys())
@@ -21,10 +22,12 @@ rule all:
 rule download_reference:
     output:
         directory("data/reference/Homo_sapiens_GRCh38_Ensembl115")
+    log:
+        str(LOG_DIR / "download_reference.log")
     conda:
         "envs/reference_download.yaml"
     shell:
-        "bash scripts/download_reference_ensembl.sh '{output}'"
+        "bash scripts/download_reference_ensembl.sh '{output}' > {log} 2>&1"
 
 
 # 2. Run ASimulatoR
@@ -33,6 +36,8 @@ rule run_asimulator:
         reference=rules.download_reference.output[0]
     output:
         directory(str(DATA_DIR / "asim" / "{sample}"))
+    log:
+        str(LOG_DIR / "asimulator" / "{sample}.log")
     params:
         outdir=lambda wc: str(DATA_DIR / "asim" / wc.sample),
         events=lambda wc: config["asimulator"]["samples"][wc.sample],
