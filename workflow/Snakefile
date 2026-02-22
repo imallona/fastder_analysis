@@ -169,7 +169,7 @@ rule pump:
             )
 
 
-# 6. Recount-unify: aggregate all pump outputs into count matrices.
+# 6. Recount-unify: aggregate all pump outputs
 rule unify:
     input:
         pump_dirs=expand(str(DATA_DIR / "pump" / "{sample}"), sample=PUMP_SAMPLES),
@@ -188,28 +188,15 @@ rule unify:
         ),
         ncores=config["cores"],
         unify_script=str(MONORAIL_EXTERNAL / "singularity" / "run_recount_unify.sh"),
-        link_script=str(MONORAIL_EXTERNAL / "singularity" / "link_unifier_input_from_pump_output.sh"),
         pump_parent=str(DATA_DIR / "pump"),
         manifest=str(DATA_DIR / "unify_manifest.tsv"),
     run:
         os.makedirs(output[0], exist_ok=True)
 
         # Build the sample manifest (study_id<TAB>sample_id, with header).
-        # Written via shell printf to guarantee Unix line endings; Python csv.writer
-        # produces \r\n on some platforms which breaks the Perl rail_id lookup inside
-        # the Singularity container.
         study = config["monorail"]["project_name"]
         rows = "\n".join(f"{study}\t{s}" for s in PUMP_SAMPLES)
         shell(f"printf 'study_id\\tsample_id\\n{rows}\\n' > {{params.manifest}}")
-
-        # Reorganize pump output into the directory hierarchy unify expects,
-        # using hardlinks (pump and unify must be on the same filesystem)
-        linked_input = str(DATA_DIR / "unify_linked_input")
-        shell(
-            "bash {params.link_script}"
-            f" {params.pump_parent}"
-            f" {linked_input}"
-        )
 
         shell(
             "bash {params.unify_script}"
@@ -217,7 +204,7 @@ rule unify:
             " {params.ref_version}"
             " {params.ref_path}"
             " {output[0]}"
-            f" {linked_input}"
+            " {params.pump_parent}"
             " {params.manifest}"
             " {params.ncores}"
             " {params.project}"
