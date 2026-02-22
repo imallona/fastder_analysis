@@ -26,3 +26,23 @@ asimulator:
       mes: 0.25
       afe: 0.25
       ale: 0.25
+
+# Monorail (recount-pump + recount-unify)
+monorail:
+  # Reference genome name, must match the downloaded pump and unify refs
+  # Supported: hg38, grcm38
+  ref_version: hg38
+
+  # Project name and ID for recount3-compatible output (project_id must be 100-250)
+  project_name: "local"
+  project_id: 101
+
+  # Input source for the pump step.
+  # asimulator: use FASTQ files produced by run_asimulator (local simulated data)
+  # sra:        download from SRA at run time; requires sra_samples below
+  pump_source: asimulator
+
+  # Required when pump_source is sra. Maps sample ID to SRA accessions.
+  # sra_samples:
+  #   SRR390728:
+  #     study_acc: SRP020237
