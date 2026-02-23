@@ -100,16 +100,14 @@ rule pull_containers:
 rule download_monorail_refs:
     output:
         touch(str(MONORAIL_REF_DIR / "refs.DONE"))
-    log:
-        str(LOG_DIR / "download_monorail_refs.log")
     params:
         ref_version=config["monorail"]["ref_version"],
     shell:
         """
         mkdir -p {MONORAIL_REF_DIR}
         cd {MONORAIL_REF_DIR}
-        bash {MONORAIL_EXTERNAL}/get_human_ref_indexes.sh > {log} 2>&1
-        bash {MONORAIL_EXTERNAL}/get_unify_refs.sh {params.ref_version} >> {log} 2>&1
+        bash {MONORAIL_EXTERNAL}/get_human_ref_indexes.sh
+        bash {MONORAIL_EXTERNAL}/get_unify_refs.sh {params.ref_version}
         """
 
 
