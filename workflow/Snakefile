@@ -1,4 +1,5 @@
 import os
+import itertools
 from pathlib import Path
 
 configfile: "../config/config.yaml"
@@ -17,6 +18,11 @@ CONTAINERS_DIR = WORKFLOW_DIR / "containers"
 PUMP_SIF = str(CONTAINERS_DIR / "recount-pump-1.1.3.sif")
 UNIFY_SIF = str(CONTAINERS_DIR / "recount-unify-1.1.1.sif")
 
+# fastder
+FASTDER_DIR = DATA_DIR / "fastder"
+FASTDER_BUILD_DIR = WORKFLOW_DIR / "external" / "fastder" / "build"
+RESULTS_DIR = WORKFLOW_DIR / "results"
+
 # Experimental design
 ASIM_SAMPLES = list(config["asimulator"]["samples"].keys())
 
@@ -28,6 +34,74 @@ elif PUMP_SOURCE == "sra":
     PUMP_SAMPLES = list(config["monorail"]["sra_samples"].keys())
 else:
     raise ValueError(f"Unknown pump_source: '{PUMP_SOURCE}'. Must be 'asimulator' or 'sra'.")
+
+# fastder parameter grid: every combination of the configured lists is run.
+FASTDER_CFG = config.get("fastder") or {}
+# The four tuneable parameters (each may or may not appear in config)
+_GRID_KEYS = ["min_coverage", "min_length", "position_tolerance", "coverage_tolerance"]
+_GRID_LISTS = [FASTDER_CFG[k] if k in FASTDER_CFG else [None] for k in _GRID_KEYS]
+FASTDER_GRID = list(itertools.product(*_GRID_LISTS))
+
+
+def _param_id(combo):
+    """Encode a parameter combination as a short directory-safe string.
+    Only includes keys that were explicitly configured (non-None).
+    """
+    parts = []
+    abbr = {"min_coverage": "mc", "min_length": "ml",
+            "position_tolerance": "pt", "coverage_tolerance": "ct"}
+    for key, val in zip(_GRID_KEYS, combo):
+        if val is not None:
+            parts.append(f"{abbr[key]}{val}")
+    return "_".join(parts) if parts else "default"
+
+
+def _fastder_cli_args(combo):
+    """Build the CLI argument string for fastder from a parameter combo.
+    Only passes flags for parameters that were explicitly configured.
+    """
+    flag_map = {
+        "min_coverage": "--min-coverage",
+        "min_length": "--min-length",
+        "position_tolerance": "--position-tolerance",
+        "coverage_tolerance": "--coverage-tolerance",
+    }
+    args = []
+    for key, val in zip(_GRID_KEYS, combo):
+        if val is not None:
+            args.append(f"{flag_map[key]} {val}")
+    return " ".join(args)
+
+
+def _fastder_result_filename(combo):
+    """Predict the output GTF filename that fastder will produce.
+    fastder uses C++ std::to_string for doubles (6 decimal places)
+    and std::to_string for ints (no decimals).
+    fastder always writes all four params into the filename, using its
+    internal defaults for any that weren't overridden.
+    """
+    # fastder internal defaults (from main.cpp)
+    defaults = {"min_coverage": 0.05, "min_length": 10,
+                "position_tolerance": 5, "coverage_tolerance": 0.8}
+    vals = {}
+    for key, val in zip(_GRID_KEYS, combo):
+        vals[key] = val if val is not None else defaults[key]
+    return (
+        f"FASTDER_RESULT_POS_TOL_{vals['position_tolerance']}"
+        f"_MIN_COV_{float(vals['min_coverage']):.6f}"
+        f"_COV_TOL_{float(vals['coverage_tolerance']):.6f}"
+        f"_MIN_LENGTH_{vals['min_length']}.gtf"
+    )
+
+
+PARAM_IDS = [_param_id(combo) for combo in FASTDER_GRID]
+PARAM_CLI_ARGS = {_param_id(combo): _fastder_cli_args(combo) for combo in FASTDER_GRID}
+PARAM_RESULT_FILES = {_param_id(combo): _fastder_result_filename(combo) for combo in FASTDER_GRID}
+# For the summary CSV: store only the explicitly-set values
+PARAM_DICT = {
+    _param_id(combo): {k: v for k, v in zip(_GRID_KEYS, combo) if v is not None}
+    for combo in FASTDER_GRID
+}
 
 
 def pump_input(wildcards):
@@ -42,7 +116,7 @@ def pump_input(wildcards):
 
 rule all:
     input:
-        directory(str(DATA_DIR / "unify"))
+        str(RESULTS_DIR / "summary.csv")
     default_target: True
 
 
@@ -215,3 +289,308 @@ rule unify:
             " {params.project}"
             " > {log} 2>&1"
         )
+
+
+# 7. Extract and organise all inputs that fastder needs into a flat directory
+rule extract_fastder_inputs:
+    input:
+        unify_dir=str(DATA_DIR / "unify"),
+        pump_dirs=expand(str(DATA_DIR / "pump" / "{sample}"), sample=PUMP_SAMPLES),
+    output:
+        touch(str(FASTDER_DIR / "extract.DONE"))
+    log:
+        str(LOG_DIR / "extract_fastder_inputs.log")
+    params:
+        fastder_dir=str(FASTDER_DIR),
+        unify_dir=str(DATA_DIR / "unify"),
+        pump_dir=str(DATA_DIR / "pump"),
+        project_name=config["monorail"]["project_name"],
+        ref_version=config["monorail"]["ref_version"],
+        samples_tsv_script=str(WORKFLOW_DIR / "scripts" / "create_bigwig_list.sh"),
+    run:
+        import shutil, gzip
+        from pathlib import Path as P
+
+        fdir = P(params.fastder_dir)
+        fdir.mkdir(parents=True, exist_ok=True)
+
+        # 1. Gunzip MM and RR files from unify output
+        project = params.project_name
+        # Unify puts junction files under junction_counts_per_study/al/<study>/
+        # Find files dynamically instead of hardcoding the low-order directory
+        jct_base = P(params.unify_dir) / "junction_counts_per_study"
+        mm_gz = rr_gz = None
+        for gz in jct_base.rglob(f"*.ALL.MM.gz"):
+            mm_gz = gz
+        for gz in jct_base.rglob(f"*.ALL.RR.gz"):
+            rr_gz = gz
+
+        if not mm_gz or not rr_gz:
+            raise FileNotFoundError(
+                f"Could not find ALL.MM.gz / ALL.RR.gz under {jct_base}"
+            )
+
+        for gz_path, suffix in [(mm_gz, ".ALL.MM"), (rr_gz, ".ALL.RR")]:
+            out_name = gz_path.name.removesuffix(".gz")
+            with gzip.open(gz_path, "rb") as f_in, open(fdir / out_name, "wb") as f_out:
+                shutil.copyfileobj(f_in, f_out)
+
+        # 2. Copy BigWig files from pump output
+        for sample in PUMP_SAMPLES:
+            att_dir = P(params.pump_dir) / sample / "output" / f"{sample}_att0"
+            # Filename: {sample}!{study}!{ref_version}!local.all.bw
+            # study is project_name for asimulator, study_acc for sra
+            if PUMP_SOURCE == "asimulator":
+                study = project
+            else:
+                study = config["monorail"]["sra_samples"][sample]["study_acc"]
+            bw_name = f"{sample}!{study}!{params.ref_version}!local.all.bw"
+            bw_src = att_dir / bw_name
+            if not bw_src.exists():
+                raise FileNotFoundError(f"BigWig not found: {bw_src}")
+            shutil.copy2(bw_src, fdir / f"{sample}.all.bw")
+
+        # 3. Generate BigWig-list CSV from unify samples.tsv
+        samples_tsv = P(params.unify_dir) / "samples.tsv"
+        bigwig_csv = fdir / "recount3_BigWig_list.csv"
+        shell(
+            "bash {params.samples_tsv_script}"
+            f" {samples_tsv}"
+            f" {bigwig_csv}"
+            " >> {log} 2>&1"
+        )
+
+        # 4. Copy label / reference GFF for gffcompare
+        if PUMP_SOURCE == "asimulator":
+            for sample in PUMP_SAMPLES:
+                gff_src = P(str(DATA_DIR)) / "asim" / sample / "splicing_variants.gff3"
+                if gff_src.exists():
+                    shutil.copy2(gff_src, fdir / f"{sample}_label.gff3")
+        else:
+            ref_ann = config.get("gffcompare", {}).get("reference_annotation", "")
+            if ref_ann:
+                ref_path = P(ref_ann)
+                if not ref_path.is_absolute():
+                    ref_path = P(str(WORKFLOW_DIR)) / ref_ann
+                if ref_path.exists():
+                    for sample in PUMP_SAMPLES:
+                        shutil.copy2(ref_path, fdir / f"{sample}_label.gff3")
+
+
+# 8. Add chr prefix to label GFF3 files (ASimulatoR uses bare names like 1, 2, ...)
+rule add_chr_prefix_gff3:
+    input:
+        str(FASTDER_DIR / "extract.DONE")
+    output:
+        touch(str(FASTDER_DIR / "chr_prefix.DONE"))
+    log:
+        str(LOG_DIR / "add_chr_prefix_gff3.log")
+    params:
+        fastder_dir=str(FASTDER_DIR),
+        script=str(WORKFLOW_DIR / "scripts" / "add_chr_prefix_to_gff3.sh"),
+    shell:
+        """
+        for file in {params.fastder_dir}/*_label.gff3; do
+            [ -f "$file" ] || continue
+            tmp="${{file}}.tmp"
+            bash {params.script} "$file" "$tmp"
+            mv "$tmp" "$file"
+        done > {log} 2>&1
+        """
+
+
+# 9. Convert BigWig to BedGraph
+rule bigwig_to_bedgraph:
+    input:
+        str(FASTDER_DIR / "extract.DONE")
+    output:
+        touch(str(FASTDER_DIR / "convert_bedgraph.DONE"))
+    log:
+        str(LOG_DIR / "bigwig_to_bedgraph.log")
+    params:
+        fastder_dir=str(FASTDER_DIR),
+    conda:
+        "envs/ucsc_tools.yaml"
+    shell:
+        """
+        for bw in {params.fastder_dir}/*.bw; do
+            [ -f "$bw" ] || continue
+            out="${{bw%.bw}}.bedGraph"
+            bigWigToBedGraph "$bw" "$out"
+        done > {log} 2>&1
+        """
+
+
+# 10. Build fastder from source
+rule build_fastder:
+    output:
+        str(FASTDER_BUILD_DIR / "fastder")
+    log:
+        str(LOG_DIR / "build_fastder.log")
+    params:
+        fastder_src=str(WORKFLOW_DIR / "external" / "fastder"),
+        build_script=str(WORKFLOW_DIR / "external" / "fastder" / "conda" / "recipe" / "build.sh"),
+    conda:
+        "envs/fastder_build.yaml"
+    shell:
+        """
+        cd {params.fastder_src}
+        bash {params.build_script} > {log} 2>&1
+        """
+
+
+# 11. Prepare label GFF3 files: force strand to + for gffcompare
+rule prepare_labels:
+    input:
+        str(FASTDER_DIR / "chr_prefix.DONE")
+    output:
+        touch(str(FASTDER_DIR / "labels_prepared.DONE"))
+    log:
+        str(LOG_DIR / "prepare_labels.log")
+    params:
+        fastder_dir=str(FASTDER_DIR),
+        script=str(WORKFLOW_DIR / "scripts" / "force_strand.sh"),
+    shell:
+        """
+        for file in {params.fastder_dir}/*_label.gff3; do
+            [ -f "$file" ] || continue
+            out="${{file%.gff3}}.strand_plus.gff3"
+            bash {params.script} "$file" "$out"
+        done > {log} 2>&1
+        """
+
+
+# 12. Run fastder for each parameter combination
+rule run_fastder:
+    input:
+        fastder_exe=str(FASTDER_BUILD_DIR / "fastder"),
+        bedgraph_done=str(FASTDER_DIR / "convert_bedgraph.DONE"),
+        chr_prefix_done=str(FASTDER_DIR / "chr_prefix.DONE"),
+    output:
+        touch(str(FASTDER_DIR / "run_fastder_{param_id}.DONE"))
+    log:
+        str(LOG_DIR / "run_fastder" / "{param_id}.log")
+    params:
+        fastder_dir=str(FASTDER_DIR),
+        ncores=config["cores"],
+        fastder_args=lambda wc: PARAM_CLI_ARGS[wc.param_id],
+        chr_args=(
+            "--chr " + " ".join(str(c) for c in FASTDER_CFG["chromosomes"])
+            if FASTDER_CFG.get("chromosomes")
+            else ""
+        ),
+    conda:
+        "envs/fastder_build.yaml"
+    shell:
+        """
+        export LD_LIBRARY_PATH="$CONDA_PREFIX/lib:${{LD_LIBRARY_PATH:-}}"
+        {input.fastder_exe} \
+            --dir {params.fastder_dir} \
+            {params.fastder_args} \
+            --cores {params.ncores} \
+            {params.chr_args} \
+            > {log} 2>&1
+        """
+
+
+# 13. Force strand to + on fastder result GTF for each parameter combination
+rule force_strand_fastder:
+    input:
+        str(FASTDER_DIR / "run_fastder_{param_id}.DONE")
+    output:
+        touch(str(FASTDER_DIR / "force_strand_{param_id}.DONE"))
+    log:
+        str(LOG_DIR / "force_strand_fastder" / "{param_id}.log")
+    params:
+        script=str(WORKFLOW_DIR / "scripts" / "force_strand.sh"),
+        src=lambda wc: os.path.join(
+            str(FASTDER_DIR), PARAM_RESULT_FILES[wc.param_id],
+        ),
+        dst=lambda wc: os.path.join(
+            str(FASTDER_DIR),
+            PARAM_RESULT_FILES[wc.param_id].replace(".gtf", ".strand_plus.gtf"),
+        ),
+    shell:
+        """
+        bash {params.script} {params.src} {params.dst} > {log} 2>&1
+        """
+
+
+# 14. Run gffcompare for each sample × parameter combination
+rule run_gffcompare:
+    input:
+        labels=str(FASTDER_DIR / "labels_prepared.DONE"),
+        fastder_result=str(FASTDER_DIR / "force_strand_{param_id}.DONE"),
+    output:
+        stats=str(RESULTS_DIR / "{sample}" / "{param_id}" / "gffcompare.stats"),
+    log:
+        str(LOG_DIR / "gffcompare" / "{sample}_{param_id}.log")
+    params:
+        fastder_gtf=lambda wc: os.path.join(
+            str(FASTDER_DIR),
+            PARAM_RESULT_FILES[wc.param_id].replace(".gtf", ".strand_plus.gtf"),
+        ),
+        label_gff=lambda wc: os.path.join(
+            str(FASTDER_DIR),
+            f"{wc.sample}_label.strand_plus.gff3",
+        ),
+        out_prefix=lambda wc: os.path.join(
+            str(RESULTS_DIR), wc.sample, wc.param_id, "gffcompare",
+        ),
+    conda:
+        "envs/gffcompare.yaml"
+    shell:
+        """
+        mkdir -p $(dirname {params.out_prefix})
+        gffcompare -r {params.label_gff} -o {params.out_prefix} {params.fastder_gtf} > {log} 2>&1
+        """
+
+
+# 15. Collect all gffcompare stats into a summary CSV
+rule collect_results:
+    input:
+        expand(
+            str(RESULTS_DIR / "{sample}" / "{param_id}" / "gffcompare.stats"),
+            sample=PUMP_SAMPLES,
+            param_id=PARAM_IDS,
+        ),
+    output:
+        str(RESULTS_DIR / "summary.csv"),
+    run:
+        import csv
+        import re
+
+        def parse_base_level(stats_file):
+            """Extract Base level Sensitivity and Precision from a .stats file."""
+            with open(stats_file) as f:
+                for line in f:
+                    m = re.match(
+                        r"^\s*Base level\s*:\s*(\d+\.\d+)\s*\|\s*(\d+\.\d+)",
+                        line,
+                    )
+                    if m:
+                        return m.group(1), m.group(2)
+            return "", ""
+
+        rows = []
+        for stats_file in input:
+            parts = Path(stats_file).parts
+            pid = parts[-2]
+            sample = parts[-3]
+            sensitivity, precision = parse_base_level(stats_file)
+            row = {"sample": sample, "param_id": pid}
+            row.update(PARAM_DICT.get(pid, {}))
+            row["sensitivity"] = sensitivity
+            row["precision"] = precision
+            rows.append(row)
+
+        # Column order: sample, param_id, any grid params that were set, metrics
+        param_cols = sorted({k for r in rows for k in r if k not in
+                            {"sample", "param_id", "sensitivity", "precision"}})
+        fieldnames = ["sample", "param_id"] + param_cols + ["sensitivity", "precision"]
+
+        with open(output[0], "w", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            for row in sorted(rows, key=lambda r: (r["sample"], r["param_id"])):
+                writer.writerow(row)

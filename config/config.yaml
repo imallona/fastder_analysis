@@ -47,3 +47,19 @@ monorail:
   # sra_samples:
   #   SRR390728:
   #     study_acc: SRP020237
+
+# Parameter grid: every combination of the listed values will be run.
+# Omit a parameter entirely to use fastder's internal default.
+# Defaults: min_coverage=0.05, min_length=10, position_tolerance=5, coverage_tolerance=0.8
+fastder:
+  min_coverage: [0.05, 0.25]
+  # min_length: [5, 10]
+  # position_tolerance: [5, 10]
+  # coverage_tolerance: [0.1, 0.8]
+  # chromosomes: []  # restrict to specific chromosomes (omit for all)
+
+# gffcompare: compare fastder results against reference annotations
+gffcompare:
+  # For asimulator pump_source: per-sample splicing_variants.gff3 is used automatically.
+  # For sra pump_source: set this to the path of your reference annotation (GTF/GFF3).
+  reference_annotation: ""  # e.g., "data/reference/Homo_sapiens_GRCh38_Ensembl115/Homo_sapiens.GRCh38.115.gtf"

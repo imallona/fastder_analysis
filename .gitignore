@@ -2,4 +2,4 @@ workflow/data
 workflow/.snakemake
 workflow/containers
 workflow/logs
-
+workflow/results
