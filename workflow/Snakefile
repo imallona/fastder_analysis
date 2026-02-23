@@ -176,7 +176,8 @@ rule unify:
         container=UNIFY_SIF,
         refs=str(MONORAIL_REF_DIR / "refs.DONE"),
     output:
-        directory(str(DATA_DIR / "unify"))
+        directory(str(DATA_DIR / "unify")),
+        str(DATA_DIR / "sample_metadata.tsv"),
     log:
         str(LOG_DIR / "unify.log")
     params:
@@ -189,14 +190,20 @@ rule unify:
         ncores=config["cores"],
         unify_script=str(MONORAIL_EXTERNAL / "singularity" / "run_recount_unify.sh"),
         pump_parent=str(DATA_DIR / "pump"),
-        manifest=str(DATA_DIR / "unify_manifest.tsv"),
     run:
         os.makedirs(output[0], exist_ok=True)
 
-        # Build the sample manifest (study_id<TAB>sample_id, with header).
-        study = config["monorail"]["project_name"]
-        rows = "\n".join(f"{study}\t{s}" for s in PUMP_SAMPLES)
-        shell(f"printf 'study_id\\tsample_id\\n{rows}\\n' > {{params.manifest}}")
+        # Build the sample metadata (study_id<TAB>sample_id, with header).
+        # study_id must match what pump encoded in its output filenames:
+        #   asimulator: pump was called with project_name as actual_study -> filenames: sample!project_name!...
+        #   sra:        pump was called with per-sample study_acc         -> filenames: sample!study_acc!...
+        if PUMP_SOURCE == "asimulator":
+            rows = [(config["monorail"]["project_name"], s) for s in PUMP_SAMPLES]
+        else:
+            rows = [(config["monorail"]["sra_samples"][s]["study_acc"], s) for s in PUMP_SAMPLES]
+        with open(output[1], "w") as fh:
+            fh.write("study_id\tsample_id\n")
+            fh.writelines(f"{study}\t{sample}\n" for study, sample in rows)
 
         shell(
             "bash {params.unify_script}"
@@ -205,7 +212,7 @@ rule unify:
             " {params.ref_path}"
             " {output[0]}"
             " {params.pump_parent}"
-            " {params.manifest}"
+            " {output[1]}"
             " {params.ncores}"
             " {params.project}"
             " > {log} 2>&1"

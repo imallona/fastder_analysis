@@ -33,7 +33,8 @@ monorail:
   # Supported: hg38, grcm38
   ref_version: hg38
 
-  # Project name and ID for recount3-compatible output (project_id must be 100-250)
+  # Project name should be unique for your organization or 'sra' if you're pulling from the Sequence Read Archive.
+  # The project_id should be between 100 and 250 (exclusive).
   project_name: "local"
   project_id: 101
 
