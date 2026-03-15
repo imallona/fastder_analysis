@@ -302,23 +302,21 @@ rule extract_fastder_inputs:
         str(LOG_DIR / "extract_fastder_inputs.log")
     params:
         fastder_dir=str(FASTDER_DIR),
-        unify_dir=str(DATA_DIR / "unify"),
         pump_dir=str(DATA_DIR / "pump"),
         project_name=config["monorail"]["project_name"],
         ref_version=config["monorail"]["ref_version"],
         samples_tsv_script=str(WORKFLOW_DIR / "scripts" / "create_bigwig_list.sh"),
     run:
         import shutil, gzip
-        from pathlib import Path as P
 
-        fdir = P(params.fastder_dir)
+        fdir = Path(params.fastder_dir)
         fdir.mkdir(parents=True, exist_ok=True)
 
         # 1. Gunzip MM and RR files from unify output
         project = params.project_name
         # Unify puts junction files under junction_counts_per_study/al/<study>/
         # Find files dynamically instead of hardcoding the low-order directory
-        jct_base = P(params.unify_dir) / "junction_counts_per_study"
+        jct_base = Path(input.unify_dir) / "junction_counts_per_study"
         mm_gz = rr_gz = None
         for gz in jct_base.rglob(f"*.ALL.MM.gz"):
             mm_gz = gz
@@ -337,12 +335,13 @@ rule extract_fastder_inputs:
 
         # 2. Copy BigWig files from pump output
         for sample in PUMP_SAMPLES:
-            att_dir = P(params.pump_dir) / sample / "output" / f"{sample}_att0"
+            att_dir = Path(params.pump_dir) / sample / "output" / f"{sample}_att0"
             # Filename: {sample}!{study}!{ref_version}!local.all.bw
             # study is project_name for asimulator, study_acc for sra
             if PUMP_SOURCE == "asimulator":
                 study = project
             else:
+                # TODO: remove, depricated.
                 study = config["monorail"]["sra_samples"][sample]["study_acc"]
             bw_name = f"{sample}!{study}!{params.ref_version}!local.all.bw"
             bw_src = att_dir / bw_name
@@ -351,7 +350,7 @@ rule extract_fastder_inputs:
             shutil.copy2(bw_src, fdir / f"{sample}.all.bw")
 
         # 3. Generate BigWig-list CSV from unify samples.tsv
-        samples_tsv = P(params.unify_dir) / "samples.tsv"
+        samples_tsv = Path(input.unify_dir) / "samples.tsv"
         bigwig_csv = fdir / "recount3_BigWig_list.csv"
         shell(
             "bash {params.samples_tsv_script}"
@@ -363,15 +362,16 @@ rule extract_fastder_inputs:
         # 4. Copy label / reference GFF for gffcompare
         if PUMP_SOURCE == "asimulator":
             for sample in PUMP_SAMPLES:
-                gff_src = P(str(DATA_DIR)) / "asim" / sample / "splicing_variants.gff3"
+                gff_src = Path(str(DATA_DIR)) / "asim" / sample / "splicing_variants.gff3"
                 if gff_src.exists():
                     shutil.copy2(gff_src, fdir / f"{sample}_label.gff3")
         else:
+            # TODO: replace with recount3, SRA doesn't work
             ref_ann = config.get("gffcompare", {}).get("reference_annotation", "")
             if ref_ann:
-                ref_path = P(ref_ann)
+                ref_path = Path(ref_ann)
                 if not ref_path.is_absolute():
-                    ref_path = P(str(WORKFLOW_DIR)) / ref_ann
+                    ref_path = Path(str(WORKFLOW_DIR)) / ref_ann
                 if ref_path.exists():
                     for sample in PUMP_SAMPLES:
                         shutil.copy2(ref_path, fdir / f"{sample}_label.gff3")

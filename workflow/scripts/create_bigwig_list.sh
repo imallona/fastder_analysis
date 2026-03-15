@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Generate the BigWig-list CSV that fastder expects as metadata input.
-# Maps rail_id -> external_id (sample name) so fastder can link bedGraph files
+# Maps rail_id -> external_id (sample name) so fastder can link BigWig files
 # to their splice-junction matrix columns.
 #
 # Usage: bash create_bigwig_list.sh <samples_tsv> <output_csv>
@@ -24,6 +24,6 @@ awk -F'\t' -v OFS="," '
         rail_id   = $1
         sample_id = $2
         study_id  = $3
-        print rail_id, sample_id, study_id, "./" sample_id ".all.bedGraph"
+        print rail_id, sample_id, study_id, "./" sample_id ".all.bw"
     }
 ' "$SAMPLES_TSV" > "$OUTPUT_CSV"
