@@ -30,8 +30,11 @@ ASIM_SAMPLES = list(config["asimulator"]["samples"].keys())
 PUMP_SOURCE = config["monorail"]["pump_source"]
 if PUMP_SOURCE == "asimulator":
     PUMP_SAMPLES = ASIM_SAMPLES
+    LABEL_EXT = ".gff3"  # ASimulatoR always produces GFF3
 elif PUMP_SOURCE == "sra":
     PUMP_SAMPLES = list(config["monorail"]["sra_samples"].keys())
+    ref_ann = config.get("gffcompare", {}).get("reference_annotation", "")
+    LABEL_EXT = Path(ref_ann).suffix if ref_ann else ".gff3"
 else:
     raise ValueError(f"Unknown pump_source: '{PUMP_SOURCE}'. Must be 'asimulator' or 'sra'.")
 
@@ -374,26 +377,29 @@ rule extract_fastder_inputs:
                     ref_path = Path(str(WORKFLOW_DIR)) / ref_ann
                 if ref_path.exists():
                     for sample in PUMP_SAMPLES:
-                        shutil.copy2(ref_path, fdir / f"{sample}_label.gff3")
+                        shutil.copy2(ref_path, fdir / f"{sample}_label{ref_path.suffix}")
 
 
-# 8. Add chr prefix to label GFF3 files (ASimulatoR uses bare names like 1, 2, ...)
-rule add_chr_prefix_gff3:
+# 8. Match chr prefix convention for files used by gffcompare
+rule match_chr_prefix:
     input:
         str(FASTDER_DIR / "extract.DONE")
     output:
-        touch(str(FASTDER_DIR / "chr_prefix.DONE"))
+        touch(str(FASTDER_DIR / "match_chr_prefix.DONE"))
     log:
-        str(LOG_DIR / "add_chr_prefix_gff3.log")
+        str(LOG_DIR / "match_chr_prefix.log")
     params:
         fastder_dir=str(FASTDER_DIR),
-        script=str(WORKFLOW_DIR / "scripts" / "add_chr_prefix_to_gff3.sh"),
     shell:
         """
-        for file in {params.fastder_dir}/*_label.gff3; do
+        for file in {params.fastder_dir}/*_label.gff3 {params.fastder_dir}/*_label.gtf; do
             [ -f "$file" ] || continue
             tmp="${{file}}.tmp"
-            bash {params.script} "$file" "$tmp"
+            awk 'BEGIN{{FS=OFS="\\t"}}
+                /^#/ {{ print; next }}
+                $1 !~ /^chr/ {{ $1 = "chr" $1 }}
+                {{ print }}
+            ' "$file" > "$tmp"
             mv "$tmp" "$file"
         done > {log} 2>&1
         """
@@ -439,33 +445,11 @@ rule build_fastder:
         """
 
 
-# 11. Prepare label GFF3 files: force strand to + for gffcompare
-rule prepare_labels:
-    input:
-        str(FASTDER_DIR / "chr_prefix.DONE")
-    output:
-        touch(str(FASTDER_DIR / "labels_prepared.DONE"))
-    log:
-        str(LOG_DIR / "prepare_labels.log")
-    params:
-        fastder_dir=str(FASTDER_DIR),
-        script=str(WORKFLOW_DIR / "scripts" / "force_strand.sh"),
-    shell:
-        """
-        for file in {params.fastder_dir}/*_label.gff3; do
-            [ -f "$file" ] || continue
-            out="${{file%.gff3}}.strand_plus.gff3"
-            bash {params.script} "$file" "$out"
-        done > {log} 2>&1
-        """
-
-
-# 12. Run fastder for each parameter combination
+# 11. Run fastder for each parameter combination
 rule run_fastder:
     input:
         fastder_exe=str(FASTDER_BUILD_DIR / "fastder"),
         bedgraph_done=str(FASTDER_DIR / "convert_bedgraph.DONE"),
-        chr_prefix_done=str(FASTDER_DIR / "chr_prefix.DONE"),
     output:
         touch(str(FASTDER_DIR / "run_fastder_{param_id}.DONE"))
     log:
@@ -483,7 +467,6 @@ rule run_fastder:
         "envs/fastder_build.yaml"
     shell:
         """
-        export LD_LIBRARY_PATH="$CONDA_PREFIX/lib:${{LD_LIBRARY_PATH:-}}"
         {input.fastder_exe} \
             --dir {params.fastder_dir} \
             {params.fastder_args} \
@@ -493,47 +476,20 @@ rule run_fastder:
         """
 
 
-# 13. Force strand to + on fastder result GTF for each parameter combination
-rule force_strand_fastder:
-    input:
-        str(FASTDER_DIR / "run_fastder_{param_id}.DONE")
-    output:
-        touch(str(FASTDER_DIR / "force_strand_{param_id}.DONE"))
-    log:
-        str(LOG_DIR / "force_strand_fastder" / "{param_id}.log")
-    params:
-        script=str(WORKFLOW_DIR / "scripts" / "force_strand.sh"),
-        src=lambda wc: os.path.join(
-            str(FASTDER_DIR), PARAM_RESULT_FILES[wc.param_id],
-        ),
-        dst=lambda wc: os.path.join(
-            str(FASTDER_DIR),
-            PARAM_RESULT_FILES[wc.param_id].replace(".gtf", ".strand_plus.gtf"),
-        ),
-    shell:
-        """
-        bash {params.script} {params.src} {params.dst} > {log} 2>&1
-        """
-
-
-# 14. Run gffcompare for each sample × parameter combination
+# 12. Run gffcompare for each sample × parameter combination
 rule run_gffcompare:
     input:
-        labels=str(FASTDER_DIR / "labels_prepared.DONE"),
-        fastder_result=str(FASTDER_DIR / "force_strand_{param_id}.DONE"),
+        chr_prefix_done=str(FASTDER_DIR / "match_chr_prefix.DONE"),
+        fastder_result=str(FASTDER_DIR / "run_fastder_{param_id}.DONE"),
     output:
         stats=str(RESULTS_DIR / "{sample}" / "{param_id}" / "gffcompare.stats"),
     log:
         str(LOG_DIR / "gffcompare" / "{sample}_{param_id}.log")
     params:
         fastder_gtf=lambda wc: os.path.join(
-            str(FASTDER_DIR),
-            PARAM_RESULT_FILES[wc.param_id].replace(".gtf", ".strand_plus.gtf"),
+            str(FASTDER_DIR), PARAM_RESULT_FILES[wc.param_id],
         ),
-        label_gff=lambda wc: os.path.join(
-            str(FASTDER_DIR),
-            f"{wc.sample}_label.strand_plus.gff3",
-        ),
+        label_gff=lambda wc: str(FASTDER_DIR / f"{wc.sample}_label{LABEL_EXT}"),
         out_prefix=lambda wc: os.path.join(
             str(RESULTS_DIR), wc.sample, wc.param_id, "gffcompare",
         ),
@@ -546,7 +502,7 @@ rule run_gffcompare:
         """
 
 
-# 15. Collect all gffcompare stats into a summary CSV
+# 13. Collect all gffcompare stats into a summary CSV
 rule collect_results:
     input:
         expand(

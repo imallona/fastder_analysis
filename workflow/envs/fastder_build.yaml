@@ -4,6 +4,6 @@ channels:
 dependencies:
   - cmake >=4.0
   - make
-  - gcc
-  - gxx
+  - gcc =14
+  - gxx =14
   - pthread-stubs

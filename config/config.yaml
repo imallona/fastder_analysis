@@ -52,7 +52,7 @@ monorail:
 # Omit a parameter entirely to use fastder's internal default.
 # Defaults: min_coverage=0.05, min_length=10, position_tolerance=5, coverage_tolerance=0.8
 fastder:
-  min_coverage: [0.05, 0.25]
+  min_coverage: [0.01, 0.05]
   # min_length: [5, 10]
   # position_tolerance: [5, 10]
   # coverage_tolerance: [0.1, 0.8]
