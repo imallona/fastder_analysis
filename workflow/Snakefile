@@ -39,72 +39,45 @@ else:
     raise ValueError(f"Unknown pump_source: '{PUMP_SOURCE}'. Must be 'asimulator' or 'sra'.")
 
 # fastder parameter grid: every combination of the configured lists is run.
+# Each combo is a plain dict of {param_name: value} for explicitly-set params only.
+# Omitted params are not passed to fastder, which uses its own internal defaults.
 FASTDER_CFG = config.get("fastder") or {}
-# The four tuneable parameters (each may or may not appear in config)
-_GRID_KEYS = ["min_coverage", "min_length", "position_tolerance", "coverage_tolerance"]
-_GRID_LISTS = [FASTDER_CFG[k] if k in FASTDER_CFG else [None] for k in _GRID_KEYS]
-FASTDER_GRID = list(itertools.product(*_GRID_LISTS))
+
+# Maps each parameter name to its (id_abbreviation, CLI flag).
+# Add entries here if fastder gains new tuneable parameters.
+_PARAM_SPEC = {
+    "min_coverage":       ("mc", "--min-coverage"),
+    "min_length":         ("ml", "--min-length"),
+    "position_tolerance": ("pt", "--position-tolerance"),
+    "coverage_tolerance": ("ct", "--coverage-tolerance"),
+}
+
+# Cross-product of all configured value lists; {} means "run once with all defaults".
+_grid_axes = [
+    [(key, val) for val in FASTDER_CFG[key]]
+    for key in _PARAM_SPEC
+    if key in FASTDER_CFG
+]
+_PARAM_COMBOS = [dict(items) for items in itertools.product(*_grid_axes)] if _grid_axes else [{}]
 
 
 def _param_id(combo):
-    """Encode a parameter combination as a short directory-safe string.
-    Only includes keys that were explicitly configured (non-None).
-    """
-    parts = []
-    abbr = {"min_coverage": "mc", "min_length": "ml",
-            "position_tolerance": "pt", "coverage_tolerance": "ct"}
-    for key, val in zip(_GRID_KEYS, combo):
-        if val is not None:
-            parts.append(f"{abbr[key]}{val}")
+    """Short, directory-safe identifier for a parameter combination."""
+    abbr = {k: spec[0] for k, spec in _PARAM_SPEC.items()}
+    parts = [f"{abbr[k]}{v}" for k, v in combo.items()]
     return "_".join(parts) if parts else "default"
 
 
 def _fastder_cli_args(combo):
-    """Build the CLI argument string for fastder from a parameter combo.
-    Only passes flags for parameters that were explicitly configured.
-    """
-    flag_map = {
-        "min_coverage": "--min-coverage",
-        "min_length": "--min-length",
-        "position_tolerance": "--position-tolerance",
-        "coverage_tolerance": "--coverage-tolerance",
-    }
-    args = []
-    for key, val in zip(_GRID_KEYS, combo):
-        if val is not None:
-            args.append(f"{flag_map[key]} {val}")
-    return " ".join(args)
+    """CLI flags to pass to fastder for this combination (only explicitly-set params)."""
+    flag = {k: spec[1] for k, spec in _PARAM_SPEC.items()}
+    return " ".join(f"{flag[k]} {v}" for k, v in combo.items())
 
 
-def _fastder_result_filename(combo):
-    """Predict the output GTF filename that fastder will produce.
-    fastder uses C++ std::to_string for doubles (6 decimal places)
-    and std::to_string for ints (no decimals).
-    fastder always writes all four params into the filename, using its
-    internal defaults for any that weren't overridden.
-    """
-    # fastder internal defaults (from main.cpp)
-    defaults = {"min_coverage": 0.05, "min_length": 10,
-                "position_tolerance": 5, "coverage_tolerance": 0.8}
-    vals = {}
-    for key, val in zip(_GRID_KEYS, combo):
-        vals[key] = val if val is not None else defaults[key]
-    return (
-        f"FASTDER_RESULT_POS_TOL_{vals['position_tolerance']}"
-        f"_MIN_COV_{float(vals['min_coverage']):.6f}"
-        f"_COV_TOL_{float(vals['coverage_tolerance']):.6f}"
-        f"_MIN_LENGTH_{vals['min_length']}.gtf"
-    )
-
-
-PARAM_IDS = [_param_id(combo) for combo in FASTDER_GRID]
-PARAM_CLI_ARGS = {_param_id(combo): _fastder_cli_args(combo) for combo in FASTDER_GRID}
-PARAM_RESULT_FILES = {_param_id(combo): _fastder_result_filename(combo) for combo in FASTDER_GRID}
-# For the summary CSV: store only the explicitly-set values
-PARAM_DICT = {
-    _param_id(combo): {k: v for k, v in zip(_GRID_KEYS, combo) if v is not None}
-    for combo in FASTDER_GRID
-}
+PARAM_IDS      = [_param_id(c) for c in _PARAM_COMBOS]
+PARAM_CLI_ARGS = {_param_id(c): _fastder_cli_args(c) for c in _PARAM_COMBOS}
+# For the summary CSV: the explicit params for each run
+PARAM_DICT     = {_param_id(c): c for c in _PARAM_COMBOS}
 
 
 def pump_input(wildcards):
@@ -445,17 +418,22 @@ rule build_fastder:
         """
 
 
-# 11. Run fastder for each parameter combination
+# 11. Run fastder for each parameter combination.
+# Each run gets its own working directory (data/fastder/runs/{param_id}/) with
+# symlinks to the shared inputs. This allows parallel execution without races on
+# the FASTDER_RESULT_*.gtf output filenames.
 rule run_fastder:
     input:
         fastder_exe=str(FASTDER_BUILD_DIR / "fastder"),
         bedgraph_done=str(FASTDER_DIR / "convert_bedgraph.DONE"),
     output:
-        touch(str(FASTDER_DIR / "run_fastder_{param_id}.DONE"))
+        gtf_path=str(FASTDER_DIR / "run_fastder_{param_id}.gtf_path"),
+        done=touch(str(FASTDER_DIR / "run_fastder_{param_id}.DONE")),
     log:
         str(LOG_DIR / "run_fastder" / "{param_id}.log")
     params:
         fastder_dir=str(FASTDER_DIR),
+        run_dir=lambda wc: str(FASTDER_DIR / "runs" / wc.param_id),
         ncores=config["cores"],
         fastder_args=lambda wc: PARAM_CLI_ARGS[wc.param_id],
         chr_args=(
@@ -467,12 +445,26 @@ rule run_fastder:
         "envs/fastder_build.yaml"
     shell:
         """
+        mkdir -p {params.run_dir}
+        # Symlink all shared inputs into the private run directory
+        for f in {params.fastder_dir}/*.bedGraph \
+                  {params.fastder_dir}/*.MM \
+                  {params.fastder_dir}/*.RR \
+                  {params.fastder_dir}/*.csv; do
+            [ -e "$f" ] || continue
+            ln -sf "$f" {params.run_dir}/
+        done
         {input.fastder_exe} \
-            --dir {params.fastder_dir} \
+            --dir {params.run_dir} \
             {params.fastder_args} \
             --cores {params.ncores} \
             {params.chr_args} \
             > {log} 2>&1
+        gtf=$(ls {params.run_dir}/FASTDER_RESULT_*.gtf 2>/dev/null)
+        if [ -z "$gtf" ]; then
+            echo "ERROR: fastder did not produce a FASTDER_RESULT_*.gtf" >&2; exit 1
+        fi
+        echo "$gtf" > {output.gtf_path}
         """
 
 
@@ -480,15 +472,12 @@ rule run_fastder:
 rule run_gffcompare:
     input:
         chr_prefix_done=str(FASTDER_DIR / "match_chr_prefix.DONE"),
-        fastder_result=str(FASTDER_DIR / "run_fastder_{param_id}.DONE"),
+        gtf_path=str(FASTDER_DIR / "run_fastder_{param_id}.gtf_path"),
     output:
         stats=str(RESULTS_DIR / "{sample}" / "{param_id}" / "gffcompare.stats"),
     log:
         str(LOG_DIR / "gffcompare" / "{sample}_{param_id}.log")
     params:
-        fastder_gtf=lambda wc: os.path.join(
-            str(FASTDER_DIR), PARAM_RESULT_FILES[wc.param_id],
-        ),
         label_gff=lambda wc: str(FASTDER_DIR / f"{wc.sample}_label{LABEL_EXT}"),
         out_prefix=lambda wc: os.path.join(
             str(RESULTS_DIR), wc.sample, wc.param_id, "gffcompare",
@@ -497,8 +486,9 @@ rule run_gffcompare:
         "envs/gffcompare.yaml"
     shell:
         """
+        fastder_gtf=$(cat {input.gtf_path})
         mkdir -p $(dirname {params.out_prefix})
-        gffcompare -r {params.label_gff} -o {params.out_prefix} {params.fastder_gtf} > {log} 2>&1
+        gffcompare -r {params.label_gff} -o {params.out_prefix} "$fastder_gtf" > {log} 2>&1
         """
 
 
