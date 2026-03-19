@@ -44,7 +44,6 @@ else:
 FASTDER_CFG = config.get("fastder") or {}
 
 # Maps each parameter name to its (id_abbreviation, CLI flag).
-# Add entries here if fastder gains new tuneable parameters.
 _PARAM_SPEC = {
     "min_coverage":       ("mc", "--min-coverage"),
     "min_length":         ("ml", "--min-length"),
@@ -74,10 +73,10 @@ def _fastder_cli_args(combo):
     return " ".join(f"{flag[k]} {v}" for k, v in combo.items())
 
 
-PARAM_IDS      = [_param_id(c) for c in _PARAM_COMBOS]
+PARAM_IDS = [_param_id(c) for c in _PARAM_COMBOS]
 PARAM_CLI_ARGS = {_param_id(c): _fastder_cli_args(c) for c in _PARAM_COMBOS}
 # For the summary CSV: the explicit params for each run
-PARAM_DICT     = {_param_id(c): c for c in _PARAM_COMBOS}
+PARAM_DICT = {_param_id(c): c for c in _PARAM_COMBOS}
 
 
 def pump_input(wildcards):
@@ -267,11 +266,74 @@ rule unify:
         )
 
 
-# 7. Extract and organise all inputs that fastder needs into a flat directory
+# 7a. Generate strand-specific BigWigs from pump BAM output.
+# Uses bedtools genomecov to compute per-base coverage split by alignment strand,
+# then converts to BigWig.  The -split flag ensures only aligned bases (not
+# intron spans) are counted, matching megadepth's coverage semantics.
+# -F 256 excludes secondary alignments (same as megadepth).
+rule generate_stranded_bigwigs:
+    input:
+        pump_dir=str(DATA_DIR / "pump" / "{sample}"),
+    output:
+        plus_bw=str(DATA_DIR / "stranded_bigwigs" / "{sample}.plus.bw"),
+        minus_bw=str(DATA_DIR / "stranded_bigwigs" / "{sample}.minus.bw"),
+    log:
+        str(LOG_DIR / "stranded_bigwigs" / "{sample}.log")
+    params:
+        bam=lambda wc: str(
+            DATA_DIR / "pump" / wc.sample / "output" / f"{wc.sample}_att0"
+            / "{}!{}!{}!local~sorted.bam".format(
+                wc.sample,
+                config["monorail"]["project_name"] if PUMP_SOURCE == "asimulator"
+                    else config["monorail"]["sra_samples"][wc.sample]["study_acc"],
+                config["monorail"]["ref_version"],
+            )
+        ),
+        chrom_sizes=lambda wc: str(DATA_DIR / "stranded_bigwigs" / f"{wc.sample}.chrom.sizes"),
+    conda:
+        "envs/stranded_bigwig.yaml"
+    shell:
+        """
+        bam="{params.bam}"
+
+        # Index BAM if needed
+        if [ ! -f "${{bam}}.bai" ]; then
+            samtools index "$bam" >> {log} 2>&1
+        fi
+
+        # Get chromosome sizes from BAM header
+        samtools idxstats "$bam" | awk '$2 > 0 {{print $1"\\t"$2}}' > {params.chrom_sizes} 2>> {log}
+
+        # Plus strand: -F 256 excludes secondary alignments, -split respects CIGAR
+        # -bga includes zero-coverage regions (required by fastder's Averager which
+        # expects all samples to have identical per-chromosome vector lengths)
+        samtools view -u -F 256 "$bam" \
+            | bedtools genomecov -ibam stdin -bga -split -strand '+' \
+            > {output.plus_bw}.unsorted.bg 2>> {log}
+        sort -k1,1 -k2,2n {output.plus_bw}.unsorted.bg > {output.plus_bw}.bg 2>> {log}
+        bedGraphToBigWig {output.plus_bw}.bg {params.chrom_sizes} {output.plus_bw} >> {log} 2>&1
+        rm -f {output.plus_bw}.unsorted.bg {output.plus_bw}.bg
+
+        # Minus strand
+        samtools view -u -F 256 "$bam" \
+            | bedtools genomecov -ibam stdin -bga -split -strand '-' \
+            > {output.minus_bw}.unsorted.bg 2>> {log}
+        sort -k1,1 -k2,2n {output.minus_bw}.unsorted.bg > {output.minus_bw}.bg 2>> {log}
+        bedGraphToBigWig {output.minus_bw}.bg {params.chrom_sizes} {output.minus_bw} >> {log} 2>&1
+        rm -f {output.minus_bw}.unsorted.bg {output.minus_bw}.bg
+        """
+
+
+# 7b. Extract and organise all inputs that fastder needs into a flat directory
 rule extract_fastder_inputs:
     input:
         unify_dir=str(DATA_DIR / "unify"),
         pump_dirs=expand(str(DATA_DIR / "pump" / "{sample}"), sample=PUMP_SAMPLES),
+        stranded_bws=expand(
+            [str(DATA_DIR / "stranded_bigwigs" / "{sample}.plus.bw"),
+             str(DATA_DIR / "stranded_bigwigs" / "{sample}.minus.bw")],
+            sample=PUMP_SAMPLES,
+        ),
     output:
         touch(str(FASTDER_DIR / "extract.DONE"))
     log:
@@ -281,6 +343,7 @@ rule extract_fastder_inputs:
         pump_dir=str(DATA_DIR / "pump"),
         project_name=config["monorail"]["project_name"],
         ref_version=config["monorail"]["ref_version"],
+        stranded_bw_dir=str(DATA_DIR / "stranded_bigwigs"),
         samples_tsv_script=str(WORKFLOW_DIR / "scripts" / "create_bigwig_list.sh"),
     run:
         import shutil, gzip
@@ -309,21 +372,14 @@ rule extract_fastder_inputs:
             with gzip.open(gz_path, "rb") as f_in, open(fdir / out_name, "wb") as f_out:
                 shutil.copyfileobj(f_in, f_out)
 
-        # 2. Copy BigWig files from pump output
+        # 2. Copy strand-specific BigWig files into fastder directory
+        bw_dir = Path(params.stranded_bw_dir)
         for sample in PUMP_SAMPLES:
-            att_dir = Path(params.pump_dir) / sample / "output" / f"{sample}_att0"
-            # Filename: {sample}!{study}!{ref_version}!local.all.bw
-            # study is project_name for asimulator, study_acc for sra
-            if PUMP_SOURCE == "asimulator":
-                study = project
-            else:
-                # TODO: remove, depricated.
-                study = config["monorail"]["sra_samples"][sample]["study_acc"]
-            bw_name = f"{sample}!{study}!{params.ref_version}!local.all.bw"
-            bw_src = att_dir / bw_name
-            if not bw_src.exists():
-                raise FileNotFoundError(f"BigWig not found: {bw_src}")
-            shutil.copy2(bw_src, fdir / f"{sample}.all.bw")
+            for strand in ("plus", "minus"):
+                bw_src = bw_dir / f"{sample}.{strand}.bw"
+                if not bw_src.exists():
+                    raise FileNotFoundError(f"Stranded BigWig not found: {bw_src}")
+                shutil.copy2(bw_src, fdir / f"{sample}.{strand}.bw")
 
         # 3. Generate BigWig-list CSV from unify samples.tsv
         samples_tsv = Path(input.unify_dir) / "samples.tsv"
@@ -456,6 +512,7 @@ rule run_fastder:
         done
         {input.fastder_exe} \
             --dir {params.run_dir} \
+            --stranded \
             {params.fastder_args} \
             --cores {params.ncores} \
             {params.chr_args} \
@@ -468,7 +525,7 @@ rule run_fastder:
         """
 
 
-# 12. Run gffcompare for each sample × parameter combination
+# 12. Run gffcompare for each sample x parameter combination
 rule run_gffcompare:
     input:
         chr_prefix_done=str(FASTDER_DIR / "match_chr_prefix.DONE"),

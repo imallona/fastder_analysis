@@ -1,0 +1,9 @@
+name: stranded_bigwig
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - samtools
+  - bedtools
+  - ucsc-bedgraphtobigwig
