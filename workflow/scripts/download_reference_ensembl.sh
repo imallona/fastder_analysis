@@ -5,8 +5,21 @@ set -euo pipefail
 RELEASE=115
 ASSEMBLY=GRCh38
 
-# Take the first argument if it exists
+# Usage: download_reference_ensembl.sh <outdir> [chr1 chr2 ...]
+# If no chromosomes are specified, all (1-22, X) are downloaded.
+# Chromosomes can be given with or without "chr" prefix (e.g. chr21 or 21).
 OUTDIR="${1:-data/reference/Homo_sapiens_${ASSEMBLY}_Ensembl${RELEASE}}"
+shift || true
+
+# Build chromosome list: strip "chr" prefix, default to all if none given
+if [ $# -gt 0 ]; then
+  chroms=()
+  for arg in "$@"; do
+    chroms+=("${arg#chr}")
+  done
+else
+  chroms=($(seq 1 22) X)
+fi
 
 BASE="https://ftp.ensembl.org/pub/release-${RELEASE}"
 GTF_URL="${BASE}/gtf/homo_sapiens/Homo_sapiens.${ASSEMBLY}.${RELEASE}.chr.gtf.gz"
@@ -20,8 +33,7 @@ echo "Output directory: ${ABS_OUTDIR}"
 echo "Downloading GTF..."
 wget -nv -c -N "${GTF_URL}"
 
-echo "Downloading chromosomes 1-22 and X..."
-chroms=($(seq 1 22) X)
+echo "Downloading chromosomes: ${chroms[*]}..."
 for c in "${chroms[@]}"; do
   wget -nv -c -N "${DNA_BASE}/Homo_sapiens.${ASSEMBLY}.dna.chromosome.${c}.fa.gz"
 done
@@ -34,11 +46,13 @@ done
 shopt -u nullglob
 
 GTF_FILE="Homo_sapiens.${ASSEMBLY}.${RELEASE}.chr.gtf"
-echo "Filtering GTF to chromosomes 1-22 and X only..."
+# Build awk regex from chromosome list
+chrom_pattern=$(IFS='|'; echo "${chroms[*]}")
+echo "Filtering GTF to chromosomes: ${chroms[*]}..."
 tmpfile=$(mktemp)
-awk 'BEGIN{FS=OFS="\t"}
+awk -v pat="^(${chrom_pattern})$" 'BEGIN{FS=OFS="\t"}
      /^#/ {print; next}
-     $1 ~ /^(1|2|3|4|5|6|7|8|9|10|11|12|13|14|15|16|17|18|19|20|21|22|X)$/ {print}' \
+     $1 ~ pat {print}' \
     "${GTF_FILE}" > "${tmpfile}"
 mv "${tmpfile}" "${GTF_FILE}"
 
