@@ -6,7 +6,7 @@ cores: 8  # Global CPU core count
 
 # ASimulatoR simulation
 asimulator:
-  seq_depth: 100000000  # Reads per sample (100 million)
+  seq_depth: 10000000  # Reads per sample (100 million)
   multi_events_per_exon: false
   strand_specific: true
   probs_as_freq: true   # Treat event_probs values as frequencies
