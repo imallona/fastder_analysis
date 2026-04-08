@@ -42,6 +42,7 @@ else:
 # Each combo is a plain dict of {param_name: value} for explicitly-set params only.
 # Omitted params are not passed to fastder, which uses its own internal defaults.
 FASTDER_CFG = config.get("fastder") or {}
+STRANDED = FASTDER_CFG.get("stranded", False)
 
 # Maps each parameter name to its (id_abbreviation, CLI flag).
 _PARAM_SPEC = {
@@ -336,10 +337,12 @@ rule extract_fastder_inputs:
     input:
         unify_dir=str(DATA_DIR / "unify"),
         pump_dirs=expand(str(DATA_DIR / "pump" / "{sample}"), sample=PUMP_SAMPLES),
-        stranded_bws=expand(
-            [str(DATA_DIR / "stranded_bigwigs" / "{sample}.plus.bw"),
-             str(DATA_DIR / "stranded_bigwigs" / "{sample}.minus.bw")],
-            sample=PUMP_SAMPLES,
+        stranded_bws=(
+            expand(
+                [str(DATA_DIR / "stranded_bigwigs" / "{sample}.plus.bw"),
+                 str(DATA_DIR / "stranded_bigwigs" / "{sample}.minus.bw")],
+                sample=PUMP_SAMPLES,
+            ) if STRANDED else []
         ),
     output:
         touch(str(FASTDER_DIR / "extract.DONE"))
@@ -350,6 +353,7 @@ rule extract_fastder_inputs:
         pump_dir=str(DATA_DIR / "pump"),
         project_name=config["monorail"]["project_name"],
         ref_version=config["monorail"]["ref_version"],
+        stranded=STRANDED,
         stranded_bw_dir=str(DATA_DIR / "stranded_bigwigs"),
         samples_tsv_script=str(WORKFLOW_DIR / "scripts" / "create_bigwig_list.sh"),
     run:
@@ -379,22 +383,39 @@ rule extract_fastder_inputs:
             with gzip.open(gz_path, "rb") as f_in, open(fdir / out_name, "wb") as f_out:
                 shutil.copyfileobj(f_in, f_out)
 
-        # 2. Copy strand-specific BigWig files into fastder directory
-        bw_dir = Path(params.stranded_bw_dir)
-        for sample in PUMP_SAMPLES:
-            for strand in ("plus", "minus"):
-                bw_src = bw_dir / f"{sample}.{strand}.bw"
+        # 2. Copy BigWig files into fastder directory
+        if params.stranded:
+            # Strand-specific BigWigs from generate_stranded_bigwigs rule
+            bw_dir = Path(params.stranded_bw_dir)
+            for sample in PUMP_SAMPLES:
+                for strand in ("plus", "minus"):
+                    bw_src = bw_dir / f"{sample}.{strand}.bw"
+                    if not bw_src.exists():
+                        raise FileNotFoundError(f"Stranded BigWig not found: {bw_src}")
+                    shutil.copy2(bw_src, fdir / f"{sample}.{strand}.bw")
+        else:
+            # Unstranded BigWigs directly from pump output
+            for sample in PUMP_SAMPLES:
+                att_dir = Path(params.pump_dir) / sample / "output" / f"{sample}_att0"
+                if PUMP_SOURCE == "asimulator":
+                    study = project
+                else:
+                    study = config["monorail"]["sra_samples"][sample]["study_acc"]
+                bw_name = f"{sample}!{study}!{params.ref_version}!local.all.bw"
+                bw_src = att_dir / bw_name
                 if not bw_src.exists():
-                    raise FileNotFoundError(f"Stranded BigWig not found: {bw_src}")
-                shutil.copy2(bw_src, fdir / f"{sample}.{strand}.bw")
+                    raise FileNotFoundError(f"BigWig not found: {bw_src}")
+                shutil.copy2(bw_src, fdir / f"{sample}.all.bw")
 
         # 3. Generate BigWig-list CSV from unify samples.tsv
         samples_tsv = Path(input.unify_dir) / "samples.tsv"
         bigwig_csv = fdir / "recount3_BigWig_list.csv"
+        bw_mode = "stranded" if params.stranded else "unstranded"
         shell(
             "bash {params.samples_tsv_script}"
             f" {samples_tsv}"
             f" {bigwig_csv}"
+            f" {bw_mode}"
             " >> {log} 2>&1"
         )
 
@@ -499,6 +520,7 @@ rule run_fastder:
         run_dir=lambda wc: str(FASTDER_DIR / "runs" / wc.param_id),
         ncores=config["cores"],
         fastder_args=lambda wc: PARAM_CLI_ARGS[wc.param_id],
+        stranded_arg="--stranded" if STRANDED else "",
         chr_args=(
             "--chr " + " ".join(str(c) for c in FASTDER_CFG["chromosomes"])
             if FASTDER_CFG.get("chromosomes")
@@ -519,7 +541,7 @@ rule run_fastder:
         done
         {input.fastder_exe} \
             --dir {params.run_dir} \
-            --stranded \
+            {params.stranded_arg} \
             {params.fastder_args} \
             --cores {params.ncores} \
             {params.chr_args} \
