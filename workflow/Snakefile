@@ -700,7 +700,44 @@ rule match_chr_prefix:
         """
 
 
-# 9. Build fastder from source. The build is configured with
+# Legacy rule, not wired into the active DAG.
+#
+# This rule used to convert each *.bw file in data/fastder/ into a *.bedGraph
+# so that older fastder builds without libBigWig support could read the
+# coverage. The current build_fastder configures fastder with
+# -DFASTDER_USE_LIBBIGWIG=ON and run_fastder symlinks the .bw files directly,
+# so this conversion is unnecessary on the active code path. The rule is kept
+# in place for two reasons:
+#   1. If libBigWig support is intentionally disabled (e.g. for a packaging
+#      build that does not pull libBigWig), wiring this rule back into
+#      run_fastder's input list and switching the symlink glob to *.bedGraph
+#      restores the old BedGraph-fed pipeline with no further changes.
+#   2. It documents the historical conversion step that produced the
+#      BedGraph fixtures used in earlier benchmarks.
+# To re-enable: add `bedgraph_done=str(FASTDER_DIR / "convert_bedgraph.DONE")`
+# back to run_fastder's input clause and change its symlink loop to *.bedGraph.
+rule bigwig_to_bedgraph:
+    input:
+        str(FASTDER_DIR / "extract.DONE")
+    output:
+        touch(str(FASTDER_DIR / "convert_bedgraph.DONE"))
+    log:
+        str(LOG_DIR / "bigwig_to_bedgraph.log")
+    params:
+        fastder_dir=str(FASTDER_DIR),
+    conda:
+        "envs/ucsc_tools.yaml"
+    shell:
+        """
+        for bw in {params.fastder_dir}/*.bw; do
+            [ -f "$bw" ] || continue
+            out="${{bw%.bw}}.bedGraph"
+            bigWigToBedGraph "$bw" "$out"
+        done > {log} 2>&1
+        """
+
+
+# Build fastder from source. The build is configured with
 # FASTDER_USE_LIBBIGWIG=ON so the binary reads .bw files directly without an
 # intermediate BedGraph conversion step. libBigWig is fetched at configure
 # time and needs zlib and libcurl (provided by envs/fastder_build.yaml).
