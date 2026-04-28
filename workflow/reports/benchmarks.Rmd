@@ -1,0 +1,94 @@
+---
+title: "fastder-evaluation runtime and memory"
+output:
+  html_document:
+    toc: false
+params:
+  bench_dir: NULL
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,
+  message = FALSE,
+  warning = FALSE,
+  fig.width = 6,
+  fig.height = 6,
+  fig.align = "center"
+)
+library(readr)
+library(dplyr)
+library(ggplot2)
+```
+
+```{r load}
+bench_dir <- params$bench_dir
+if (is.null(bench_dir) || !dir.exists(bench_dir)) {
+  stop("bench_dir parameter must point to an existing benchmarks directory")
+}
+files <- list.files(bench_dir, pattern = "\\.tsv$", recursive = TRUE, full.names = TRUE)
+if (length(files) == 0) {
+  stop("no .tsv benchmark files found under ", bench_dir)
+}
+parse_one <- function(path) {
+  rel <- sub(paste0(bench_dir, .Platform$file.sep), "", path)
+  parts <- strsplit(rel, .Platform$file.sep, fixed = TRUE)[[1]]
+  if (length(parts) == 1) {
+    rule <- sub("\\.tsv$", "", parts[1])
+    wc   <- ""
+  } else {
+    rule <- parts[1]
+    wc   <- sub("\\.tsv$", "", paste(parts[-1], collapse = "_"))
+  }
+  d <- read_tsv(path, show_col_types = FALSE)
+  d$rule <- rule
+  d$wildcards <- wc
+  d
+}
+df <- bind_rows(lapply(files, parse_one))
+df$wall_s    <- as.numeric(df$s)
+df$max_rss_mb <- as.numeric(df$max_rss)
+```
+
+## Inputs
+
+`r bench_dir` (`r length(files)` files)
+
+```{r table}
+knitr::kable(df %>% select(rule, wildcards, wall_s, max_rss_mb) %>% arrange(rule, wildcards),
+             digits = 1)
+```
+
+## Wall time per rule
+
+Each point is one rule invocation. Rules run multiple times (for instance per
+sample) appear as multiple points.
+
+```{r time, fig.width = 6, fig.height = 6}
+ggplot(df, aes(x = rule, y = wall_s)) +
+  geom_point() +
+  coord_flip() +
+  theme_bw()
+```
+
+## Max resident memory per rule
+
+Same data, switched axis.
+
+```{r mem, fig.width = 6, fig.height = 6}
+ggplot(df, aes(x = rule, y = max_rss_mb)) +
+  geom_point() +
+  coord_flip() +
+  theme_bw()
+```
+
+## Wall time vs max memory
+
+Each rule invocation as a single point. Useful for spotting rules that are
+both slow and memory hungry.
+
+```{r scatter, fig.width = 6, fig.height = 6}
+ggplot(df, aes(x = wall_s, y = max_rss_mb, colour = rule)) +
+  geom_point(size = 2) +
+  theme_bw()
+```

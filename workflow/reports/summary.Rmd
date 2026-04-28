@@ -1,0 +1,154 @@
+---
+title: "fastder-evaluation summary"
+output:
+  html_document:
+    toc: false
+params:
+  summary_csv: NULL
+  chain_stats_csv: NULL
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,
+  message = FALSE,
+  warning = FALSE,
+  fig.width = 5,
+  fig.height = 5,
+  fig.align = "center"
+)
+library(readr)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+```
+
+```{r load}
+summary_path <- params$summary_csv
+chain_path   <- params$chain_stats_csv
+if (is.null(summary_path) || !file.exists(summary_path)) {
+  stop("summary_csv parameter must point to an existing summary.csv")
+}
+if (is.null(chain_path) || !file.exists(chain_path)) {
+  stop("chain_stats_csv parameter must point to an existing chain_stats.csv")
+}
+df <- read_csv(summary_path, show_col_types = FALSE)
+df$sensitivity <- as.numeric(df$sensitivity)
+df$precision   <- as.numeric(df$precision)
+
+cs <- read_csv(chain_path, show_col_types = FALSE)
+cs$n_exons <- as.integer(cs$n_exons)
+cs$total_exon_length <- as.numeric(cs$total_exon_length)
+cs$score <- as.numeric(cs$score)
+```
+
+# gffcompare metrics
+
+`r summary_path`
+
+```{r summary_table}
+knitr::kable(df, digits = 3)
+```
+
+## Sensitivity vs precision
+
+```{r sens_prec_scatter}
+ggplot(df, aes(x = sensitivity, y = precision, colour = sample)) +
+  geom_point(size = 2) +
+  coord_fixed(xlim = c(0, 100), ylim = c(0, 100)) +
+  theme_bw()
+```
+
+## Per-sample sensitivity and precision
+
+```{r sens_prec_bars, fig.width = 6, fig.height = 6}
+long <- df %>%
+  select(sample, param_id, sensitivity, precision) %>%
+  pivot_longer(cols = c(sensitivity, precision),
+               names_to = "metric", values_to = "value")
+
+ggplot(long, aes(x = sample, y = value, fill = metric)) +
+  geom_col(position = position_dodge(width = 0.8), width = 0.7) +
+  facet_wrap(~ param_id) +
+  coord_fixed(ratio = 0.04) +
+  theme_bw()
+```
+
+# Stitched chain stats
+
+`r chain_path` (`r nrow(cs)` transcripts across `r length(unique(cs$param_id))` parameter combinations)
+
+```{r chain_summary_table}
+chain_summary <- cs %>%
+  group_by(param_id) %>%
+  summarise(
+    n_transcripts = n(),
+    pct_singletons = mean(n_exons == 1) * 100,
+    median_exons = median(n_exons),
+    mean_exons = mean(n_exons),
+    max_exons = max(n_exons),
+    median_length_bp = median(total_exon_length),
+    median_score = median(score)
+  )
+knitr::kable(chain_summary, digits = 2)
+```
+
+## Number of exons per transcript
+
+Counts of single-exon (standalone ER) versus multi-exon (stitched) transcripts.
+
+```{r n_exons_hist, fig.width = 6, fig.height = 6}
+ggplot(cs, aes(x = n_exons)) +
+  geom_histogram(binwidth = 1, boundary = 0.5) +
+  facet_wrap(~ param_id) +
+  scale_x_continuous(breaks = scales::pretty_breaks()) +
+  theme_bw()
+```
+
+## Per-chromosome transcript count
+
+```{r per_chrom_count, fig.width = 6, fig.height = 6}
+chrom_counts <- cs %>% count(param_id, chrom)
+ggplot(chrom_counts, aes(x = chrom, y = n)) +
+  geom_col() +
+  facet_wrap(~ param_id) +
+  coord_flip() +
+  theme_bw()
+```
+
+## Total exonic length per transcript
+
+Distribution of summed exon length, log scale on x because lengths span
+several orders of magnitude.
+
+```{r length_hist, fig.width = 6, fig.height = 6}
+ggplot(cs, aes(x = total_exon_length)) +
+  geom_histogram(bins = 30) +
+  facet_wrap(~ param_id) +
+  scale_x_log10() +
+  theme_bw()
+```
+
+## Score (mean coverage) vs number of exons
+
+One point per transcript. Detects whether longer chains have higher or lower
+average coverage on this dataset.
+
+```{r score_vs_n_exons, fig.width = 6, fig.height = 6}
+ggplot(cs, aes(x = n_exons, y = score)) +
+  geom_point(alpha = 0.3) +
+  scale_y_log10() +
+  facet_wrap(~ param_id) +
+  theme_bw()
+```
+
+## Score vs total exonic length
+
+```{r score_vs_length, fig.width = 6, fig.height = 6}
+ggplot(cs, aes(x = total_exon_length, y = score)) +
+  geom_point(alpha = 0.3) +
+  scale_x_log10() +
+  scale_y_log10() +
+  facet_wrap(~ param_id) +
+  theme_bw()
+```

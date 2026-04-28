@@ -1,4 +1,5 @@
 import os
+import os.path as op
 import itertools
 from pathlib import Path
 
@@ -8,19 +9,21 @@ from pathlib import Path
 # deep-merge that would otherwise union nested dicts like asimulator.samples.
 configfile: os.environ.get("FASTDER_EVAL_CONFIG", "../config/config.yaml")
 
-# Internal path constants
-WORKFLOW_DIR = Path(workflow.basedir)
-DATA_DIR = WORKFLOW_DIR / "data"
-LOG_DIR = WORKFLOW_DIR / "logs"
+# Internal path constants.
+WORKFLOW_DIR = workflow.basedir
+DATA_DIR = op.join(WORKFLOW_DIR, "data")
+LOG_DIR = op.join(WORKFLOW_DIR, "logs")
+# Snakemake benchmark TSVs land under logs/benchmarks/.
+BENCH_DIR = op.join(LOG_DIR, "benchmarks")
 
 # Monorail
-MONORAIL_EXTERNAL = WORKFLOW_DIR / "external" / "monorail-external"
-MONORAIL_REF_DIR = DATA_DIR / "monorail_refs"
+MONORAIL_EXTERNAL = op.join(WORKFLOW_DIR, "external", "monorail-external")
+MONORAIL_REF_DIR = op.join(DATA_DIR, "monorail_refs")
 
 # Singularity images
-CONTAINERS_DIR = WORKFLOW_DIR / "containers"
-PUMP_SIF = str(CONTAINERS_DIR / "recount-pump-1.1.3.sif")
-UNIFY_SIF = str(CONTAINERS_DIR / "recount-unify-1.1.1.sif")
+CONTAINERS_DIR = op.join(WORKFLOW_DIR, "containers")
+PUMP_SIF = op.join(CONTAINERS_DIR, "recount-pump-1.1.3.sif")
+UNIFY_SIF = op.join(CONTAINERS_DIR, "recount-unify-1.1.1.sif")
 
 # Backend: "monorail" runs the recount-pump + recount-unify Singularity stack;
 # "monorail_light" replaces it with a chr-restricted STAR alignment + a small
@@ -32,13 +35,13 @@ if BACKEND not in ("monorail", "monorail_light"):
     raise ValueError(f"Unknown monorail.backend: '{BACKEND}'. Must be 'monorail' or 'monorail_light'.")
 
 # fastder
-FASTDER_DIR = DATA_DIR / "fastder"
-FASTDER_BUILD_DIR = WORKFLOW_DIR / "external" / "fastder" / "build"
-RESULTS_DIR = WORKFLOW_DIR / "results"
+FASTDER_DIR = op.join(DATA_DIR, "fastder")
+FASTDER_BUILD_DIR = op.join(WORKFLOW_DIR, "external", "fastder", "build")
+RESULTS_DIR = op.join(WORKFLOW_DIR, "results")
 
 # monorail_light scratch
-LIGHT_DIR = DATA_DIR / "monorail_light"
-LIGHT_STAR_IDX = LIGHT_DIR / "star_idx"
+LIGHT_DIR = op.join(DATA_DIR, "monorail_light")
+LIGHT_STAR_IDX = op.join(LIGHT_DIR, "star_idx")
 
 # Experimental design
 ASIM_SAMPLES = list(config["asimulator"]["samples"].keys())
@@ -103,25 +106,29 @@ def pump_input(wildcards):
     SRA sources have no file inputs as data is downloaded at runtime.
     """
     if PUMP_SOURCE == "asimulator":
-        return {"sample_dir": str(DATA_DIR / "asim" / wildcards.sample)}
+        return {"sample_dir": op.join(DATA_DIR, "asim", wildcards.sample)}
     return {}
 
 
 rule all:
     input:
-        str(RESULTS_DIR / "summary.csv")
+        op.join(RESULTS_DIR, "summary.csv"),
+        op.join(RESULTS_DIR, "summary.html"),
+        op.join(RESULTS_DIR, "benchmarks.html"),
     default_target: True
 
 
 # 1. Download reference
 # Uses fastder.chromosomes from config to restrict which chromosomes are
 # downloaded.  When chromosomes is omitted (or empty), all (1-22, X) are
-# fetched — matching fastder's own --chr default.
+# fetched, matching fastder's own --chr default.
 rule download_reference:
     output:
         directory("data/reference/Homo_sapiens_GRCh38_Ensembl115")
+    benchmark:
+        op.join(BENCH_DIR, "download_reference.tsv")
     log:
-        str(LOG_DIR / "download_reference.log")
+        op.join(LOG_DIR, "download_reference.log")
     params:
         chr_args=" ".join(str(c) for c in FASTDER_CFG["chromosomes"])
             if FASTDER_CFG.get("chromosomes")
@@ -137,11 +144,13 @@ rule run_asimulator:
     input:
         reference=rules.download_reference.output[0]
     output:
-        directory(str(DATA_DIR / "asim" / "{sample}"))
+        directory(op.join(DATA_DIR, "asim", "{sample}"))
+    benchmark:
+        op.join(BENCH_DIR, "run_asimulator", "{sample}.tsv")
     log:
-        str(LOG_DIR / "asimulator" / "{sample}.log")
+        op.join(LOG_DIR, "asimulator", "{sample}.log")
     params:
-        outdir=lambda wc: str(DATA_DIR / "asim" / wc.sample),
+        outdir=lambda wc: op.join(DATA_DIR, "asim", wc.sample),
         events=lambda wc: config["asimulator"]["samples"][wc.sample],
         seq_depth=config["asimulator"]["seq_depth"],
         multi_events_per_exon=config["asimulator"]["multi_events_per_exon"],
@@ -160,8 +169,10 @@ rule pull_containers:
     output:
         pump=PUMP_SIF,
         unify=UNIFY_SIF,
+    benchmark:
+        op.join(BENCH_DIR, "pull_containers.tsv")
     log:
-        str(LOG_DIR / "pull_containers.log")
+        op.join(LOG_DIR, "pull_containers.log")
     shell:
         """
         mkdir -p {CONTAINERS_DIR}
@@ -173,7 +184,9 @@ rule pull_containers:
 # 4. Download Monorail reference indexes
 rule download_monorail_refs:
     output:
-        touch(str(MONORAIL_REF_DIR / "refs.DONE"))
+        touch(op.join(MONORAIL_REF_DIR, "refs.DONE"))
+    benchmark:
+        op.join(BENCH_DIR, "download_monorail_refs.tsv")
     params:
         ref_version=config["monorail"]["ref_version"],
     shell:
@@ -194,22 +207,24 @@ rule pump:
     input:
         unpack(pump_input),
         container=PUMP_SIF,
-        refs=str(MONORAIL_REF_DIR / "refs.DONE"),
+        refs=op.join(MONORAIL_REF_DIR, "refs.DONE"),
     output:
-        directory(str(DATA_DIR / "pump" / "{sample}"))
+        directory(op.join(DATA_DIR, "pump", "{sample}"))
+    benchmark:
+        op.join(BENCH_DIR, "pump", "{sample}.tsv")
     log:
-        str(LOG_DIR / "pump" / "{sample}.log")
+        op.join(LOG_DIR, "pump", "{sample}.log")
     params:
         ref_version=config["monorail"]["ref_version"],
         ref_path=str(MONORAIL_REF_DIR),
         ncores=config["cores"],
-        pump_script=str(MONORAIL_EXTERNAL / "singularity" / "run_recount_pump.sh"),
+        pump_script=op.join(MONORAIL_EXTERNAL, "singularity", "run_recount_pump.sh"),
         project_name=config["monorail"]["project_name"],
     run:
         os.makedirs(output[0], exist_ok=True)
         if PUMP_SOURCE == "asimulator":
-            fp1 = str(DATA_DIR / "asim" / wildcards.sample / "sample_01_1.fastq")
-            fp2 = str(DATA_DIR / "asim" / wildcards.sample / "sample_01_2.fastq")
+            fp1 = op.join(DATA_DIR, "asim", wildcards.sample, "sample_01_1.fastq")
+            fp2 = op.join(DATA_DIR, "asim", wildcards.sample, "sample_01_2.fastq")
             shell(
                 "WORKING_DIR={output[0]}"
                 " bash {params.pump_script}"
@@ -244,14 +259,16 @@ rule pump:
 # 6. Recount-unify: aggregate all pump outputs
 rule unify:
     input:
-        pump_dirs=expand(str(DATA_DIR / "pump" / "{sample}"), sample=PUMP_SAMPLES),
+        pump_dirs=expand(op.join(DATA_DIR, "pump", "{sample}"), sample=PUMP_SAMPLES),
         container=UNIFY_SIF,
-        refs=str(MONORAIL_REF_DIR / "refs.DONE"),
+        refs=op.join(MONORAIL_REF_DIR, "refs.DONE"),
     output:
-        directory(str(DATA_DIR / "unify")),
-        str(DATA_DIR / "sample_metadata.tsv"),
+        directory(op.join(DATA_DIR, "unify")),
+        op.join(DATA_DIR, "sample_metadata.tsv"),
+    benchmark:
+        op.join(BENCH_DIR, "unify.tsv")
     log:
-        str(LOG_DIR / "unify.log")
+        op.join(LOG_DIR, "unify.log")
     params:
         ref_version=config["monorail"]["ref_version"],
         ref_path=str(MONORAIL_REF_DIR),
@@ -260,8 +277,8 @@ rule unify:
             pid=config["monorail"]["project_id"],
         ),
         ncores=config["cores"],
-        unify_script=str(MONORAIL_EXTERNAL / "singularity" / "run_recount_unify.sh"),
-        pump_parent=str(DATA_DIR / "pump"),
+        unify_script=op.join(MONORAIL_EXTERNAL, "singularity", "run_recount_unify.sh"),
+        pump_parent=op.join(DATA_DIR, "pump"),
     run:
         os.makedirs(output[0], exist_ok=True)
 
@@ -298,23 +315,22 @@ rule unify:
 # -F 256 excludes secondary alignments (same as megadepth).
 rule generate_stranded_bigwigs:
     input:
-        pump_dir=str(DATA_DIR / "pump" / "{sample}"),
+        pump_dir=op.join(DATA_DIR, "pump", "{sample}"),
     output:
-        plus_bw=str(DATA_DIR / "stranded_bigwigs" / "{sample}.plus.bw"),
-        minus_bw=str(DATA_DIR / "stranded_bigwigs" / "{sample}.minus.bw"),
+        plus_bw=op.join(DATA_DIR, "stranded_bigwigs", "{sample}.plus.bw"),
+        minus_bw=op.join(DATA_DIR, "stranded_bigwigs", "{sample}.minus.bw"),
+    benchmark:
+        op.join(BENCH_DIR, "generate_stranded_bigwigs", "{sample}.tsv")
     log:
-        str(LOG_DIR / "stranded_bigwigs" / "{sample}.log")
+        op.join(LOG_DIR, "stranded_bigwigs", "{sample}.log")
     params:
-        bam=lambda wc: str(
-            DATA_DIR / "pump" / wc.sample / "output" / f"{wc.sample}_att0"
-            / "{}!{}!{}!local~sorted.bam".format(
+        bam=lambda wc: op.join(DATA_DIR, "pump", wc.sample, "output", f"{wc.sample}_att0", "{}!{}!{}!local~sorted.bam".format(
                 wc.sample,
                 config["monorail"]["project_name"] if PUMP_SOURCE == "asimulator"
                     else config["monorail"]["sra_samples"][wc.sample]["study_acc"],
                 config["monorail"]["ref_version"],
-            )
-        ),
-        chrom_sizes=lambda wc: str(DATA_DIR / "stranded_bigwigs" / f"{wc.sample}.chrom.sizes"),
+            )),
+        chrom_sizes=lambda wc: op.join(DATA_DIR, "stranded_bigwigs", f"{wc.sample}.chrom.sizes"),
     conda:
         "envs/stranded_bigwig.yaml"
     shell:
@@ -363,8 +379,10 @@ rule ml_star_index:
         reference=rules.download_reference.output[0],
     output:
         directory(str(LIGHT_STAR_IDX)),
+    benchmark:
+        op.join(BENCH_DIR, "ml_star_index.tsv")
     log:
-        str(LOG_DIR / "ml_star_index.log"),
+        op.join(LOG_DIR, "ml_star_index.log"),
     params:
         chroms=lambda wc: FASTDER_CFG.get("chromosomes") or [f"{i}" for i in range(1, 23)] + ["X"],
         ncores=config["cores"],
@@ -407,16 +425,18 @@ rule ml_star_index:
 rule ml_star_align:
     input:
         idx=str(LIGHT_STAR_IDX),
-        sample_dir=str(DATA_DIR / "asim" / "{sample}"),
+        sample_dir=op.join(DATA_DIR, "asim", "{sample}"),
     output:
-        bam=str(LIGHT_DIR / "{sample}" / "Aligned.sortedByCoord.out.bam"),
-        sj=str(LIGHT_DIR / "{sample}" / "SJ.out.tab"),
+        bam=op.join(LIGHT_DIR, "{sample}", "Aligned.sortedByCoord.out.bam"),
+        sj=op.join(LIGHT_DIR, "{sample}", "SJ.out.tab"),
+    benchmark:
+        op.join(BENCH_DIR, "ml_star_align", "{sample}.tsv")
     log:
-        str(LOG_DIR / "ml_star_align" / "{sample}.log"),
+        op.join(LOG_DIR, "ml_star_align", "{sample}.log"),
     params:
-        outprefix=lambda wc: str(LIGHT_DIR / wc.sample) + "/",
-        fp1=lambda wc: str(DATA_DIR / "asim" / wc.sample / "sample_01_1.fastq"),
-        fp2=lambda wc: str(DATA_DIR / "asim" / wc.sample / "sample_01_2.fastq"),
+        outprefix=lambda wc: op.join(LIGHT_DIR, wc.sample) + "/",
+        fp1=lambda wc: op.join(DATA_DIR, "asim", wc.sample, "sample_01_1.fastq"),
+        fp2=lambda wc: op.join(DATA_DIR, "asim", wc.sample, "sample_01_2.fastq"),
     threads: config["cores"]
     conda:
         "envs/star.yaml"
@@ -439,17 +459,19 @@ rule ml_star_align:
 # -split / -F 256 match the megadepth coverage semantics used by recount-pump.
 rule ml_bam_to_bigwig:
     input:
-        bam=str(LIGHT_DIR / "{sample}" / "Aligned.sortedByCoord.out.bam"),
+        bam=op.join(LIGHT_DIR, "{sample}", "Aligned.sortedByCoord.out.bam"),
     output:
         bws=(
-            [str(LIGHT_DIR / "{sample}.plus.bw"), str(LIGHT_DIR / "{sample}.minus.bw")]
+            [op.join(LIGHT_DIR, "{sample}.plus.bw"), op.join(LIGHT_DIR, "{sample}.minus.bw")]
             if STRANDED else
-            [str(LIGHT_DIR / "{sample}.all.bw")]
+            [op.join(LIGHT_DIR, "{sample}.all.bw")]
         ),
+    benchmark:
+        op.join(BENCH_DIR, "ml_bam_to_bigwig", "{sample}.tsv")
     log:
-        str(LOG_DIR / "ml_bam_to_bigwig" / "{sample}.log"),
+        op.join(LOG_DIR, "ml_bam_to_bigwig", "{sample}.log"),
     params:
-        chrom_sizes=lambda wc: str(LIGHT_DIR / f"{wc.sample}.chrom.sizes"),
+        chrom_sizes=lambda wc: op.join(LIGHT_DIR, f"{wc.sample}.chrom.sizes"),
         stranded=STRANDED,
         outdir=str(LIGHT_DIR),
     conda:
@@ -487,19 +509,21 @@ rule ml_bam_to_bigwig:
 # downstream — see emit_lean_mm_rr.py for the rationale.
 rule ml_emit_mm_rr:
     input:
-        sj_files=expand(str(LIGHT_DIR / "{sample}" / "SJ.out.tab"), sample=PUMP_SAMPLES),
+        sj_files=expand(op.join(LIGHT_DIR, "{sample}", "SJ.out.tab"), sample=PUMP_SAMPLES),
     output:
-        rr=str(LIGHT_DIR / "junctions.ALL.RR"),
-        mm=str(LIGHT_DIR / "junctions.ALL.MM"),
-        samples_tsv=str(LIGHT_DIR / "samples.tsv"),
+        rr=op.join(LIGHT_DIR, "junctions.ALL.RR"),
+        mm=op.join(LIGHT_DIR, "junctions.ALL.MM"),
+        samples_tsv=op.join(LIGHT_DIR, "samples.tsv"),
+    benchmark:
+        op.join(BENCH_DIR, "ml_emit_mm_rr.tsv")
     log:
-        str(LOG_DIR / "ml_emit_mm_rr.log"),
+        op.join(LOG_DIR, "ml_emit_mm_rr.log"),
     params:
-        out_prefix=str(LIGHT_DIR / "junctions.ALL"),
+        out_prefix=op.join(LIGHT_DIR, "junctions.ALL"),
         chroms=lambda wc: FASTDER_CFG.get("chromosomes") or [f"chr{i}" for i in range(1, 23)] + ["chrX"],
         samples=PUMP_SAMPLES,
         project=config["monorail"]["project_name"],
-        emit_script=str(WORKFLOW_DIR / "scripts" / "emit_lean_mm_rr.py"),
+        emit_script=op.join(WORKFLOW_DIR, "scripts", "emit_lean_mm_rr.py"),
     run:
         # Build paired --sample / --sj args
         sample_args = []
@@ -528,28 +552,28 @@ rule ml_emit_mm_rr:
 def _extract_inputs(_wc):
     if BACKEND == "monorail_light":
         result = {
-            "rr": str(LIGHT_DIR / "junctions.ALL.RR"),
-            "mm": str(LIGHT_DIR / "junctions.ALL.MM"),
-            "samples_tsv": str(LIGHT_DIR / "samples.tsv"),
+            "rr": op.join(LIGHT_DIR, "junctions.ALL.RR"),
+            "mm": op.join(LIGHT_DIR, "junctions.ALL.MM"),
+            "samples_tsv": op.join(LIGHT_DIR, "samples.tsv"),
         }
         if STRANDED:
             result["bws"] = expand(
-                [str(LIGHT_DIR / "{sample}.plus.bw"),
-                 str(LIGHT_DIR / "{sample}.minus.bw")],
+                [op.join(LIGHT_DIR, "{sample}.plus.bw"),
+                 op.join(LIGHT_DIR, "{sample}.minus.bw")],
                 sample=PUMP_SAMPLES,
             )
         else:
-            result["bws"] = expand(str(LIGHT_DIR / "{sample}.all.bw"), sample=PUMP_SAMPLES)
+            result["bws"] = expand(op.join(LIGHT_DIR, "{sample}.all.bw"), sample=PUMP_SAMPLES)
         return result
     # monorail (heavy) backend
     result = {
-        "unify_dir": str(DATA_DIR / "unify"),
-        "pump_dirs": expand(str(DATA_DIR / "pump" / "{sample}"), sample=PUMP_SAMPLES),
+        "unify_dir": op.join(DATA_DIR, "unify"),
+        "pump_dirs": expand(op.join(DATA_DIR, "pump", "{sample}"), sample=PUMP_SAMPLES),
     }
     if STRANDED:
         result["stranded_bws"] = expand(
-            [str(DATA_DIR / "stranded_bigwigs" / "{sample}.plus.bw"),
-             str(DATA_DIR / "stranded_bigwigs" / "{sample}.minus.bw")],
+            [op.join(DATA_DIR, "stranded_bigwigs", "{sample}.plus.bw"),
+             op.join(DATA_DIR, "stranded_bigwigs", "{sample}.minus.bw")],
             sample=PUMP_SAMPLES,
         )
     return result
@@ -559,18 +583,20 @@ rule extract_fastder_inputs:
     input:
         unpack(_extract_inputs),
     output:
-        touch(str(FASTDER_DIR / "extract.DONE"))
+        touch(op.join(FASTDER_DIR, "extract.DONE"))
+    benchmark:
+        op.join(BENCH_DIR, "extract_fastder_inputs.tsv")
     log:
-        str(LOG_DIR / "extract_fastder_inputs.log")
+        op.join(LOG_DIR, "extract_fastder_inputs.log")
     params:
         fastder_dir=str(FASTDER_DIR),
-        pump_dir=str(DATA_DIR / "pump"),
+        pump_dir=op.join(DATA_DIR, "pump"),
         light_dir=str(LIGHT_DIR),
         project_name=config["monorail"]["project_name"],
         ref_version=config["monorail"]["ref_version"],
         stranded=STRANDED,
-        stranded_bw_dir=str(DATA_DIR / "stranded_bigwigs"),
-        samples_tsv_script=str(WORKFLOW_DIR / "scripts" / "create_bigwig_list.sh"),
+        stranded_bw_dir=op.join(DATA_DIR, "stranded_bigwigs"),
+        samples_tsv_script=op.join(WORKFLOW_DIR, "scripts", "create_bigwig_list.sh"),
         backend=BACKEND,
     run:
         import shutil, gzip
@@ -678,11 +704,13 @@ rule extract_fastder_inputs:
 # 8. Match chr prefix convention for files used by gffcompare
 rule match_chr_prefix:
     input:
-        str(FASTDER_DIR / "extract.DONE")
+        op.join(FASTDER_DIR, "extract.DONE")
     output:
-        touch(str(FASTDER_DIR / "match_chr_prefix.DONE"))
+        touch(op.join(FASTDER_DIR, "match_chr_prefix.DONE"))
+    benchmark:
+        op.join(BENCH_DIR, "match_chr_prefix.tsv")
     log:
-        str(LOG_DIR / "match_chr_prefix.log")
+        op.join(LOG_DIR, "match_chr_prefix.log")
     params:
         fastder_dir=str(FASTDER_DIR),
     shell:
@@ -714,15 +742,17 @@ rule match_chr_prefix:
 #      restores the old BedGraph-fed pipeline with no further changes.
 #   2. It documents the historical conversion step that produced the
 #      BedGraph fixtures used in earlier benchmarks.
-# To re-enable: add `bedgraph_done=str(FASTDER_DIR / "convert_bedgraph.DONE")`
+# To re-enable: add `bedgraph_done=op.join(FASTDER_DIR, "convert_bedgraph.DONE")`
 # back to run_fastder's input clause and change its symlink loop to *.bedGraph.
 rule bigwig_to_bedgraph:
     input:
-        str(FASTDER_DIR / "extract.DONE")
+        op.join(FASTDER_DIR, "extract.DONE")
     output:
-        touch(str(FASTDER_DIR / "convert_bedgraph.DONE"))
+        touch(op.join(FASTDER_DIR, "convert_bedgraph.DONE"))
+    benchmark:
+        op.join(BENCH_DIR, "bigwig_to_bedgraph.tsv")
     log:
-        str(LOG_DIR / "bigwig_to_bedgraph.log")
+        op.join(LOG_DIR, "bigwig_to_bedgraph.log")
     params:
         fastder_dir=str(FASTDER_DIR),
     conda:
@@ -743,17 +773,22 @@ rule bigwig_to_bedgraph:
 # time and needs zlib and libcurl (provided by envs/fastder_build.yaml).
 rule build_fastder:
     output:
-        str(FASTDER_BUILD_DIR / "fastder")
+        op.join(FASTDER_BUILD_DIR, "fastder")
+    benchmark:
+        op.join(BENCH_DIR, "build_fastder.tsv")
     log:
-        str(LOG_DIR / "build_fastder.log")
+        op.join(LOG_DIR, "build_fastder.log")
     params:
-        fastder_src=str(WORKFLOW_DIR / "external" / "fastder"),
+        fastder_src=op.join(WORKFLOW_DIR, "external", "fastder"),
         build_dir=str(FASTDER_BUILD_DIR),
         ncores=config["cores"],
     conda:
         "envs/fastder_build.yaml"
     shell:
         """
+        if [ -n "{params.build_dir}" ] && [ -d "{params.build_dir}" ]; then
+            rm -rf "{params.build_dir}"
+        fi
         mkdir -p {params.build_dir}
         cd {params.build_dir}
         cmake -DFASTDER_USE_LIBBIGWIG=ON {params.fastder_src} > {log} 2>&1
@@ -768,16 +803,18 @@ rule build_fastder:
 # directly; fastder reads them via libBigWig.
 rule run_fastder:
     input:
-        fastder_exe=str(FASTDER_BUILD_DIR / "fastder"),
-        extract_done=str(FASTDER_DIR / "extract.DONE"),
+        fastder_exe=op.join(FASTDER_BUILD_DIR, "fastder"),
+        extract_done=op.join(FASTDER_DIR, "extract.DONE"),
     output:
-        gtf_path=str(FASTDER_DIR / "run_fastder_{param_id}.gtf_path"),
-        done=touch(str(FASTDER_DIR / "run_fastder_{param_id}.DONE")),
+        gtf_path=op.join(FASTDER_DIR, "run_fastder_{param_id}.gtf_path"),
+        done=touch(op.join(FASTDER_DIR, "run_fastder_{param_id}.DONE")),
+    benchmark:
+        op.join(BENCH_DIR, "run_fastder", "{param_id}.tsv")
     log:
-        str(LOG_DIR / "run_fastder" / "{param_id}.log")
+        op.join(LOG_DIR, "run_fastder", "{param_id}.log")
     params:
         fastder_dir=str(FASTDER_DIR),
-        run_dir=lambda wc: str(FASTDER_DIR / "runs" / wc.param_id),
+        run_dir=lambda wc: op.join(FASTDER_DIR, "runs", wc.param_id),
         ncores=config["cores"],
         fastder_args=lambda wc: PARAM_CLI_ARGS[wc.param_id],
         stranded_arg="--stranded" if STRANDED else "",
@@ -818,14 +855,16 @@ rule run_fastder:
 # 12. Run gffcompare for each sample x parameter combination
 rule run_gffcompare:
     input:
-        chr_prefix_done=str(FASTDER_DIR / "match_chr_prefix.DONE"),
-        gtf_path=str(FASTDER_DIR / "run_fastder_{param_id}.gtf_path"),
+        chr_prefix_done=op.join(FASTDER_DIR, "match_chr_prefix.DONE"),
+        gtf_path=op.join(FASTDER_DIR, "run_fastder_{param_id}.gtf_path"),
     output:
-        stats=str(RESULTS_DIR / "{sample}" / "{param_id}" / "gffcompare.stats"),
+        stats=op.join(RESULTS_DIR, "{sample}", "{param_id}", "gffcompare.stats"),
+    benchmark:
+        op.join(BENCH_DIR, "run_gffcompare", "{sample}_{param_id}.tsv")
     log:
-        str(LOG_DIR / "gffcompare" / "{sample}_{param_id}.log")
+        op.join(LOG_DIR, "gffcompare", "{sample}_{param_id}.log")
     params:
-        label_gff=lambda wc: str(FASTDER_DIR / f"{wc.sample}_label{LABEL_EXT}"),
+        label_gff=lambda wc: op.join(FASTDER_DIR, f"{wc.sample}_label{LABEL_EXT}"),
         out_prefix=lambda wc: os.path.join(
             str(RESULTS_DIR), wc.sample, wc.param_id, "gffcompare",
         ),
@@ -843,12 +882,14 @@ rule run_gffcompare:
 rule collect_results:
     input:
         expand(
-            str(RESULTS_DIR / "{sample}" / "{param_id}" / "gffcompare.stats"),
+            op.join(RESULTS_DIR, "{sample}", "{param_id}", "gffcompare.stats"),
             sample=PUMP_SAMPLES,
             param_id=PARAM_IDS,
         ),
     output:
-        str(RESULTS_DIR / "summary.csv"),
+        op.join(RESULTS_DIR, "summary.csv"),
+    benchmark:
+        op.join(BENCH_DIR, "collect_results.tsv")
     run:
         import csv
         import re
@@ -887,3 +928,71 @@ rule collect_results:
             writer.writeheader()
             for row in sorted(rows, key=lambda r: (r["sample"], r["param_id"])):
                 writer.writerow(row)
+
+
+# 14. Per-transcript stats parsed from each fastder GTF.
+rule collect_chain_stats:
+    input:
+        gtf_paths=expand(op.join(FASTDER_DIR, "run_fastder_{param_id}.gtf_path"),
+                         param_id=PARAM_IDS),
+    output:
+        op.join(RESULTS_DIR, "chain_stats.csv"),
+    benchmark:
+        op.join(BENCH_DIR, "collect_chain_stats.tsv")
+    log:
+        op.join(LOG_DIR, "collect_chain_stats.log"),
+    params:
+        script=op.join(WORKFLOW_DIR, "scripts", "collect_chain_stats.py"),
+        param_ids=PARAM_IDS,
+    run:
+        args = []
+        for gtf_path_file, pid in zip(input.gtf_paths, params.param_ids):
+            args.extend(["--gtf-path-file", gtf_path_file, "--param-id", pid])
+        shell("python3 {params.script} " + " ".join(f"'{a}'" for a in args)
+              + " --out {output} > {log} 2>&1")
+
+
+# 15. Render the Rmarkdown summary report.
+rule render_summary_report:
+    input:
+        summary=op.join(RESULTS_DIR, "summary.csv"),
+        chain_stats=op.join(RESULTS_DIR, "chain_stats.csv"),
+        rmd=op.join(WORKFLOW_DIR, "reports", "summary.Rmd"),
+    output:
+        op.join(RESULTS_DIR, "summary.html"),
+    log:
+        op.join(LOG_DIR, "render_summary_report.log"),
+    conda:
+        "envs/rmarkdown.yaml"
+    shell:
+        """
+        Rscript -e "rmarkdown::render(
+            input = '{input.rmd}',
+            output_file = '$(realpath -m {output})',
+            params = list(summary_csv = '$(realpath {input.summary})',
+                          chain_stats_csv = '$(realpath {input.chain_stats})'),
+            quiet = TRUE)" > {log} 2>&1
+        """
+
+
+# 15. Render the Rmarkdown benchmarks report from logs/benchmarks/.
+rule render_benchmarks_report:
+    input:
+        summary=op.join(RESULTS_DIR, "summary.csv"),
+        rmd=op.join(WORKFLOW_DIR, "reports", "benchmarks.Rmd"),
+    output:
+        op.join(RESULTS_DIR, "benchmarks.html"),
+    log:
+        op.join(LOG_DIR, "render_benchmarks_report.log"),
+    params:
+        bench_dir=BENCH_DIR,
+    conda:
+        "envs/rmarkdown.yaml"
+    shell:
+        """
+        Rscript -e "rmarkdown::render(
+            input = '{input.rmd}',
+            output_file = '$(realpath -m {output})',
+            params = list(bench_dir = '$(realpath {params.bench_dir})'),
+            quiet = TRUE)" > {log} 2>&1
+        """
