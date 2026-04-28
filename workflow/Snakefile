@@ -700,29 +700,10 @@ rule match_chr_prefix:
         """
 
 
-# 9. Convert BigWig to BedGraph
-rule bigwig_to_bedgraph:
-    input:
-        str(FASTDER_DIR / "extract.DONE")
-    output:
-        touch(str(FASTDER_DIR / "convert_bedgraph.DONE"))
-    log:
-        str(LOG_DIR / "bigwig_to_bedgraph.log")
-    params:
-        fastder_dir=str(FASTDER_DIR),
-    conda:
-        "envs/ucsc_tools.yaml"
-    shell:
-        """
-        for bw in {params.fastder_dir}/*.bw; do
-            [ -f "$bw" ] || continue
-            out="${{bw%.bw}}.bedGraph"
-            bigWigToBedGraph "$bw" "$out"
-        done > {log} 2>&1
-        """
-
-
-# 10. Build fastder from source
+# 9. Build fastder from source. The build is configured with
+# FASTDER_USE_LIBBIGWIG=ON so the binary reads .bw files directly without an
+# intermediate BedGraph conversion step. libBigWig is fetched at configure
+# time and needs zlib and libcurl (provided by envs/fastder_build.yaml).
 rule build_fastder:
     output:
         str(FASTDER_BUILD_DIR / "fastder")
@@ -730,24 +711,28 @@ rule build_fastder:
         str(LOG_DIR / "build_fastder.log")
     params:
         fastder_src=str(WORKFLOW_DIR / "external" / "fastder"),
-        build_script=str(WORKFLOW_DIR / "external" / "fastder" / "conda" / "recipe" / "build.sh"),
+        build_dir=str(FASTDER_BUILD_DIR),
+        ncores=config["cores"],
     conda:
         "envs/fastder_build.yaml"
     shell:
         """
-        cd {params.fastder_src}
-        bash {params.build_script} > {log} 2>&1
+        mkdir -p {params.build_dir}
+        cd {params.build_dir}
+        cmake -DFASTDER_USE_LIBBIGWIG=ON {params.fastder_src} > {log} 2>&1
+        cmake --build . --target fastder -j {params.ncores} >> {log} 2>&1
         """
 
 
-# 11. Run fastder for each parameter combination.
+# 10. Run fastder for each parameter combination.
 # Each run gets its own working directory (data/fastder/runs/{param_id}/) with
-# symlinks to the shared inputs. This allows parallel execution without races on
-# the FASTDER_RESULT_*.gtf output filenames.
+# symlinks to the shared inputs. This allows parallel execution without races
+# on the FASTDER_RESULT_*.gtf output filenames. Symlinks include .bw files
+# directly; fastder reads them via libBigWig.
 rule run_fastder:
     input:
         fastder_exe=str(FASTDER_BUILD_DIR / "fastder"),
-        bedgraph_done=str(FASTDER_DIR / "convert_bedgraph.DONE"),
+        extract_done=str(FASTDER_DIR / "extract.DONE"),
     output:
         gtf_path=str(FASTDER_DIR / "run_fastder_{param_id}.gtf_path"),
         done=touch(str(FASTDER_DIR / "run_fastder_{param_id}.DONE")),
@@ -769,8 +754,9 @@ rule run_fastder:
     shell:
         """
         mkdir -p {params.run_dir}
-        # Symlink all shared inputs into the private run directory
-        for f in {params.fastder_dir}/*.bedGraph \
+        # Symlink all shared inputs into the private run directory.
+        # Includes .bw (parsed by fastder via libBigWig), MM, RR, and the CSV.
+        for f in {params.fastder_dir}/*.bw \
                   {params.fastder_dir}/*.MM \
                   {params.fastder_dir}/*.RR \
                   {params.fastder_dir}/*.csv; do

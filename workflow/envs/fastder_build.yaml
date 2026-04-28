@@ -7,3 +7,7 @@ dependencies:
   - gcc =14
   - gxx =14
   - pthread-stubs
+  # libBigWig is fetched at configure time by fastder's CMake. It needs zlib
+  # and libcurl headers and libraries available at build time.
+  - zlib
+  - libcurl
