@@ -23,7 +23,7 @@ jobs:
           cache-environment: true
 
       - name: Install pytest into the env
-        run: pip install --no-deps pytest
+        run: pip install pytest
 
       - name: Run pytest
         run: pytest tests/ -v
