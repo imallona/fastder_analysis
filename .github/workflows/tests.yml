@@ -1,0 +1,29 @@
+name: tests
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash -el {0}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up the megadepth_baseline conda env
+        uses: mamba-org/setup-micromamba@v1
+        with:
+          environment-file: workflow/envs/megadepth_baseline.yaml
+          init-shell: bash
+          cache-environment: true
+
+      - name: Install pytest into the env
+        run: pip install --no-deps pytest
+
+      - name: Run pytest
+        run: pytest tests/ -v
