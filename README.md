@@ -86,6 +86,10 @@ After a successful run, `results/` contains:
 - `summary.html`: rendered summary report covering all CSVs above, with a publication-style overview section faceting by AS event class.
 - `benchmarks.html`: rendered runtime and memory report parsed from the per-rule benchmark TSVs under `logs/benchmarks/`.
 
+### Reports
+
+The rules `render_summary_report` and `render_benchmarks_report` produce `workflow/results/summary.html` and `workflow/results/benchmarks.html` at the end of a pipeline run. To rebuild only the reports without re-running upstream rules, add `--forcerun render_summary_report render_benchmarks_report` to the snakemake invocation. Both rules share the conda env at `workflow/envs/rmarkdown.yaml`, which pulls R, rmarkdown and the tidyverse plus ComplexHeatmap and circlize for the parameter-annotated heatmaps.
+
 ### Repository layout
 
 ```
