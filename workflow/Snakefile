@@ -135,6 +135,7 @@ rule all:
         op.join(RESULTS_DIR, "fuzzy_distances.csv"),
         op.join(RESULTS_DIR, "fuzzy_locus_recall.csv"),
         op.join(RESULTS_DIR, "fuzzy_strand.csv"),
+        op.join(RESULTS_DIR, "truth_chain_stats.csv"),
     default_target: True
 
 
@@ -1128,10 +1129,37 @@ rule collect_fuzzy_metrics:
 
 
 # 16. Render the Rmarkdown summary report.
+rule collect_truth_stats:
+    input:
+        gffs=expand(op.join(DATA_DIR, "asim", "{sample}", "{scenario}", "splicing_variants.gff3"),
+                    sample=PUMP_SAMPLES, scenario=SCENARIOS),
+    output:
+        op.join(RESULTS_DIR, "truth_chain_stats.csv"),
+    benchmark:
+        op.join(BENCH_DIR, "collect_truth_stats.tsv")
+    log:
+        op.join(LOG_DIR, "collect_truth_stats.log"),
+    params:
+        script=op.join(WORKFLOW_DIR, "scripts", "collect_truth_stats.py"),
+        scenarios=SCENARIOS,
+        samples=PUMP_SAMPLES,
+    run:
+        # input.gffs is in the same expand order: sample changes fastest, scenario slowest.
+        args = []
+        for gff in input.gffs:
+            parts = Path(gff).parts
+            scenario = parts[-2]
+            sample = parts[-3]
+            args.extend(["--gff", gff, "--scenario", scenario, "--sample", sample])
+        shell("python3 {params.script} " + " ".join(f"'{a}'" for a in args)
+              + " --out {output} > {log} 2>&1")
+
+
 rule render_summary_report:
     input:
         summary=op.join(RESULTS_DIR, "summary.csv"),
         chain_stats=op.join(RESULTS_DIR, "chain_stats.csv"),
+        truth_chain_stats=op.join(RESULTS_DIR, "truth_chain_stats.csv"),
         jaccard=op.join(RESULTS_DIR, "fuzzy_jaccard.csv"),
         distances=op.join(RESULTS_DIR, "fuzzy_distances.csv"),
         recall=op.join(RESULTS_DIR, "fuzzy_locus_recall.csv"),
@@ -1150,6 +1178,7 @@ rule render_summary_report:
             output_file = '$(realpath -m {output})',
             params = list(summary_csv = '$(realpath {input.summary})',
                           chain_stats_csv = '$(realpath {input.chain_stats})',
+                          truth_chain_stats_csv = '$(realpath {input.truth_chain_stats})',
                           fuzzy_jaccard_csv = '$(realpath {input.jaccard})',
                           fuzzy_distances_csv = '$(realpath {input.distances})',
                           fuzzy_recall_csv = '$(realpath {input.recall})',

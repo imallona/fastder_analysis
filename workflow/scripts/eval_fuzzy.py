@@ -170,7 +170,7 @@ def boundary_distances(ref_bed, fastder_bed, sample, param_id, scenario, out_pat
 
 
 def locus_recall(ref_bed, fastder_bed, sample, param_id, scenario, out_path,
-                 thresholds=(0.1, 0.5, 0.7, 0.9, 0.95)):
+                 thresholds=tuple(round(0.05 * i, 2) for i in range(1, 21))):
     """Per ref locus, what fraction of its exonic bp is covered by any
     fastder exon on the same strand. Recall at threshold f = fraction of
     loci with covered/total >= f.

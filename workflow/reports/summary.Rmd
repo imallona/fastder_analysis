@@ -8,6 +8,7 @@ output:
 params:
   summary_csv: NULL
   chain_stats_csv: NULL
+  truth_chain_stats_csv: NULL
   fuzzy_jaccard_csv: NULL
   fuzzy_distances_csv: NULL
   fuzzy_recall_csv: NULL
@@ -51,10 +52,19 @@ label_as <- function(v) {
 pub_theme <- theme_bw(base_size = 12) +
   theme(
     aspect.ratio = 1,
-    panel.grid.minor = element_blank(),
+    panel.grid.major = element_line(colour = "grey88"),
+    panel.grid.minor = element_line(colour = "grey94"),
     strip.background = element_rect(fill = "grey95", colour = NA),
     plot.title = element_text(size = 13, face = "plain")
   )
+
+scenario_labels <- c(
+  template_and_variant = "template + variant",
+  variant_only = "variant only"
+)
+relabel_scenario <- function(v) {
+  factor(v, levels = names(scenario_labels), labels = scenario_labels[names(scenario_labels)])
+}
 ```
 
 ```{r load}
@@ -72,6 +82,13 @@ cs$n_exons <- as.integer(cs$n_exons)
 cs$total_exon_length <- as.numeric(cs$total_exon_length)
 cs$score <- as.numeric(cs$score)
 
+truth_chain <- NULL
+if (!is.null(params$truth_chain_stats_csv) && file.exists(params$truth_chain_stats_csv)) {
+  truth_chain <- read_csv(params$truth_chain_stats_csv, show_col_types = FALSE)
+  truth_chain$n_exons <- as.integer(truth_chain$n_exons)
+  truth_chain$total_exon_length <- as.numeric(truth_chain$total_exon_length)
+}
+
 fuzzy_paths <- list(
   jaccard = params$fuzzy_jaccard_csv,
   distances = params$fuzzy_distances_csv,
@@ -85,21 +102,30 @@ fuzzy <- lapply(fuzzy_paths, function(p) {
 
 # Method performance across AS event types
 
-Each ASimulatoR sample carries one alternative-splicing event class: exon skipping (ES), mutually exclusive exons (MES), alternative first exon (AFE), alternative last exon (ALE), or a 4-way mix. The four figures below summarize how fastder reconstructs each class.
+Each ASimulatoR sample carries one alternative-splicing event class: exon skipping (ES), mutually exclusive exons (MES), alternative first exon (AFE), alternative last exon (ALE), or a four-way mix.
+
+Each event class is run through two scenarios that differ in which transcripts contribute reads to the coverage track that fastder sees. In *template + variant* (ASimulatoR default) both the canonical transcript and the alternative form are simulated, so an exon that the variant skips still receives reads from the template and shows up as a coverage dip rather than a hard zero. In *variant only* the FASTQ is post-filtered to keep reads sourced from the alternative transcript and the truth GFF is rewritten to remove templates, so the alternative-splicing signal is unambiguous: the skipped exon has zero coverage and the truth contains only the alternative isoform.
 
 ## Per-event Jaccard against best reference partner
 
-```{r pub_jaccard, fig.width = 6, fig.height = 6}
+For each reference transcript, the highest exonic Jaccard against any fastder transcript on the same strand. A value of 1 means the fastder match has the same exon set; 0 means no overlap.
+
+```{r pub_jaccard, fig.width = 10, fig.height = 4.5}
 if (!is.null(fuzzy$jaccard) && nrow(fuzzy$jaccard) > 0) {
-  fj <- fuzzy$jaccard
-  fj$jaccard <- as.numeric(fj$jaccard)
-  fj$as_event <- label_as(fj$sample)
-  ggplot(fj, aes(x = as_event, y = jaccard, fill = sample)) +
-    geom_violin(trim = TRUE, scale = "width") +
-    geom_boxplot(width = 0.15, outlier.size = 0.5, fill = "white") +
-    scale_fill_manual(values = as_event_palette, guide = "none") +
-    labs(x = NULL, y = "exonic Jaccard (best fastder match)") +
+  fj <- fuzzy$jaccard %>%
+    mutate(jaccard = as.numeric(jaccard),
+           as_event = label_as(sample),
+           scenario = relabel_scenario(scenario))
+  ggplot(fj, aes(x = scenario, y = jaccard, fill = scenario)) +
+    geom_violin(alpha = 0.4, scale = "width", trim = TRUE,
+                colour = "grey40") +
+    geom_jitter(width = 0.18, size = 0.35, alpha = 0.25, colour = "grey15") +
+    stat_summary(fun = median, geom = "point", shape = 21, size = 3.5,
+                 colour = "black", fill = "white", stroke = 0.8) +
+    scale_fill_brewer(palette = "Set2", guide = "none") +
+    labs(x = NULL, y = "Best exonic Jaccard against reference") +
     coord_cartesian(ylim = c(0, 1)) +
+    facet_wrap(~ as_event, nrow = 1) +
     pub_theme +
     theme(axis.text.x = element_text(angle = 30, hjust = 1))
 } else {
@@ -111,43 +137,78 @@ if (!is.null(fuzzy$jaccard) && nrow(fuzzy$jaccard) > 0) {
 
 Distance from each fastder exon's start to the nearest reference exon start (left), and from end to nearest end (right). Same strand. Distances are clipped to ±200 bp for display.
 
-```{r pub_boundary, fig.width = 6, fig.height = 6}
+Cumulative fraction of fastder boundaries that fall within an absolute distance to the nearest same-strand reference boundary. Each curve answers "what fraction of fastder's exon starts (or ends) are within X bp of a true splice site?". The x axis is log-scaled so the small-distance behaviour, where most boundaries live, is visible.
+
+```{r pub_boundary, fig.width = 9, fig.height = 5.5}
 if (!is.null(fuzzy$distances) && nrow(fuzzy$distances) > 0) {
-  fd <- fuzzy$distances
-  fd$distance <- as.integer(fd$distance)
-  fd$as_event <- label_as(fd$sample)
-  fd_clip <- fd %>% mutate(distance = pmax(pmin(distance, 200), -200))
-  ggplot(fd_clip, aes(x = distance, colour = sample)) +
-    geom_density(adjust = 0.6, linewidth = 0.7) +
+  fd <- fuzzy$distances %>%
+    mutate(distance = as.integer(distance),
+           scenario = relabel_scenario(scenario),
+           boundary = factor(boundary, levels = c("start", "end"),
+                             labels = c("Exon start", "Exon end")),
+           abs_distance = pmax(abs(distance), 1L))
+  ggplot(fd, aes(x = abs_distance, colour = sample)) +
+    stat_ecdf(geom = "step", linewidth = 0.8) +
     scale_colour_manual(values = as_event_palette, name = NULL,
                         labels = as_event_labels[as_event_levels]) +
-    facet_wrap(~ boundary) +
-    labs(x = "fastder boundary minus nearest ref boundary (bp)", y = "density") +
+    scale_x_log10(breaks = c(1, 5, 20, 100, 1000, 10000),
+                  labels = c("1", "5", "20", "100", "1k", "10k")) +
+    coord_cartesian(ylim = c(0, 1)) +
+    facet_grid(boundary ~ scenario) +
+    labs(x = "Absolute distance to nearest reference boundary (bp, log scale)",
+         y = "Cumulative fraction of fastder boundaries") +
     pub_theme +
-    theme(legend.position = "bottom")
+    theme(aspect.ratio = 0.6, legend.position = "bottom")
 } else {
   cat("no fuzzy_distances data")
 }
 ```
 
+Companion summary: fraction of fastder boundaries within +/- 5 bp, +/- 20 bp, and +/- 50 bp of a same-strand reference boundary.
+
+```{r pub_boundary_table}
+if (!is.null(fuzzy$distances) && nrow(fuzzy$distances) > 0) {
+  fd <- fuzzy$distances %>%
+    mutate(distance = as.integer(distance),
+           boundary = factor(boundary, levels = c("start", "end"),
+                             labels = c("Exon start", "Exon end")))
+  bt <- fd %>%
+    group_by(scenario, boundary, sample) %>%
+    summarise(
+      n = n(),
+      pct_within_5 = mean(abs(distance) <= 5) * 100,
+      pct_within_20 = mean(abs(distance) <= 20) * 100,
+      pct_within_50 = mean(abs(distance) <= 50) * 100,
+      median_abs = median(abs(distance)),
+      .groups = "drop"
+    )
+  knitr::kable(bt, digits = 2,
+               col.names = c("Scenario", "Boundary", "AS event", "n",
+                             "% within 5 bp", "% within 20 bp",
+                             "% within 50 bp", "Median |distance|"))
+}
+```
+
 ## Per-event strand concordance
 
-```{r pub_strand, fig.width = 6, fig.height = 6}
+```{r pub_strand, fig.width = 8, fig.height = 5}
 if (!is.null(fuzzy$strand) && nrow(fuzzy$strand) > 0) {
   fs <- fuzzy$strand
   fs$n_fastder_transcripts <- as.integer(fs$n_fastder_transcripts)
   fs$category <- factor(fs$category, levels = c("concordant", "discordant", "unstranded", "unmatched"))
   fs$as_event <- label_as(fs$sample)
+  fs$scenario <- relabel_scenario(fs$scenario)
   fs_pct <- fs %>%
-    group_by(sample, as_event, param_id) %>%
+    group_by(scenario, sample, as_event, param_id) %>%
     mutate(pct = n_fastder_transcripts / sum(n_fastder_transcripts) * 100) %>%
     ungroup()
   ggplot(fs_pct, aes(y = as_event, x = pct, fill = category)) +
     geom_col() +
     scale_fill_brewer(palette = "Set2", name = NULL) +
-    labs(x = "fraction of fastder transcripts (%)", y = NULL) +
+    labs(x = "Fraction of fastder transcripts (%)", y = NULL) +
+    facet_wrap(~ scenario) +
     pub_theme +
-    theme(aspect.ratio = NULL, legend.position = "bottom")
+    theme(aspect.ratio = 1, legend.position = "bottom")
 } else {
   cat("no fuzzy_strand data")
 }
@@ -157,19 +218,21 @@ if (!is.null(fuzzy$strand) && nrow(fuzzy$strand) > 0) {
 
 Fraction of reference loci with at least f of their exonic length covered by any fastder exon on the same strand.
 
-```{r pub_recall, fig.width = 6, fig.height = 6}
+```{r pub_recall, fig.width = 8, fig.height = 4.5}
 if (!is.null(fuzzy$recall) && nrow(fuzzy$recall) > 0) {
-  fr <- fuzzy$recall
-  fr$threshold <- as.numeric(fr$threshold)
-  fr$recall <- as.numeric(fr$recall)
-  fr$as_event <- label_as(fr$sample)
-  ggplot(fr, aes(x = threshold, y = recall, colour = sample)) +
+  fr <- fuzzy$recall %>%
+    mutate(threshold = as.numeric(threshold),
+           recall = as.numeric(recall),
+           scenario = relabel_scenario(scenario)) %>%
+    arrange(scenario, sample, threshold)
+  ggplot(fr, aes(x = threshold, y = recall, colour = sample, group = sample)) +
     geom_line(linewidth = 0.8) +
-    geom_point(size = 2) +
     scale_colour_manual(values = as_event_palette, name = NULL,
                         labels = as_event_labels[as_event_levels]) +
-    coord_cartesian(ylim = c(0, 1)) +
-    labs(x = "exonic coverage threshold f", y = "fraction of ref loci with coverage >= f") +
+    coord_cartesian(xlim = c(0, 1), ylim = c(0, 1)) +
+    labs(x = "Exonic coverage threshold",
+         y = "Fraction of reference loci above threshold") +
+    facet_wrap(~ scenario) +
     pub_theme +
     theme(legend.position = "bottom")
 } else {
@@ -188,29 +251,32 @@ if (
 ) {
   jrow <- fuzzy$jaccard %>%
     mutate(jaccard = as.numeric(jaccard)) %>%
-    group_by(sample) %>%
+    group_by(scenario, sample) %>%
     summarise(median_jaccard = median(jaccard),
               pct_jaccard_ge_0_5 = mean(jaccard >= 0.5) * 100,
               .groups = "drop")
   srow <- fuzzy$strand %>%
     mutate(n = as.integer(n_fastder_transcripts)) %>%
-    pivot_wider(id_cols = sample, names_from = category, values_from = n, values_fill = 0) %>%
+    pivot_wider(id_cols = c(scenario, sample), names_from = category,
+                values_from = n, values_fill = 0) %>%
     mutate(total = concordant + discordant + unstranded + unmatched,
            pct_concordant = concordant / total * 100,
            pct_discordant = discordant / total * 100) %>%
-    select(sample, pct_concordant, pct_discordant)
+    select(scenario, sample, pct_concordant, pct_discordant)
   rrow <- fuzzy$recall %>%
     mutate(threshold = as.numeric(threshold), recall = as.numeric(recall)) %>%
     filter(threshold == 0.5) %>%
-    select(sample, locus_recall_at_0_5 = recall) %>%
+    select(scenario, sample, locus_recall_at_0_5 = recall) %>%
     mutate(locus_recall_at_0_5 = locus_recall_at_0_5 * 100)
   scorecard <- jrow %>%
-    left_join(srow, by = "sample") %>%
-    left_join(rrow, by = "sample") %>%
+    left_join(srow, by = c("scenario", "sample")) %>%
+    left_join(rrow, by = c("scenario", "sample")) %>%
     mutate(as_event = label_as(sample)) %>%
-    select(as_event, median_jaccard, pct_jaccard_ge_0_5, pct_concordant, pct_discordant, locus_recall_at_0_5)
+    arrange(scenario, sample) %>%
+    select(scenario, as_event, median_jaccard, pct_jaccard_ge_0_5,
+           pct_concordant, pct_discordant, locus_recall_at_0_5)
   knitr::kable(scorecard, digits = 2,
-               col.names = c("AS event", "median Jaccard",
+               col.names = c("scenario", "AS event", "median Jaccard",
                              "% Jaccard >= 0.5", "% strand concordant",
                              "% strand discordant", "% loci with >= 50% coverage"))
 }
@@ -226,10 +292,9 @@ knitr::kable(df, digits = 2)
 
 ## Sensitivity and precision across all levels
 
-Every row in `summary.csv` has `<level>_sens` and `<level>_prec` for the six
-gffcompare levels. Plot below shows them all on the same axes per sample.
+Every row in `summary.csv` carries sensitivity and precision at the six gffcompare levels. The plot below shows them on the same axes per sample.
 
-```{r levels_scatter, fig.width = 6, fig.height = 6}
+```{r levels_scatter, fig.width = 12, fig.height = 5}
 levels_long <- df %>%
   pivot_longer(
     cols = matches("_(sens|prec)$"),
@@ -237,35 +302,56 @@ levels_long <- df %>%
     names_pattern = "(.+)_(sens|prec)",
     values_to = "value"
   ) %>%
-  pivot_wider(names_from = metric, values_from = value)
+  pivot_wider(names_from = metric, values_from = value) %>%
+  mutate(scenario = relabel_scenario(scenario))
 
-ggplot(levels_long, aes(x = sens, y = prec, colour = level, shape = sample)) +
+level_label <- function(x) {
+  recode(x,
+    base = "Base",
+    exon = "Exon",
+    intron = "Intron",
+    intron_chain = "Intron chain",
+    transcript = "Transcript",
+    locus = "Locus"
+  )
+}
+levels_long$level <- level_label(levels_long$level)
+
+ggplot(levels_long, aes(x = sens, y = prec, colour = level)) +
   geom_point(size = 3) +
   coord_fixed(xlim = c(0, 100), ylim = c(0, 100)) +
-  theme_bw()
+  facet_grid(scenario ~ sample) +
+  labs(x = "Sensitivity (%)", y = "Precision (%)", colour = "Level") +
+  pub_theme
 ```
 
 ## Per-level bars
 
-```{r level_bars, fig.width = 6, fig.height = 6}
+```{r level_bars, fig.width = 12, fig.height = 5}
 levels_long_metric <- df %>%
   pivot_longer(
     cols = matches("_(sens|prec)$"),
     names_to = c("level", "metric"),
     names_pattern = "(.+)_(sens|prec)",
     values_to = "value"
-  )
+  ) %>%
+  mutate(scenario = relabel_scenario(scenario),
+         level = level_label(level),
+         metric = recode(metric, sens = "Sensitivity", prec = "Precision"))
 
 ggplot(levels_long_metric, aes(x = level, y = value, fill = metric)) +
   geom_col(position = position_dodge(width = 0.8), width = 0.7) +
-  facet_wrap(~ sample) +
+  facet_grid(scenario ~ sample) +
   coord_flip() +
-  theme_bw()
+  labs(x = "Level", y = "Value (%)", fill = NULL) +
+  pub_theme
 ```
 
 ## Missed and novel features
 
-```{r missed_novel, fig.width = 6, fig.height = 6}
+In gffcompare's terminology, "missed" means a feature exists in the reference but was not recovered by fastder (a false negative against the truth). "Novel" means fastder reported a feature that does not appear in the reference (a false positive). Because the reference here is the simulated splicing_variants.gff3, novel features were *not* simulated and so are by construction false positives. Most of them come from coverage drop-offs that shifted the boundary just enough that gffcompare doesn't accept the match, plus a small number of stray STAR alignments off-target.
+
+```{r missed_novel, fig.width = 11, fig.height = 5}
 mn <- df %>%
   pivot_longer(
     cols = matches("_(pct|count|total)$"),
@@ -273,13 +359,19 @@ mn <- df %>%
     names_pattern = "(missed|novel)_(exons|introns|loci)_(pct|count|total)",
     values_to = "value"
   ) %>%
-  filter(field == "pct")
+  filter(field == "pct") %>%
+  mutate(scenario = relabel_scenario(scenario),
+         feature = recode(feature, exons = "Exons", introns = "Introns", loci = "Loci"),
+         kind = recode(kind, missed = "Missed (in reference, not recovered)",
+                             novel = "Novel (in fastder, not in reference)"))
 
 ggplot(mn, aes(x = feature, y = value, fill = kind)) +
   geom_col(position = position_dodge(width = 0.8), width = 0.7) +
-  facet_wrap(~ sample) +
+  facet_grid(scenario ~ sample) +
   coord_flip() +
-  theme_bw()
+  labs(x = NULL, y = "Fraction (%)", fill = NULL) +
+  pub_theme +
+  theme(legend.position = "bottom")
 ```
 
 ## Matching counts
@@ -309,9 +401,11 @@ if (length(scope_cols) > 0) {
 
 `r chain_path` (`r nrow(cs)` transcripts across `r length(unique(cs$param_id))` parameter combinations)
 
+The score column reflects the per-exon mean coverage written by fastder into GTF column 6, which is what drives the "mean coverage" axis below. Where the truth set (the simulated splicing_variants.gff3) is available, it is overlaid in red so a paper-grade reader can see how fastder's stitched output compares with what was simulated.
+
 ```{r chain_summary_table}
 chain_summary <- cs %>%
-  group_by(param_id) %>%
+  group_by(scenario, param_id) %>%
   summarise(
     n_transcripts = n(),
     pct_singletons = mean(n_exons == 1) * 100,
@@ -319,61 +413,111 @@ chain_summary <- cs %>%
     mean_exons = mean(n_exons),
     max_exons = max(n_exons),
     median_length_bp = median(total_exon_length),
-    median_score = median(score)
+    median_score = median(score),
+    .groups = "drop"
   )
-knitr::kable(chain_summary, digits = 2)
+knitr::kable(chain_summary, digits = 2,
+             col.names = c("Scenario", "Parameters", "Transcripts",
+                           "% single-exon", "Median exons", "Mean exons",
+                           "Max exons", "Median exonic length (bp)",
+                           "Median mean coverage"))
 ```
 
 ## Number of exons per transcript
 
-```{r n_exons_hist, fig.width = 6, fig.height = 6}
-ggplot(cs, aes(x = n_exons)) +
-  geom_histogram(binwidth = 1, boundary = 0.5) +
-  facet_wrap(~ param_id) +
-  scale_x_continuous(breaks = scales::pretty_breaks()) +
-  theme_bw()
+The grey bars show fastder's per-transcript exon count distribution. The red step trace is the truth distribution computed from the simulated splicing_variants.gff3. A close match means fastder is recovering the correct number of pieces per gene. The x axis is log10-scaled because most transcripts are single-exon and the long tail (one or two transcripts with many exons) compresses everything else otherwise.
+
+```{r n_exons_hist, fig.width = 5, fig.height = 5}
+cs_plot <- cs %>% mutate(scenario = relabel_scenario(scenario))
+truth_plot <- if (!is.null(truth_chain)) {
+  truth_chain %>%
+    mutate(scenario = relabel_scenario(scenario)) %>%
+    count(scenario, n_exons)
+} else NULL
+
+p <- ggplot(cs_plot, aes(x = n_exons)) +
+  geom_histogram(fill = "grey60", colour = "grey30",
+                 breaks = c(0.5, 1.5, 2.5, 3.5, 4.5, 5.5,
+                            7.5, 10.5, 15.5, 20.5, 30.5, 50.5, 100.5, 1000)) +
+  facet_grid(scenario ~ param_id) +
+  scale_x_log10(breaks = c(1, 2, 5, 10, 20, 50, 100)) +
+  labs(x = "Number of exons per transcript (log scale)",
+       y = "Number of transcripts") +
+  pub_theme
+if (!is.null(truth_plot) && nrow(truth_plot) > 0) {
+  p <- p + geom_step(data = truth_plot,
+                     aes(x = n_exons, y = n),
+                     direction = "vh", colour = "firebrick", linewidth = 0.7)
+}
+p
 ```
 
 ## Per-chromosome transcript count
 
-```{r per_chrom_count, fig.width = 6, fig.height = 6}
-chrom_counts <- cs %>% count(param_id, chrom)
-ggplot(chrom_counts, aes(x = chrom, y = n)) +
-  geom_col() +
-  facet_wrap(~ param_id) +
+```{r per_chrom_count, fig.width = 5, fig.height = 4}
+chrom_counts <- cs %>%
+  count(scenario, param_id, chrom) %>%
+  mutate(scenario = relabel_scenario(scenario))
+truth_chrom <- if (!is.null(truth_chain)) {
+  # truth has no param_id; we replicate it across parameter columns by joining
+  truth_chain %>%
+    mutate(scenario = relabel_scenario(scenario)) %>%
+    count(scenario, chrom) %>%
+    rename(n_truth = n)
+} else NULL
+
+p <- ggplot(chrom_counts, aes(x = chrom, y = n)) +
+  geom_col(fill = "grey60", colour = "grey30") +
+  facet_grid(scenario ~ param_id) +
   coord_flip() +
-  theme_bw()
+  labs(x = "Chromosome", y = "Number of transcripts") +
+  pub_theme +
+  theme(aspect.ratio = NULL)
+if (!is.null(truth_chrom) && nrow(truth_chrom) > 0) {
+  p <- p + geom_point(data = truth_chrom,
+                      aes(x = chrom, y = n_truth),
+                      colour = "firebrick", size = 1.5)
+}
+p
 ```
 
 ## Total exonic length per transcript
 
-```{r length_hist, fig.width = 6, fig.height = 6}
-ggplot(cs, aes(x = total_exon_length)) +
-  geom_histogram(bins = 30) +
-  facet_wrap(~ param_id) +
+```{r length_hist, fig.width = 4, fig.height = 8}
+cs_plot <- cs %>% mutate(scenario = relabel_scenario(scenario))
+ggplot(cs_plot, aes(x = total_exon_length)) +
+  geom_histogram(bins = 30, fill = "grey60", colour = "grey30") +
+  facet_grid(scenario ~ param_id) +
   scale_x_log10() +
-  theme_bw()
+  labs(x = "Total exonic length per transcript (bp)",
+       y = "Number of transcripts") +
+  pub_theme
 ```
 
-## Score (mean coverage) vs number of exons
+## Mean coverage vs number of exons
 
-```{r score_vs_n_exons, fig.width = 6, fig.height = 6}
-ggplot(cs, aes(x = n_exons, y = score)) +
+```{r score_vs_n_exons, fig.width = 4, fig.height = 8}
+cs_plot <- cs %>% mutate(scenario = relabel_scenario(scenario))
+ggplot(cs_plot, aes(x = n_exons, y = score)) +
   geom_point(alpha = 0.3) +
   scale_y_log10() +
-  facet_wrap(~ param_id) +
-  theme_bw()
+  facet_grid(scenario ~ param_id) +
+  labs(x = "Number of exons per transcript", y = "Mean coverage") +
+  pub_theme
 ```
 
-## Score vs total exonic length
+## Mean coverage vs total exonic length
 
-```{r score_vs_length, fig.width = 6, fig.height = 6}
-ggplot(cs, aes(x = total_exon_length, y = score)) +
+```{r score_vs_length, fig.width = 4, fig.height = 8}
+cs_plot <- cs %>% mutate(scenario = relabel_scenario(scenario))
+ggplot(cs_plot, aes(x = total_exon_length, y = score)) +
   geom_point(alpha = 0.3) +
   scale_x_log10() +
   scale_y_log10() +
-  facet_wrap(~ param_id) +
-  theme_bw()
+  facet_grid(scenario ~ param_id) +
+  labs(x = "Total exonic length per transcript (bp)",
+       y = "Mean coverage") +
+  pub_theme
 ```
 
 # Fuzzy fastder vs reference
@@ -417,20 +561,30 @@ if (!is.null(fuzzy$jaccard) && nrow(fuzzy$jaccard) > 0) {
 }
 ```
 
-## Boundary-distance histogram
+## Boundary-distance ECDF
 
-Signed bp distance from each fastder exon's start to the nearest ref exon start (same strand), and the same for ends. Tight peak at zero means boundaries align; wide spread means they don't.
+Cumulative fraction of fastder boundaries within an absolute distance to the nearest same-strand reference boundary. Same panel layout as the publication figure: rows are exon start / exon end, columns are scenarios. Colours highlight the AS event class.
 
-```{r boundary_hist, fig.width = 6, fig.height = 6}
+```{r boundary_hist, fig.width = 9, fig.height = 6}
 if (!is.null(fuzzy$distances) && nrow(fuzzy$distances) > 0) {
-  fd <- fuzzy$distances
-  fd$distance <- as.integer(fd$distance)
-  fd_clip <- fd %>% mutate(distance = pmax(pmin(distance, 200), -200))
-  ggplot(fd_clip, aes(x = distance)) +
-    geom_histogram(bins = 80, boundary = 0) +
-    facet_grid(sample + param_id ~ boundary) +
-    theme_bw() +
-    theme(aspect.ratio = 1, legend.position = "none")
+  fd <- fuzzy$distances %>%
+    mutate(distance = as.integer(distance),
+           scenario = relabel_scenario(scenario),
+           boundary = factor(boundary, levels = c("start", "end"),
+                             labels = c("Exon start", "Exon end")),
+           abs_distance = pmax(abs(distance), 1L))
+  ggplot(fd, aes(x = abs_distance, colour = sample)) +
+    stat_ecdf(geom = "step", linewidth = 0.8) +
+    scale_colour_manual(values = as_event_palette, name = NULL,
+                        labels = as_event_labels[as_event_levels]) +
+    scale_x_log10(breaks = c(1, 5, 20, 100, 1000, 10000),
+                  labels = c("1", "5", "20", "100", "1k", "10k")) +
+    coord_cartesian(ylim = c(0, 1)) +
+    facet_grid(boundary ~ scenario) +
+    labs(x = "Absolute distance to nearest reference boundary (bp, log scale)",
+         y = "Cumulative fraction of fastder boundaries") +
+    pub_theme +
+    theme(aspect.ratio = 0.6, legend.position = "bottom")
 } else {
   cat("no fuzzy_distances data")
 }
@@ -455,20 +609,26 @@ if (!is.null(fuzzy$distances) && nrow(fuzzy$distances) > 0) {
 
 ## Locus recall at fixed coverage thresholds
 
-Fraction of reference loci with at least f of their exonic length covered by any fastder exon on the same strand, for f in {0.1, 0.5, 0.7, 0.9, 0.95}.
+Fraction of reference loci with at least f of their exonic length covered by any fastder exon on the same strand, at thresholds f from 0.05 to 1.0 in steps of 0.05.
 
-```{r locus_recall_curve, fig.width = 6, fig.height = 6}
+```{r locus_recall_curve, fig.width = 8, fig.height = 12}
 if (!is.null(fuzzy$recall) && nrow(fuzzy$recall) > 0) {
-  fr <- fuzzy$recall
-  fr$threshold <- as.numeric(fr$threshold)
-  fr$recall <- as.numeric(fr$recall)
-  ggplot(fr, aes(x = threshold, y = recall)) +
-    geom_line() +
-    geom_point(size = 2) +
+  fr <- fuzzy$recall %>%
+    mutate(threshold = as.numeric(threshold),
+           recall = as.numeric(recall),
+           scenario = relabel_scenario(scenario)) %>%
+    arrange(sample, param_id, scenario, threshold)
+  ggplot(fr, aes(x = threshold, y = recall, colour = scenario,
+                 group = interaction(scenario, sample, param_id))) +
+    geom_line(linewidth = 0.7) +
+    geom_point(size = 1.6) +
     coord_cartesian(ylim = c(0, 1)) +
     facet_grid(sample ~ param_id) +
-    theme_bw() +
-    theme(aspect.ratio = 1, legend.position = "none")
+    labs(x = "Exonic coverage threshold",
+         y = "Fraction of reference loci above threshold",
+         colour = NULL) +
+    pub_theme +
+    theme(legend.position = "bottom")
 } else {
   cat("no fuzzy_recall data")
 }
@@ -482,37 +642,51 @@ if (!is.null(fuzzy$recall) && nrow(fuzzy$recall) > 0) {
 
 ## Strand concordance per fastder transcript
 
-For each fastder StitchedER, the best-overlapping reference transcript (any strand) is selected. The fastder strand is then classified as concordant, discordant, unstranded (fastder emitted '.'), or unmatched (no ref overlap on any strand). Counts and fractions are per (sample, param_id).
+For each fastder StitchedER, the best-overlapping reference transcript on either strand is selected. The fastder strand is then classified as concordant (matches the partner), discordant (opposite of the partner), unstranded (fastder emitted '.'), or unmatched (no reference overlap). Counts are per scenario, sample, and fastder parameter combination. Parameter combinations are abbreviated, for instance mc0.01 means min_coverage = 0.01; the panel grid below has as many columns as parameter combinations declared in the config.
 
-```{r strand_counts, fig.width = 6, fig.height = 6}
+```{r strand_counts, fig.width = 7, fig.height = 6}
 if (!is.null(fuzzy$strand) && nrow(fuzzy$strand) > 0) {
   fs <- fuzzy$strand
   fs$n_fastder_transcripts <- as.integer(fs$n_fastder_transcripts)
   fs$category <- factor(fs$category, levels = c("concordant", "discordant", "unstranded", "unmatched"))
-  ggplot(fs, aes(x = sample, y = n_fastder_transcripts, fill = category)) +
+  fs$scenario <- relabel_scenario(fs$scenario)
+  use_param_facet <- length(unique(fs$param_id)) > 1
+  p <- ggplot(fs, aes(x = sample, y = n_fastder_transcripts, fill = category)) +
     geom_col() +
-    facet_wrap(~ param_id) +
-    theme_bw() +
-    theme(aspect.ratio = 1)
+    labs(x = NULL, y = "Number of fastder transcripts", fill = NULL) +
+    pub_theme +
+    theme(legend.position = "bottom")
+  if (use_param_facet) {
+    p + facet_grid(scenario ~ param_id)
+  } else {
+    p + facet_wrap(~ scenario)
+  }
 } else {
   cat("no fuzzy_strand data")
 }
 ```
 
-```{r strand_pct, fig.width = 6, fig.height = 6}
+```{r strand_pct, fig.width = 7, fig.height = 6}
 if (!is.null(fuzzy$strand) && nrow(fuzzy$strand) > 0) {
   fs <- fuzzy$strand
   fs$n_fastder_transcripts <- as.integer(fs$n_fastder_transcripts)
   fs$category <- factor(fs$category, levels = c("concordant", "discordant", "unstranded", "unmatched"))
+  fs$scenario <- relabel_scenario(fs$scenario)
   fs_pct <- fs %>%
-    group_by(sample, param_id) %>%
+    group_by(scenario, sample, param_id) %>%
     mutate(pct = n_fastder_transcripts / sum(n_fastder_transcripts) * 100) %>%
     ungroup()
-  ggplot(fs_pct, aes(x = sample, y = pct, fill = category)) +
+  use_param_facet <- length(unique(fs_pct$param_id)) > 1
+  p <- ggplot(fs_pct, aes(x = sample, y = pct, fill = category)) +
     geom_col() +
-    facet_wrap(~ param_id) +
-    theme_bw() +
-    theme(aspect.ratio = 1)
+    labs(x = NULL, y = "Fraction of fastder transcripts (%)", fill = NULL) +
+    pub_theme +
+    theme(legend.position = "bottom")
+  if (use_param_facet) {
+    p + facet_grid(scenario ~ param_id)
+  } else {
+    p + facet_wrap(~ scenario)
+  }
 }
 ```
 
