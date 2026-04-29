@@ -1,0 +1,7 @@
+name: megadepth_baseline
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - python=3.12
+  - pybigwig

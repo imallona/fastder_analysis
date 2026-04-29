@@ -9,7 +9,9 @@ from pathlib import Path
 # environment variable to fully replace it (e.g. with config_quick.yaml for a
 # reduced-scope local run). Using an env var instead of --configfile avoids the
 # deep-merge that would otherwise union nested dicts like asimulator.samples.
-configfile: os.environ.get("FASTDER_EVAL_CONFIG", "../config/config.yaml")
+_CFG_PATH = os.environ.get("FASTDER_EVAL_CONFIG", "../config/config.yaml")
+CONFIG_BASENAME = op.splitext(op.basename(_CFG_PATH))[0]
+configfile: _CFG_PATH
 
 # Internal path constants.
 WORKFLOW_DIR = workflow.basedir
@@ -39,7 +41,11 @@ if BACKEND not in ("monorail", "monorail_light"):
 # fastder
 FASTDER_DIR = op.join(DATA_DIR, "fastder")
 FASTDER_BUILD_DIR = op.join(WORKFLOW_DIR, "external", "fastder", "build")
-RESULTS_DIR = op.join(WORKFLOW_DIR, "results")
+# Results live under a per-config subdirectory so multiple configs do not
+# overwrite each other. Reruns of the same config keep going to the same
+# place so snakemake's incremental machinery still works; old reports get
+# preserved by the archive_reports rule below.
+RESULTS_DIR = op.join(WORKFLOW_DIR, "results", CONFIG_BASENAME)
 
 # monorail_light scratch
 LIGHT_DIR = op.join(DATA_DIR, "monorail_light")
@@ -51,10 +57,41 @@ ASIM_SAMPLES = list(config["asimulator"]["samples"].keys())
 # Per the IMPORTANT note above, every downstream stage runs once per scenario.
 SCENARIOS = ["template_and_variant", "variant_only"]
 
+# Tools to benchmark against fastder. Each tool produces a GTF at the
+# standardised path data/tools/{tool}/{scenario}/{param_id}/output.gtf,
+# which run_gffcompare and eval_fuzzy_metrics consume via the {tool}
+# wildcard.
+#
+# Parameter equivalence across tools (only shared axes are swept):
+#
+#   fastder axis           megadepth_baseline           derfinder
+#   --------------------   --------------------------   --------------------------
+#   --min-coverage (CPM)   --cutoff (CPM)               --cutoff (CPM)
+#   --min-length (bp)      --min-length (bp, post-flt)  --min-length (bp, post-flt)
+#   --position-tolerance   (n/a)                        --maxregiongap (analogue)
+#   --coverage-tolerance   (n/a)                        (n/a)
+#
+# All three tools normalise per-sample coverage to CPM before averaging,
+# using the same library_size formula (Sum length * value over the user's
+# chromosomes), so a given numeric --cutoff means the same thing
+# everywhere. fastder's --position-tolerance allows a few bp of slack at
+# SJ-anchored boundaries; derfinder's --maxregiongap bridges a few bp of
+# below-threshold gap inside a region. The two are not identical, but
+# both are tolerance knobs in the bp dimension; sweeping both surfaces
+# where they end up roughly comparable.
+#
+# Possible next additions: stringtie (no-reference assembler, BAM in
+# -> GTF out, conda env: stringtie) and scallop (alternative assembler
+# from BAM, conda env: scallop). They consume BAM rather than coverage
+# tracks, so they don't share the --min-coverage axis with the three
+# above; they would get their own grid.
+TOOLS = ["fastder", "derfinder", "megadepth_baseline"]
+
 # Wildcard constraints keep snakemake from matching path components against
 # unrelated wildcards (e.g. {sample} swallowing a scenario subdir).
 wildcard_constraints:
     scenario="(" + "|".join(SCENARIOS) + ")",
+    tool="(" + "|".join(TOOLS) + ")",
     sample="[^/]+",
     param_id="[^/]+",
 
@@ -111,6 +148,48 @@ PARAM_CLI_ARGS = {_param_id(c): _fastder_cli_args(c) for c in _PARAM_COMBOS}
 # For the summary CSV: the explicit params for each run
 PARAM_DICT = {_param_id(c): c for c in _PARAM_COMBOS}
 
+# Per-tool param grids. fastder sweeps the full cross-product above.
+# megadepth_baseline shares the min_coverage axis only (its other tunable
+# is min_length, which we pin to fastder.min_length[0] for symmetry).
+# derfinder shares min_coverage and position_tolerance (mapped to
+# --maxregiongap; see TOOLS comment for the mapping rationale).
+def _baseline_mc_param_ids():
+    mcs = FASTDER_CFG.get("min_coverage") or [0.05]
+    return [f"mc{v}" for v in mcs]
+
+
+def _baseline_mc_pt_param_ids():
+    mcs = FASTDER_CFG.get("min_coverage") or [0.05]
+    pts = FASTDER_CFG.get("position_tolerance") or [0]
+    return [f"mc{mc}_pt{pt}" for mc in mcs for pt in pts]
+
+
+def _parse_mc_pt(param_id):
+    """Pull (mc, pt) numerics out of an mc<v>[_pt<v>] param_id."""
+    import re
+    mc_match = re.search(r"mc([0-9.]+)", param_id)
+    pt_match = re.search(r"pt([0-9.]+)", param_id)
+    mc = float(mc_match.group(1)) if mc_match else None
+    pt = float(pt_match.group(1)) if pt_match else 0
+    return mc, pt
+
+
+PARAM_IDS_BY_TOOL = {
+    "fastder": PARAM_IDS,
+    "derfinder": _baseline_mc_pt_param_ids(),
+    "megadepth_baseline": _baseline_mc_param_ids(),
+}
+
+
+def expand_tool_paths(template, **fixed):
+    """Expand a path template with one (tool, param_id) entry per tool's
+    own param grid, plus any fixed kwargs (sample, scenario)."""
+    out = []
+    for tool, pids in PARAM_IDS_BY_TOOL.items():
+        for pid in pids:
+            out.extend(expand(template, tool=tool, param_id=pid, **fixed))
+    return out
+
 
 def pump_input(wildcards):
     """Return file inputs for the pump rule.
@@ -136,7 +215,32 @@ rule all:
         op.join(RESULTS_DIR, "fuzzy_locus_recall.csv"),
         op.join(RESULTS_DIR, "fuzzy_strand.csv"),
         op.join(RESULTS_DIR, "truth_chain_stats.csv"),
+        op.join(RESULTS_DIR, "archive.DONE"),
     default_target: True
+
+
+# Snapshot the rendered reports into archive/<timestamp>/ so previous runs
+# of the same config are not lost when summary.html / benchmarks.html get
+# re-rendered. Fires whenever the input HTMLs are newer than the marker.
+rule archive_reports:
+    input:
+        summary=op.join(RESULTS_DIR, "summary.html"),
+        benchmarks=op.join(RESULTS_DIR, "benchmarks.html"),
+    output:
+        marker=op.join(RESULTS_DIR, "archive.DONE"),
+    log:
+        op.join(LOG_DIR, "archive_reports.log"),
+    params:
+        archive_root=op.join(RESULTS_DIR, "archive"),
+    shell:
+        """
+        ts=$(date +%Y%m%d_%H%M%S)
+        dest={params.archive_root}/$ts
+        mkdir -p $dest
+        cp -f {input.summary} $dest/summary.html
+        cp -f {input.benchmarks} $dest/benchmarks.html
+        echo "archived to $dest" | tee {output.marker} > {log}
+        """
 
 
 # 1. Download reference
@@ -942,29 +1046,116 @@ rule run_fastder:
         """
 
 
-# 12. Run gffcompare for each sample x parameter combination
+# 11b. Per-tool runners. Each rule produces a GTF at
+# data/tools/{tool}/{scenario}/{param_id}/output.gtf so run_gffcompare and
+# eval_fuzzy_metrics can compare the methods on the same simulated truth.
+
+# fastder: re-export the run_fastder GTF at the standardised path.
+rule link_fastder_gtf:
+    input:
+        gtf_path=op.join(FASTDER_DIR, "{scenario}", "run_fastder_{param_id}.gtf_path"),
+    output:
+        gtf=op.join(DATA_DIR, "tools", "fastder", "{scenario}", "{param_id}", "output.gtf"),
+    benchmark:
+        op.join(BENCH_DIR, "link_fastder_gtf", "{scenario}_{param_id}.tsv")
+    log:
+        op.join(LOG_DIR, "link_fastder_gtf", "{scenario}_{param_id}.log"),
+    shell:
+        """
+        mkdir -p $(dirname {output.gtf})
+        cp -f $(cat {input.gtf_path}) {output.gtf} 2> {log}
+        """
+
+
+# derfinder: Bioconductor coverage-based ER detection. CPM-normalised
+# per-base mean coverage thresholded at --cutoff, post-filtered by
+# --min-length, with optional gap-bridging via --maxregiongap. Sweeps the
+# (min_coverage, position_tolerance) plane shared with fastder. Wildcard
+# param_id has the form mc<v>_pt<v>; we parse it to recover the values.
+rule run_derfinder:
+    input:
+        chr_prefix_done=op.join(FASTDER_DIR, "{scenario}", "match_chr_prefix.DONE"),
+    output:
+        gtf=op.join(DATA_DIR, "tools", "derfinder", "{scenario}", "{param_id}", "output.gtf"),
+    benchmark:
+        op.join(BENCH_DIR, "run_derfinder", "{scenario}_{param_id}.tsv")
+    log:
+        op.join(LOG_DIR, "run_derfinder", "{scenario}_{param_id}.log"),
+    params:
+        bigwig_dir=lambda wc: op.join(FASTDER_DIR, wc.scenario),
+        chroms=lambda wc: FASTDER_CFG.get("chromosomes") or [f"chr{i}" for i in range(1, 23)] + ["chrX"],
+        cutoff=lambda wc: _parse_mc_pt(wc.param_id)[0],
+        maxregiongap=lambda wc: int(_parse_mc_pt(wc.param_id)[1]),
+        min_length=lambda wc: (FASTDER_CFG.get("min_length") or [10])[0],
+        script=op.join(WORKFLOW_DIR, "scripts", "run_derfinder.R"),
+    conda:
+        "envs/derfinder.yaml"
+    shell:
+        """
+        Rscript --vanilla {params.script} \
+            --bigwig-dir {params.bigwig_dir} \
+            --out-gtf {output.gtf} \
+            --cutoff {params.cutoff} \
+            --min-length {params.min_length} \
+            --maxregiongap {params.maxregiongap} \
+            --chromosomes {params.chroms} > {log} 2>&1
+        """
+
+
+# megadepth_baseline: thresholded mean-CPM segmenter. Same coverage
+# pipeline as derfinder, but no gap-bridging or SJ stitching: one
+# transcript per maximal run of bases at or above --cutoff. Sweeps the
+# min_coverage axis shared with fastder. Wildcard param_id is mc<v>.
+rule run_megadepth_baseline:
+    input:
+        chr_prefix_done=op.join(FASTDER_DIR, "{scenario}", "match_chr_prefix.DONE"),
+    output:
+        gtf=op.join(DATA_DIR, "tools", "megadepth_baseline", "{scenario}", "{param_id}", "output.gtf"),
+    benchmark:
+        op.join(BENCH_DIR, "run_megadepth_baseline", "{scenario}_{param_id}.tsv")
+    log:
+        op.join(LOG_DIR, "run_megadepth_baseline", "{scenario}_{param_id}.log"),
+    params:
+        bigwig_dir=lambda wc: op.join(FASTDER_DIR, wc.scenario),
+        chroms=lambda wc: FASTDER_CFG.get("chromosomes") or [f"chr{i}" for i in range(1, 23)] + ["chrX"],
+        cutoff=lambda wc: _parse_mc_pt(wc.param_id)[0],
+        min_length=lambda wc: (FASTDER_CFG.get("min_length") or [10])[0],
+        script=op.join(WORKFLOW_DIR, "scripts", "run_megadepth_baseline.py"),
+    conda:
+        "envs/megadepth_baseline.yaml"
+    shell:
+        """
+        python3 {params.script} \
+            --bigwig-dir {params.bigwig_dir} \
+            --out-gtf {output.gtf} \
+            --cutoff {params.cutoff} \
+            --min-length {params.min_length} \
+            --chromosomes {params.chroms} > {log} 2>&1
+        """
+
+
+# 12. Run gffcompare for each (tool, scenario, sample, param_id) combination
 rule run_gffcompare:
     input:
         chr_prefix_done=op.join(FASTDER_DIR, "{scenario}", "match_chr_prefix.DONE"),
-        gtf_path=op.join(FASTDER_DIR, "{scenario}", "run_fastder_{param_id}.gtf_path"),
+        gtf=op.join(DATA_DIR, "tools", "{tool}", "{scenario}", "{param_id}", "output.gtf"),
     output:
-        stats=op.join(RESULTS_DIR, "{scenario}", "{sample}", "{param_id}", "gffcompare.stats"),
+        stats=op.join(RESULTS_DIR, "{tool}", "{scenario}", "{sample}", "{param_id}", "gffcompare.stats"),
     benchmark:
-        op.join(BENCH_DIR, "run_gffcompare", "{scenario}_{sample}_{param_id}.tsv")
+        op.join(BENCH_DIR, "run_gffcompare", "{tool}_{scenario}_{sample}_{param_id}.tsv")
     log:
-        op.join(LOG_DIR, "gffcompare", "{scenario}_{sample}_{param_id}.log")
+        op.join(LOG_DIR, "gffcompare", "{tool}_{scenario}_{sample}_{param_id}.log")
     params:
         label_gff=lambda wc: op.join(FASTDER_DIR, wc.scenario, f"{wc.sample}_label{LABEL_EXT}"),
         out_prefix=lambda wc: os.path.join(
-            str(RESULTS_DIR), wc.scenario, wc.sample, wc.param_id, "gffcompare",
+            str(RESULTS_DIR), wc.tool, wc.scenario, wc.sample, wc.param_id, "gffcompare",
         ),
     conda:
         "envs/gffcompare.yaml"
     shell:
         """
-        fastder_gtf=$(cat {input.gtf_path})
         mkdir -p $(dirname {params.out_prefix})
-        gffcompare -r {params.label_gff} -o {params.out_prefix} "$fastder_gtf" > {log} 2>&1
+        gffcompare -r {params.label_gff} -o {params.out_prefix} {input.gtf} > {log} 2>&1
         """
 
 
@@ -973,11 +1164,9 @@ rule run_gffcompare:
 # counts, the missed and novel ratios, and the header summary numbers.
 rule collect_results:
     input:
-        expand(
-            op.join(RESULTS_DIR, "{scenario}", "{sample}", "{param_id}", "gffcompare.stats"),
-            scenario=SCENARIOS,
-            sample=PUMP_SAMPLES,
-            param_id=PARAM_IDS,
+        lambda wc: expand_tool_paths(
+            op.join(RESULTS_DIR, "{tool}", "{scenario}", "{sample}", "{param_id}", "gffcompare.stats"),
+            scenario=SCENARIOS, sample=PUMP_SAMPLES,
         ),
     output:
         op.join(RESULTS_DIR, "summary.csv"),
@@ -997,14 +1186,15 @@ rule collect_results:
             pid = parts[-2]
             sample = parts[-3]
             scenario = parts[-4]
-            row = {"scenario": scenario, "sample": sample, "param_id": pid}
+            tool = parts[-5]
+            row = {"tool": tool, "scenario": scenario, "sample": sample, "param_id": pid}
             row.update(PARAM_DICT.get(pid, {}))
             row.update(parse_gffcompare.parse(stats_file))
             rows.append(row)
 
-        # Stable column order: scenario, sample, param_id, any grid params,
-        # then all parsed metric keys in sorted order.
-        meta_keys = {"scenario", "sample", "param_id"}
+        # Stable column order: tool, scenario, sample, param_id, any grid
+        # params, then all parsed metric keys in sorted order.
+        meta_keys = {"tool", "scenario", "sample", "param_id"}
         param_cols = sorted({
             k for r in rows for k in r
             if k in PARAM_DICT.get(r["param_id"], {}) or k in (
@@ -1012,12 +1202,12 @@ rule collect_results:
             )
         })
         metric_cols = sorted({k for r in rows for k in r if k not in meta_keys and k not in param_cols})
-        fieldnames = ["scenario", "sample", "param_id"] + param_cols + metric_cols
+        fieldnames = ["tool", "scenario", "sample", "param_id"] + param_cols + metric_cols
 
         with open(output[0], "w", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()
-            for row in sorted(rows, key=lambda r: (r["scenario"], r["sample"], r["param_id"])):
+            for row in sorted(rows, key=lambda r: (r["tool"], r["scenario"], r["sample"], r["param_id"])):
                 writer.writerow(row)
 
 
@@ -1058,16 +1248,16 @@ rule collect_chain_stats:
 rule eval_fuzzy_metrics:
     input:
         chr_prefix_done=op.join(FASTDER_DIR, "{scenario}", "match_chr_prefix.DONE"),
-        gtf_path=op.join(FASTDER_DIR, "{scenario}", "run_fastder_{param_id}.gtf_path"),
+        gtf=op.join(DATA_DIR, "tools", "{tool}", "{scenario}", "{param_id}", "output.gtf"),
     output:
-        jaccard=op.join(RESULTS_DIR, "{scenario}", "{sample}", "{param_id}", "fuzzy_jaccard.csv"),
-        distances=op.join(RESULTS_DIR, "{scenario}", "{sample}", "{param_id}", "fuzzy_distances.csv"),
-        recall=op.join(RESULTS_DIR, "{scenario}", "{sample}", "{param_id}", "fuzzy_locus_recall.csv"),
-        strand=op.join(RESULTS_DIR, "{scenario}", "{sample}", "{param_id}", "fuzzy_strand.csv"),
+        jaccard=op.join(RESULTS_DIR, "{tool}", "{scenario}", "{sample}", "{param_id}", "fuzzy_jaccard.csv"),
+        distances=op.join(RESULTS_DIR, "{tool}", "{scenario}", "{sample}", "{param_id}", "fuzzy_distances.csv"),
+        recall=op.join(RESULTS_DIR, "{tool}", "{scenario}", "{sample}", "{param_id}", "fuzzy_locus_recall.csv"),
+        strand=op.join(RESULTS_DIR, "{tool}", "{scenario}", "{sample}", "{param_id}", "fuzzy_strand.csv"),
     benchmark:
-        op.join(BENCH_DIR, "eval_fuzzy_metrics", "{scenario}_{sample}_{param_id}.tsv")
+        op.join(BENCH_DIR, "eval_fuzzy_metrics", "{tool}_{scenario}_{sample}_{param_id}.tsv")
     log:
-        op.join(LOG_DIR, "eval_fuzzy", "{scenario}_{sample}_{param_id}.log")
+        op.join(LOG_DIR, "eval_fuzzy", "{tool}_{scenario}_{sample}_{param_id}.log")
     params:
         ref_gff=lambda wc: op.join(FASTDER_DIR, wc.scenario, f"{wc.sample}_label{LABEL_EXT}"),
         script=op.join(WORKFLOW_DIR, "scripts", "eval_fuzzy.py"),
@@ -1075,10 +1265,9 @@ rule eval_fuzzy_metrics:
         "envs/bedtools.yaml"
     shell:
         """
-        fastder_gtf=$(cat {input.gtf_path})
         python3 {params.script} \
             --ref-gff {params.ref_gff} \
-            --fastder-gtf "$fastder_gtf" \
+            --fastder-gtf {input.gtf} \
             --sample {wildcards.sample} --param-id {wildcards.param_id} \
             --scenario {wildcards.scenario} \
             --out-jaccard {output.jaccard} \
@@ -1088,17 +1277,21 @@ rule eval_fuzzy_metrics:
         """
 
 
-# 15b. Concatenate the per-(scenario, sample, param_id) fuzzy CSVs into four files.
+# 15b. Concatenate the per-(tool, scenario, sample, param_id) fuzzy CSVs.
 rule collect_fuzzy_metrics:
     input:
-        jaccard=expand(op.join(RESULTS_DIR, "{scenario}", "{sample}", "{param_id}", "fuzzy_jaccard.csv"),
-                       scenario=SCENARIOS, sample=PUMP_SAMPLES, param_id=PARAM_IDS),
-        distances=expand(op.join(RESULTS_DIR, "{scenario}", "{sample}", "{param_id}", "fuzzy_distances.csv"),
-                         scenario=SCENARIOS, sample=PUMP_SAMPLES, param_id=PARAM_IDS),
-        recall=expand(op.join(RESULTS_DIR, "{scenario}", "{sample}", "{param_id}", "fuzzy_locus_recall.csv"),
-                      scenario=SCENARIOS, sample=PUMP_SAMPLES, param_id=PARAM_IDS),
-        strand=expand(op.join(RESULTS_DIR, "{scenario}", "{sample}", "{param_id}", "fuzzy_strand.csv"),
-                      scenario=SCENARIOS, sample=PUMP_SAMPLES, param_id=PARAM_IDS),
+        jaccard=lambda wc: expand_tool_paths(
+            op.join(RESULTS_DIR, "{tool}", "{scenario}", "{sample}", "{param_id}", "fuzzy_jaccard.csv"),
+            scenario=SCENARIOS, sample=PUMP_SAMPLES),
+        distances=lambda wc: expand_tool_paths(
+            op.join(RESULTS_DIR, "{tool}", "{scenario}", "{sample}", "{param_id}", "fuzzy_distances.csv"),
+            scenario=SCENARIOS, sample=PUMP_SAMPLES),
+        recall=lambda wc: expand_tool_paths(
+            op.join(RESULTS_DIR, "{tool}", "{scenario}", "{sample}", "{param_id}", "fuzzy_locus_recall.csv"),
+            scenario=SCENARIOS, sample=PUMP_SAMPLES),
+        strand=lambda wc: expand_tool_paths(
+            op.join(RESULTS_DIR, "{tool}", "{scenario}", "{sample}", "{param_id}", "fuzzy_strand.csv"),
+            scenario=SCENARIOS, sample=PUMP_SAMPLES),
     output:
         jaccard=op.join(RESULTS_DIR, "fuzzy_jaccard.csv"),
         distances=op.join(RESULTS_DIR, "fuzzy_distances.csv"),
@@ -1108,6 +1301,9 @@ rule collect_fuzzy_metrics:
         op.join(BENCH_DIR, "collect_fuzzy_metrics.tsv")
     run:
         import csv as _csv
+        # The per-(tool, scenario, sample, param_id) CSVs do not carry a
+        # tool column; we recover it from the input file path:
+        #   results/{tool}/{scenario}/{sample}/{param_id}/fuzzy_*.csv
         for src_files, outfile in [
             (input.jaccard, output.jaccard),
             (input.distances, output.distances),
@@ -1118,17 +1314,19 @@ rule collect_fuzzy_metrics:
             with open(outfile, "w", newline="") as out:
                 writer = None
                 for path in src_files:
+                    parts = Path(path).parts
+                    tool = parts[-5]
                     with open(path) as src:
                         reader = _csv.reader(src)
                         rows = list(reader)
                         if not rows:
                             continue
                         if header is None:
-                            header = rows[0]
+                            header = ["tool"] + rows[0]
                             writer = _csv.writer(out)
                             writer.writerow(header)
                         for row in rows[1:]:
-                            writer.writerow(row)
+                            writer.writerow([tool] + row)
 
 
 # 16. Render the Rmarkdown summary report.

@@ -1,0 +1,33 @@
+seed: 10
+cores: 4
+asimulator:
+  seq_depth: 100000
+  multi_events_per_exon: false
+  strand_specific: true
+  probs_as_freq: true
+  samples:
+    es:
+      es: 1.0
+    mes:
+      mes: 1.0
+    afe:
+      afe: 1.0
+    ale:
+      ale: 1.0
+    mixed:
+      es: 0.25
+      mes: 0.25
+      afe: 0.25
+      ale: 0.25
+monorail:
+  ref_version: hg38
+  project_name: "local"
+  project_id: 101
+  pump_source: asimulator
+fastder:
+  stranded: false
+  min_coverage: [0.01, 0.05, 0.1]
+  position_tolerance: [0, 5, 10]
+  chromosomes: ["chr21"]
+gffcompare:
+  reference_annotation: ""
