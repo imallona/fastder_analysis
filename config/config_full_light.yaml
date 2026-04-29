@@ -1,0 +1,46 @@
+# Full-depth simulation with the monorail_light backend (chr21-only, no
+# recount-pump). Mirrors config.yaml's asimulator settings (5 samples, 10M
+# reads each) but uses the lean STAR + Python aggregator backend, so no
+# Singularity image pulls and no whole-genome reference download.
+#
+#   FASTDER_EVAL_CONFIG=../config/config_full_light.yaml \
+#     snakemake --use-conda --use-singularity --cores 12
+
+seed: 10
+cores: 12
+
+asimulator:
+  seq_depth: 10000000
+  multi_events_per_exon: false
+  strand_specific: true
+  probs_as_freq: true
+
+  samples:
+    es:
+      es: 1.0
+    mes:
+      mes: 1.0
+    afe:
+      afe: 1.0
+    ale:
+      ale: 1.0
+    mixed:
+      es: 0.25
+      mes: 0.25
+      afe: 0.25
+      ale: 0.25
+
+monorail:
+  backend: monorail_light
+  ref_version: hg38
+  project_name: "local"
+  project_id: 101
+  pump_source: asimulator
+
+fastder:
+  stranded: false
+  min_coverage: [0.01]
+  chromosomes: ["chr21"]
+
+gffcompare:
+  reference_annotation: ""

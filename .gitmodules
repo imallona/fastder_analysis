@@ -4,4 +4,4 @@
 [submodule "workflow/external/fastder"]
 	path = workflow/external/fastder
 	url = https://github.com/imallona/fastder.git
-	branch = perf-mm-rr-memory
+	branch = main

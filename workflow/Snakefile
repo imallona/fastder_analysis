@@ -3,6 +3,8 @@ import os.path as op
 import itertools
 from pathlib import Path
 
+# IMPORTANT: scenarios control whether ASimulatoR template transcripts contribute reads. template_and_variant keeps the default (template + variant both expressed); variant_only post-filters the FASTQ and GFF so the truth set carries only alternative isoforms.
+
 # Default config is ../config/config.yaml; override with the FASTDER_EVAL_CONFIG
 # environment variable to fully replace it (e.g. with config_quick.yaml for a
 # reduced-scope local run). Using an env var instead of --configfile avoids the
@@ -45,6 +47,16 @@ LIGHT_STAR_IDX = op.join(LIGHT_DIR, "star_idx")
 
 # Experimental design
 ASIM_SAMPLES = list(config["asimulator"]["samples"].keys())
+
+# Per the IMPORTANT note above, every downstream stage runs once per scenario.
+SCENARIOS = ["template_and_variant", "variant_only"]
+
+# Wildcard constraints keep snakemake from matching path components against
+# unrelated wildcards (e.g. {sample} swallowing a scenario subdir).
+wildcard_constraints:
+    scenario="(" + "|".join(SCENARIOS) + ")",
+    sample="[^/]+",
+    param_id="[^/]+",
 
 # Pump source determines which samples and inputs the pump rule uses
 PUMP_SOURCE = config["monorail"]["pump_source"]
@@ -102,11 +114,15 @@ PARAM_DICT = {_param_id(c): c for c in _PARAM_COMBOS}
 
 def pump_input(wildcards):
     """Return file inputs for the pump rule.
-    Local sources declare the asim directory so Snakemake tracks the dependency.
+    Local sources declare the per-sample asim FASTQs as the dependency, since
+    run_asimulator now emits specific files rather than a parent directory.
     SRA sources have no file inputs as data is downloaded at runtime.
     """
     if PUMP_SOURCE == "asimulator":
-        return {"sample_dir": op.join(DATA_DIR, "asim", wildcards.sample)}
+        return {
+            "fq1": op.join(DATA_DIR, "asim", wildcards.sample, "sample_01_1.fastq"),
+            "fq2": op.join(DATA_DIR, "asim", wildcards.sample, "sample_01_2.fastq"),
+        }
     return {}
 
 
@@ -115,6 +131,10 @@ rule all:
         op.join(RESULTS_DIR, "summary.csv"),
         op.join(RESULTS_DIR, "summary.html"),
         op.join(RESULTS_DIR, "benchmarks.html"),
+        op.join(RESULTS_DIR, "fuzzy_jaccard.csv"),
+        op.join(RESULTS_DIR, "fuzzy_distances.csv"),
+        op.join(RESULTS_DIR, "fuzzy_locus_recall.csv"),
+        op.join(RESULTS_DIR, "fuzzy_strand.csv"),
     default_target: True
 
 
@@ -144,7 +164,12 @@ rule run_asimulator:
     input:
         reference=rules.download_reference.output[0]
     output:
-        directory(op.join(DATA_DIR, "asim", "{sample}"))
+        # Explicit file outputs (rather than the parent directory) so snakemake
+        # can chain make_scenario back to this rule via the FASTQ + GFF inputs.
+        gff=op.join(DATA_DIR, "asim", "{sample}", "splicing_variants.gff3"),
+        fq1=op.join(DATA_DIR, "asim", "{sample}", "sample_01_1.fastq"),
+        fq2=op.join(DATA_DIR, "asim", "{sample}", "sample_01_2.fastq"),
+        meta=op.join(DATA_DIR, "asim", "{sample}", "simulation_metadata.yaml"),
     benchmark:
         op.join(BENCH_DIR, "run_asimulator", "{sample}.tsv")
     log:
@@ -162,6 +187,36 @@ rule run_asimulator:
         "docker://biomedbigdata/asimulator"
     script:
         "scripts/runASimulatoR.R"
+
+
+# 2b. Materialise the per-scenario asimulator outputs.
+# template_and_variant symlinks the original ASimulatoR output unchanged.
+# variant_only filters the FASTQ to drop reads whose source transcript carries
+# template=TRUE in splicing_variants.gff3 and rewrites the GFF to keep only
+# the alternative isoforms, so the truth set used by gffcompare contains
+# exactly the transcripts that produced the reads downstream rules will see.
+rule make_scenario:
+    input:
+        gff=op.join(DATA_DIR, "asim", "{sample}", "splicing_variants.gff3"),
+        fq1=op.join(DATA_DIR, "asim", "{sample}", "sample_01_1.fastq"),
+        fq2=op.join(DATA_DIR, "asim", "{sample}", "sample_01_2.fastq"),
+    output:
+        gff=op.join(DATA_DIR, "asim", "{sample}", "{scenario}", "splicing_variants.gff3"),
+        fq1=op.join(DATA_DIR, "asim", "{sample}", "{scenario}", "sample_01_1.fastq"),
+        fq2=op.join(DATA_DIR, "asim", "{sample}", "{scenario}", "sample_01_2.fastq"),
+    benchmark:
+        op.join(BENCH_DIR, "make_scenario", "{sample}_{scenario}.tsv")
+    log:
+        op.join(LOG_DIR, "make_scenario", "{sample}_{scenario}.log"),
+    params:
+        script=op.join(WORKFLOW_DIR, "scripts", "make_scenario.py"),
+    shell:
+        """
+        python3 {params.script} --scenario {wildcards.scenario} \
+            --gff-in {input.gff} --fq1-in {input.fq1} --fq2-in {input.fq2} \
+            --gff-out {output.gff} --fq1-out {output.fq1} --fq2-out {output.fq2} \
+            > {log} 2>&1
+        """
 
 
 # 3. Pull Singularity containers
@@ -442,18 +497,17 @@ rule ml_star_index:
 rule ml_star_align:
     input:
         idx=str(LIGHT_STAR_IDX),
-        sample_dir=op.join(DATA_DIR, "asim", "{sample}"),
+        fq1=op.join(DATA_DIR, "asim", "{sample}", "{scenario}", "sample_01_1.fastq"),
+        fq2=op.join(DATA_DIR, "asim", "{sample}", "{scenario}", "sample_01_2.fastq"),
     output:
-        bam=op.join(LIGHT_DIR, "{sample}", "Aligned.sortedByCoord.out.bam"),
-        sj=op.join(LIGHT_DIR, "{sample}", "SJ.out.tab"),
+        bam=op.join(LIGHT_DIR, "{scenario}", "{sample}", "Aligned.sortedByCoord.out.bam"),
+        sj=op.join(LIGHT_DIR, "{scenario}", "{sample}", "SJ.out.tab"),
     benchmark:
-        op.join(BENCH_DIR, "ml_star_align", "{sample}.tsv")
+        op.join(BENCH_DIR, "ml_star_align", "{sample}_{scenario}.tsv")
     log:
-        op.join(LOG_DIR, "ml_star_align", "{sample}.log"),
+        op.join(LOG_DIR, "ml_star_align", "{sample}_{scenario}.log"),
     params:
-        outprefix=lambda wc: op.join(LIGHT_DIR, wc.sample) + "/",
-        fp1=lambda wc: op.join(DATA_DIR, "asim", wc.sample, "sample_01_1.fastq"),
-        fp2=lambda wc: op.join(DATA_DIR, "asim", wc.sample, "sample_01_2.fastq"),
+        outprefix=lambda wc: op.join(LIGHT_DIR, wc.scenario, wc.sample) + "/",
     threads: config["cores"]
     conda:
         "envs/star.yaml"
@@ -462,10 +516,11 @@ rule ml_star_align:
         mkdir -p {params.outprefix}
         STAR --runMode alignReads \
             --genomeDir {input.idx} \
-            --readFilesIn {params.fp1} {params.fp2} \
+            --readFilesIn {input.fq1} {input.fq2} \
             --runThreadN {threads} \
             --outSAMtype BAM SortedByCoordinate \
             --outSAMstrandField intronMotif \
+            --limitBAMsortRAM 8000000000 \
             --outFileNamePrefix {params.outprefix} > {log} 2>&1
         samtools index {output.bam} >> {log} 2>&1
         """
@@ -476,21 +531,22 @@ rule ml_star_align:
 # -split / -F 256 match the megadepth coverage semantics used by recount-pump.
 rule ml_bam_to_bigwig:
     input:
-        bam=op.join(LIGHT_DIR, "{sample}", "Aligned.sortedByCoord.out.bam"),
+        bam=op.join(LIGHT_DIR, "{scenario}", "{sample}", "Aligned.sortedByCoord.out.bam"),
     output:
         bws=(
-            [op.join(LIGHT_DIR, "{sample}.plus.bw"), op.join(LIGHT_DIR, "{sample}.minus.bw")]
+            [op.join(LIGHT_DIR, "{scenario}", "{sample}.plus.bw"),
+             op.join(LIGHT_DIR, "{scenario}", "{sample}.minus.bw")]
             if STRANDED else
-            [op.join(LIGHT_DIR, "{sample}.all.bw")]
+            [op.join(LIGHT_DIR, "{scenario}", "{sample}.all.bw")]
         ),
     benchmark:
-        op.join(BENCH_DIR, "ml_bam_to_bigwig", "{sample}.tsv")
+        op.join(BENCH_DIR, "ml_bam_to_bigwig", "{sample}_{scenario}.tsv")
     log:
-        op.join(LOG_DIR, "ml_bam_to_bigwig", "{sample}.log"),
+        op.join(LOG_DIR, "ml_bam_to_bigwig", "{sample}_{scenario}.log"),
     params:
-        chrom_sizes=lambda wc: op.join(LIGHT_DIR, f"{wc.sample}.chrom.sizes"),
+        chrom_sizes=lambda wc: op.join(LIGHT_DIR, wc.scenario, f"{wc.sample}.chrom.sizes"),
         stranded=STRANDED,
-        outdir=str(LIGHT_DIR),
+        outdir=lambda wc: op.join(LIGHT_DIR, wc.scenario),
     conda:
         "envs/stranded_bigwig.yaml"
     shell:
@@ -526,17 +582,18 @@ rule ml_bam_to_bigwig:
 # downstream — see emit_lean_mm_rr.py for the rationale.
 rule ml_emit_mm_rr:
     input:
-        sj_files=expand(op.join(LIGHT_DIR, "{sample}", "SJ.out.tab"), sample=PUMP_SAMPLES),
+        sj_files=expand(op.join(LIGHT_DIR, "{{scenario}}", "{sample}", "SJ.out.tab"),
+                        sample=PUMP_SAMPLES),
     output:
-        rr=op.join(LIGHT_DIR, "junctions.ALL.RR"),
-        mm=op.join(LIGHT_DIR, "junctions.ALL.MM"),
-        samples_tsv=op.join(LIGHT_DIR, "samples.tsv"),
+        rr=op.join(LIGHT_DIR, "{scenario}", "junctions.ALL.RR"),
+        mm=op.join(LIGHT_DIR, "{scenario}", "junctions.ALL.MM"),
+        samples_tsv=op.join(LIGHT_DIR, "{scenario}", "samples.tsv"),
     benchmark:
-        op.join(BENCH_DIR, "ml_emit_mm_rr.tsv")
+        op.join(BENCH_DIR, "ml_emit_mm_rr_{scenario}.tsv")
     log:
-        op.join(LOG_DIR, "ml_emit_mm_rr.log"),
+        op.join(LOG_DIR, "ml_emit_mm_rr_{scenario}.log"),
     params:
-        out_prefix=op.join(LIGHT_DIR, "junctions.ALL"),
+        out_prefix=lambda wc: op.join(LIGHT_DIR, wc.scenario, "junctions.ALL"),
         chroms=lambda wc: FASTDER_CFG.get("chromosomes") or [f"chr{i}" for i in range(1, 23)] + ["chrX"],
         samples=PUMP_SAMPLES,
         project=config["monorail"]["project_name"],
@@ -566,23 +623,28 @@ rule ml_emit_mm_rr:
 # The set of inputs depends on the backend: with monorail we read from the
 # unify/pump output dirs; with monorail_light we read from the LIGHT_DIR
 # scratch produced by the ml_* rules above.
-def _extract_inputs(_wc):
+def _extract_inputs(wc):
     if BACKEND == "monorail_light":
+        light_scn = op.join(LIGHT_DIR, wc.scenario)
         result = {
-            "rr": op.join(LIGHT_DIR, "junctions.ALL.RR"),
-            "mm": op.join(LIGHT_DIR, "junctions.ALL.MM"),
-            "samples_tsv": op.join(LIGHT_DIR, "samples.tsv"),
+            "rr": op.join(light_scn, "junctions.ALL.RR"),
+            "mm": op.join(light_scn, "junctions.ALL.MM"),
+            "samples_tsv": op.join(light_scn, "samples.tsv"),
         }
         if STRANDED:
             result["bws"] = expand(
-                [op.join(LIGHT_DIR, "{sample}.plus.bw"),
-                 op.join(LIGHT_DIR, "{sample}.minus.bw")],
+                [op.join(light_scn, "{sample}.plus.bw"),
+                 op.join(light_scn, "{sample}.minus.bw")],
                 sample=PUMP_SAMPLES,
             )
         else:
-            result["bws"] = expand(op.join(LIGHT_DIR, "{sample}.all.bw"), sample=PUMP_SAMPLES)
+            result["bws"] = expand(op.join(light_scn, "{sample}.all.bw"), sample=PUMP_SAMPLES)
+        result["sample_gffs"] = expand(
+            op.join(DATA_DIR, "asim", "{sample}", "{scenario}", "splicing_variants.gff3"),
+            sample=PUMP_SAMPLES, scenario=[wc.scenario],
+        )
         return result
-    # monorail (heavy) backend
+    # monorail (heavy) backend (scenario unused; legacy path)
     result = {
         "unify_dir": op.join(DATA_DIR, "unify"),
         "pump_dirs": expand(op.join(DATA_DIR, "pump", "{sample}"), sample=PUMP_SAMPLES),
@@ -600,15 +662,17 @@ rule extract_fastder_inputs:
     input:
         unpack(_extract_inputs),
     output:
-        touch(op.join(FASTDER_DIR, "extract.DONE"))
+        touch(op.join(FASTDER_DIR, "{scenario}", "extract.DONE"))
     benchmark:
-        op.join(BENCH_DIR, "extract_fastder_inputs.tsv")
+        op.join(BENCH_DIR, "extract_fastder_inputs_{scenario}.tsv")
     log:
-        op.join(LOG_DIR, "extract_fastder_inputs.log")
+        op.join(LOG_DIR, "extract_fastder_inputs_{scenario}.log")
     params:
-        fastder_dir=str(FASTDER_DIR),
+        fastder_dir=lambda wc: op.join(FASTDER_DIR, wc.scenario),
         pump_dir=op.join(DATA_DIR, "pump"),
-        light_dir=str(LIGHT_DIR),
+        light_dir=lambda wc: op.join(LIGHT_DIR, wc.scenario),
+        scenario=lambda wc: wc.scenario,
+        asim_dir=op.join(DATA_DIR, "asim"),
         project_name=config["monorail"]["project_name"],
         ref_version=config["monorail"]["ref_version"],
         stranded=STRANDED,
@@ -701,10 +765,15 @@ rule extract_fastder_inputs:
                 " >> {log} 2>&1"
             )
 
-        # 4. Copy label / reference GFF for gffcompare (backend-independent)
+        # 4. Copy label / reference GFF for gffcompare. With asimulator, the
+        # truth set comes from the per-scenario splicing_variants.gff3, so
+        # variant_only's truth contains only the alternative isoforms.
         if PUMP_SOURCE == "asimulator":
             for sample in PUMP_SAMPLES:
-                gff_src = Path(str(DATA_DIR)) / "asim" / sample / "splicing_variants.gff3"
+                gff_src = (Path(str(params.asim_dir)) / sample
+                           / params.scenario / "splicing_variants.gff3")
+                if not gff_src.exists():
+                    gff_src = Path(str(params.asim_dir)) / sample / "splicing_variants.gff3"
                 if gff_src.exists():
                     shutil.copy2(gff_src, fdir / f"{sample}_label.gff3")
         else:
@@ -721,15 +790,15 @@ rule extract_fastder_inputs:
 # 8. Match chr prefix convention for files used by gffcompare
 rule match_chr_prefix:
     input:
-        op.join(FASTDER_DIR, "extract.DONE")
+        op.join(FASTDER_DIR, "{scenario}", "extract.DONE")
     output:
-        touch(op.join(FASTDER_DIR, "match_chr_prefix.DONE"))
+        touch(op.join(FASTDER_DIR, "{scenario}", "match_chr_prefix.DONE"))
     benchmark:
-        op.join(BENCH_DIR, "match_chr_prefix.tsv")
+        op.join(BENCH_DIR, "match_chr_prefix_{scenario}.tsv")
     log:
-        op.join(LOG_DIR, "match_chr_prefix.log")
+        op.join(LOG_DIR, "match_chr_prefix_{scenario}.log")
     params:
-        fastder_dir=str(FASTDER_DIR),
+        fastder_dir=lambda wc: op.join(FASTDER_DIR, wc.scenario),
     shell:
         """
         for file in {params.fastder_dir}/*_label.gff3 {params.fastder_dir}/*_label.gtf; do
@@ -821,17 +890,17 @@ rule build_fastder:
 rule run_fastder:
     input:
         fastder_exe=op.join(FASTDER_BUILD_DIR, "fastder"),
-        extract_done=op.join(FASTDER_DIR, "extract.DONE"),
+        extract_done=op.join(FASTDER_DIR, "{scenario}", "extract.DONE"),
     output:
-        gtf_path=op.join(FASTDER_DIR, "run_fastder_{param_id}.gtf_path"),
-        done=touch(op.join(FASTDER_DIR, "run_fastder_{param_id}.DONE")),
+        gtf_path=op.join(FASTDER_DIR, "{scenario}", "run_fastder_{param_id}.gtf_path"),
+        done=touch(op.join(FASTDER_DIR, "{scenario}", "run_fastder_{param_id}.DONE")),
     benchmark:
-        op.join(BENCH_DIR, "run_fastder", "{param_id}.tsv")
+        op.join(BENCH_DIR, "run_fastder", "{scenario}_{param_id}.tsv")
     log:
-        op.join(LOG_DIR, "run_fastder", "{param_id}.log")
+        op.join(LOG_DIR, "run_fastder", "{scenario}_{param_id}.log")
     params:
-        fastder_dir=str(FASTDER_DIR),
-        run_dir=lambda wc: op.join(FASTDER_DIR, "runs", wc.param_id),
+        fastder_dir=lambda wc: op.join(FASTDER_DIR, wc.scenario),
+        run_dir=lambda wc: op.join(FASTDER_DIR, wc.scenario, "runs", wc.param_id),
         ncores=config["cores"],
         fastder_args=lambda wc: PARAM_CLI_ARGS[wc.param_id],
         stranded_arg="--stranded" if STRANDED else "",
@@ -872,18 +941,18 @@ rule run_fastder:
 # 12. Run gffcompare for each sample x parameter combination
 rule run_gffcompare:
     input:
-        chr_prefix_done=op.join(FASTDER_DIR, "match_chr_prefix.DONE"),
-        gtf_path=op.join(FASTDER_DIR, "run_fastder_{param_id}.gtf_path"),
+        chr_prefix_done=op.join(FASTDER_DIR, "{scenario}", "match_chr_prefix.DONE"),
+        gtf_path=op.join(FASTDER_DIR, "{scenario}", "run_fastder_{param_id}.gtf_path"),
     output:
-        stats=op.join(RESULTS_DIR, "{sample}", "{param_id}", "gffcompare.stats"),
+        stats=op.join(RESULTS_DIR, "{scenario}", "{sample}", "{param_id}", "gffcompare.stats"),
     benchmark:
-        op.join(BENCH_DIR, "run_gffcompare", "{sample}_{param_id}.tsv")
+        op.join(BENCH_DIR, "run_gffcompare", "{scenario}_{sample}_{param_id}.tsv")
     log:
-        op.join(LOG_DIR, "gffcompare", "{sample}_{param_id}.log")
+        op.join(LOG_DIR, "gffcompare", "{scenario}_{sample}_{param_id}.log")
     params:
-        label_gff=lambda wc: op.join(FASTDER_DIR, f"{wc.sample}_label{LABEL_EXT}"),
+        label_gff=lambda wc: op.join(FASTDER_DIR, wc.scenario, f"{wc.sample}_label{LABEL_EXT}"),
         out_prefix=lambda wc: os.path.join(
-            str(RESULTS_DIR), wc.sample, wc.param_id, "gffcompare",
+            str(RESULTS_DIR), wc.scenario, wc.sample, wc.param_id, "gffcompare",
         ),
     conda:
         "envs/gffcompare.yaml"
@@ -901,7 +970,8 @@ rule run_gffcompare:
 rule collect_results:
     input:
         expand(
-            op.join(RESULTS_DIR, "{sample}", "{param_id}", "gffcompare.stats"),
+            op.join(RESULTS_DIR, "{scenario}", "{sample}", "{param_id}", "gffcompare.stats"),
+            scenario=SCENARIOS,
             sample=PUMP_SAMPLES,
             param_id=PARAM_IDS,
         ),
@@ -922,14 +992,15 @@ rule collect_results:
             parts = Path(stats_file).parts
             pid = parts[-2]
             sample = parts[-3]
-            row = {"sample": sample, "param_id": pid}
+            scenario = parts[-4]
+            row = {"scenario": scenario, "sample": sample, "param_id": pid}
             row.update(PARAM_DICT.get(pid, {}))
             row.update(parse_gffcompare.parse(stats_file))
             rows.append(row)
 
-        # Stable column order: sample, param_id, any grid params, then all
-        # parsed metric keys in sorted order.
-        meta_keys = {"sample", "param_id"}
+        # Stable column order: scenario, sample, param_id, any grid params,
+        # then all parsed metric keys in sorted order.
+        meta_keys = {"scenario", "sample", "param_id"}
         param_cols = sorted({
             k for r in rows for k in r
             if k in PARAM_DICT.get(r["param_id"], {}) or k in (
@@ -937,20 +1008,20 @@ rule collect_results:
             )
         })
         metric_cols = sorted({k for r in rows for k in r if k not in meta_keys and k not in param_cols})
-        fieldnames = ["sample", "param_id"] + param_cols + metric_cols
+        fieldnames = ["scenario", "sample", "param_id"] + param_cols + metric_cols
 
         with open(output[0], "w", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()
-            for row in sorted(rows, key=lambda r: (r["sample"], r["param_id"])):
+            for row in sorted(rows, key=lambda r: (r["scenario"], r["sample"], r["param_id"])):
                 writer.writerow(row)
 
 
 # 14. Per-transcript stats parsed from each fastder GTF.
 rule collect_chain_stats:
     input:
-        gtf_paths=expand(op.join(FASTDER_DIR, "run_fastder_{param_id}.gtf_path"),
-                         param_id=PARAM_IDS),
+        gtf_paths=expand(op.join(FASTDER_DIR, "{scenario}", "run_fastder_{param_id}.gtf_path"),
+                         scenario=SCENARIOS, param_id=PARAM_IDS),
     output:
         op.join(RESULTS_DIR, "chain_stats.csv"),
     benchmark:
@@ -959,20 +1030,112 @@ rule collect_chain_stats:
         op.join(LOG_DIR, "collect_chain_stats.log"),
     params:
         script=op.join(WORKFLOW_DIR, "scripts", "collect_chain_stats.py"),
+        scenarios=SCENARIOS,
         param_ids=PARAM_IDS,
     run:
+        # Each gtf_path file is at FASTDER_DIR/<scenario>/run_fastder_<pid>.gtf_path
+        # so we recover (scenario, param_id) by matching the path components.
         args = []
-        for gtf_path_file, pid in zip(input.gtf_paths, params.param_ids):
-            args.extend(["--gtf-path-file", gtf_path_file, "--param-id", pid])
+        for gtf_path_file in input.gtf_paths:
+            parts = Path(gtf_path_file).parts
+            scenario = parts[-2]
+            fname = parts[-1]
+            pid = fname.removeprefix("run_fastder_").removesuffix(".gtf_path")
+            args.extend(["--gtf-path-file", gtf_path_file,
+                         "--param-id", pid, "--scenario", scenario])
         shell("python3 {params.script} " + " ".join(f"'{a}'" for a in args)
               + " --out {output} > {log} 2>&1")
 
 
-# 15. Render the Rmarkdown summary report.
+# 15a. Fuzzy fastder-vs-reference comparison without gffcompare's strict
+# exon-boundary requirement. Three per-(sample, param_id) CSVs:
+# reciprocal-best Jaccard, fastder-exon-boundary distance to nearest ref
+# boundary, and locus-recall curve at fixed thresholds.
+rule eval_fuzzy_metrics:
+    input:
+        chr_prefix_done=op.join(FASTDER_DIR, "{scenario}", "match_chr_prefix.DONE"),
+        gtf_path=op.join(FASTDER_DIR, "{scenario}", "run_fastder_{param_id}.gtf_path"),
+    output:
+        jaccard=op.join(RESULTS_DIR, "{scenario}", "{sample}", "{param_id}", "fuzzy_jaccard.csv"),
+        distances=op.join(RESULTS_DIR, "{scenario}", "{sample}", "{param_id}", "fuzzy_distances.csv"),
+        recall=op.join(RESULTS_DIR, "{scenario}", "{sample}", "{param_id}", "fuzzy_locus_recall.csv"),
+        strand=op.join(RESULTS_DIR, "{scenario}", "{sample}", "{param_id}", "fuzzy_strand.csv"),
+    benchmark:
+        op.join(BENCH_DIR, "eval_fuzzy_metrics", "{scenario}_{sample}_{param_id}.tsv")
+    log:
+        op.join(LOG_DIR, "eval_fuzzy", "{scenario}_{sample}_{param_id}.log")
+    params:
+        ref_gff=lambda wc: op.join(FASTDER_DIR, wc.scenario, f"{wc.sample}_label{LABEL_EXT}"),
+        script=op.join(WORKFLOW_DIR, "scripts", "eval_fuzzy.py"),
+    conda:
+        "envs/bedtools.yaml"
+    shell:
+        """
+        fastder_gtf=$(cat {input.gtf_path})
+        python3 {params.script} \
+            --ref-gff {params.ref_gff} \
+            --fastder-gtf "$fastder_gtf" \
+            --sample {wildcards.sample} --param-id {wildcards.param_id} \
+            --scenario {wildcards.scenario} \
+            --out-jaccard {output.jaccard} \
+            --out-distances {output.distances} \
+            --out-recall {output.recall} \
+            --out-strand {output.strand} > {log} 2>&1
+        """
+
+
+# 15b. Concatenate the per-(scenario, sample, param_id) fuzzy CSVs into four files.
+rule collect_fuzzy_metrics:
+    input:
+        jaccard=expand(op.join(RESULTS_DIR, "{scenario}", "{sample}", "{param_id}", "fuzzy_jaccard.csv"),
+                       scenario=SCENARIOS, sample=PUMP_SAMPLES, param_id=PARAM_IDS),
+        distances=expand(op.join(RESULTS_DIR, "{scenario}", "{sample}", "{param_id}", "fuzzy_distances.csv"),
+                         scenario=SCENARIOS, sample=PUMP_SAMPLES, param_id=PARAM_IDS),
+        recall=expand(op.join(RESULTS_DIR, "{scenario}", "{sample}", "{param_id}", "fuzzy_locus_recall.csv"),
+                      scenario=SCENARIOS, sample=PUMP_SAMPLES, param_id=PARAM_IDS),
+        strand=expand(op.join(RESULTS_DIR, "{scenario}", "{sample}", "{param_id}", "fuzzy_strand.csv"),
+                      scenario=SCENARIOS, sample=PUMP_SAMPLES, param_id=PARAM_IDS),
+    output:
+        jaccard=op.join(RESULTS_DIR, "fuzzy_jaccard.csv"),
+        distances=op.join(RESULTS_DIR, "fuzzy_distances.csv"),
+        recall=op.join(RESULTS_DIR, "fuzzy_locus_recall.csv"),
+        strand=op.join(RESULTS_DIR, "fuzzy_strand.csv"),
+    benchmark:
+        op.join(BENCH_DIR, "collect_fuzzy_metrics.tsv")
+    run:
+        import csv as _csv
+        for src_files, outfile in [
+            (input.jaccard, output.jaccard),
+            (input.distances, output.distances),
+            (input.recall, output.recall),
+            (input.strand, output.strand),
+        ]:
+            header = None
+            with open(outfile, "w", newline="") as out:
+                writer = None
+                for path in src_files:
+                    with open(path) as src:
+                        reader = _csv.reader(src)
+                        rows = list(reader)
+                        if not rows:
+                            continue
+                        if header is None:
+                            header = rows[0]
+                            writer = _csv.writer(out)
+                            writer.writerow(header)
+                        for row in rows[1:]:
+                            writer.writerow(row)
+
+
+# 16. Render the Rmarkdown summary report.
 rule render_summary_report:
     input:
         summary=op.join(RESULTS_DIR, "summary.csv"),
         chain_stats=op.join(RESULTS_DIR, "chain_stats.csv"),
+        jaccard=op.join(RESULTS_DIR, "fuzzy_jaccard.csv"),
+        distances=op.join(RESULTS_DIR, "fuzzy_distances.csv"),
+        recall=op.join(RESULTS_DIR, "fuzzy_locus_recall.csv"),
+        strand=op.join(RESULTS_DIR, "fuzzy_strand.csv"),
         rmd=op.join(WORKFLOW_DIR, "reports", "summary.Rmd"),
     output:
         op.join(RESULTS_DIR, "summary.html"),
@@ -986,7 +1149,11 @@ rule render_summary_report:
             input = '{input.rmd}',
             output_file = '$(realpath -m {output})',
             params = list(summary_csv = '$(realpath {input.summary})',
-                          chain_stats_csv = '$(realpath {input.chain_stats})'),
+                          chain_stats_csv = '$(realpath {input.chain_stats})',
+                          fuzzy_jaccard_csv = '$(realpath {input.jaccard})',
+                          fuzzy_distances_csv = '$(realpath {input.distances})',
+                          fuzzy_recall_csv = '$(realpath {input.recall})',
+                          fuzzy_strand_csv = '$(realpath {input.strand})'),
             quiet = TRUE)" > {log} 2>&1
         """
 

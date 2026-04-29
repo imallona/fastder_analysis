@@ -8,6 +8,10 @@ output:
 params:
   summary_csv: NULL
   chain_stats_csv: NULL
+  fuzzy_jaccard_csv: NULL
+  fuzzy_distances_csv: NULL
+  fuzzy_recall_csv: NULL
+  fuzzy_strand_csv: NULL
 ---
 
 ```{r setup, include=FALSE}
@@ -23,6 +27,34 @@ library(readr)
 library(dplyr)
 library(tidyr)
 library(ggplot2)
+
+as_event_levels <- c("es", "mes", "afe", "ale", "mixed")
+as_event_labels <- c(
+  es = "exon skip (ES)",
+  mes = "mutually exclusive (MES)",
+  afe = "alt first exon (AFE)",
+  ale = "alt last exon (ALE)",
+  mixed = "mixed events"
+)
+as_event_palette <- c(
+  es = "#1b9e77",
+  mes = "#d95f02",
+  afe = "#7570b3",
+  ale = "#e7298a",
+  mixed = "#666666"
+)
+
+label_as <- function(v) {
+  factor(v, levels = as_event_levels, labels = as_event_labels[as_event_levels])
+}
+
+pub_theme <- theme_bw(base_size = 12) +
+  theme(
+    aspect.ratio = 1,
+    panel.grid.minor = element_blank(),
+    strip.background = element_rect(fill = "grey95", colour = NA),
+    plot.title = element_text(size = 13, face = "plain")
+  )
 ```
 
 ```{r load}
@@ -39,6 +71,149 @@ cs <- read_csv(chain_path, show_col_types = FALSE)
 cs$n_exons <- as.integer(cs$n_exons)
 cs$total_exon_length <- as.numeric(cs$total_exon_length)
 cs$score <- as.numeric(cs$score)
+
+fuzzy_paths <- list(
+  jaccard = params$fuzzy_jaccard_csv,
+  distances = params$fuzzy_distances_csv,
+  recall = params$fuzzy_recall_csv,
+  strand = params$fuzzy_strand_csv
+)
+fuzzy <- lapply(fuzzy_paths, function(p) {
+  if (is.null(p) || !file.exists(p)) NULL else read_csv(p, show_col_types = FALSE)
+})
+```
+
+# Method performance across AS event types
+
+Each ASimulatoR sample carries one alternative-splicing event class: exon skipping (ES), mutually exclusive exons (MES), alternative first exon (AFE), alternative last exon (ALE), or a 4-way mix. The four figures below summarize how fastder reconstructs each class.
+
+## Per-event Jaccard against best reference partner
+
+```{r pub_jaccard, fig.width = 6, fig.height = 6}
+if (!is.null(fuzzy$jaccard) && nrow(fuzzy$jaccard) > 0) {
+  fj <- fuzzy$jaccard
+  fj$jaccard <- as.numeric(fj$jaccard)
+  fj$as_event <- label_as(fj$sample)
+  ggplot(fj, aes(x = as_event, y = jaccard, fill = sample)) +
+    geom_violin(trim = TRUE, scale = "width") +
+    geom_boxplot(width = 0.15, outlier.size = 0.5, fill = "white") +
+    scale_fill_manual(values = as_event_palette, guide = "none") +
+    labs(x = NULL, y = "exonic Jaccard (best fastder match)") +
+    coord_cartesian(ylim = c(0, 1)) +
+    pub_theme +
+    theme(axis.text.x = element_text(angle = 30, hjust = 1))
+} else {
+  cat("no fuzzy_jaccard data")
+}
+```
+
+## Per-event boundary precision
+
+Distance from each fastder exon's start to the nearest reference exon start (left), and from end to nearest end (right). Same strand. Distances are clipped to ±200 bp for display.
+
+```{r pub_boundary, fig.width = 6, fig.height = 6}
+if (!is.null(fuzzy$distances) && nrow(fuzzy$distances) > 0) {
+  fd <- fuzzy$distances
+  fd$distance <- as.integer(fd$distance)
+  fd$as_event <- label_as(fd$sample)
+  fd_clip <- fd %>% mutate(distance = pmax(pmin(distance, 200), -200))
+  ggplot(fd_clip, aes(x = distance, colour = sample)) +
+    geom_density(adjust = 0.6, linewidth = 0.7) +
+    scale_colour_manual(values = as_event_palette, name = NULL,
+                        labels = as_event_labels[as_event_levels]) +
+    facet_wrap(~ boundary) +
+    labs(x = "fastder boundary minus nearest ref boundary (bp)", y = "density") +
+    pub_theme +
+    theme(legend.position = "bottom")
+} else {
+  cat("no fuzzy_distances data")
+}
+```
+
+## Per-event strand concordance
+
+```{r pub_strand, fig.width = 6, fig.height = 6}
+if (!is.null(fuzzy$strand) && nrow(fuzzy$strand) > 0) {
+  fs <- fuzzy$strand
+  fs$n_fastder_transcripts <- as.integer(fs$n_fastder_transcripts)
+  fs$category <- factor(fs$category, levels = c("concordant", "discordant", "unstranded", "unmatched"))
+  fs$as_event <- label_as(fs$sample)
+  fs_pct <- fs %>%
+    group_by(sample, as_event, param_id) %>%
+    mutate(pct = n_fastder_transcripts / sum(n_fastder_transcripts) * 100) %>%
+    ungroup()
+  ggplot(fs_pct, aes(y = as_event, x = pct, fill = category)) +
+    geom_col() +
+    scale_fill_brewer(palette = "Set2", name = NULL) +
+    labs(x = "fraction of fastder transcripts (%)", y = NULL) +
+    pub_theme +
+    theme(aspect.ratio = NULL, legend.position = "bottom")
+} else {
+  cat("no fuzzy_strand data")
+}
+```
+
+## Per-event locus-recall curve
+
+Fraction of reference loci with at least f of their exonic length covered by any fastder exon on the same strand.
+
+```{r pub_recall, fig.width = 6, fig.height = 6}
+if (!is.null(fuzzy$recall) && nrow(fuzzy$recall) > 0) {
+  fr <- fuzzy$recall
+  fr$threshold <- as.numeric(fr$threshold)
+  fr$recall <- as.numeric(fr$recall)
+  fr$as_event <- label_as(fr$sample)
+  ggplot(fr, aes(x = threshold, y = recall, colour = sample)) +
+    geom_line(linewidth = 0.8) +
+    geom_point(size = 2) +
+    scale_colour_manual(values = as_event_palette, name = NULL,
+                        labels = as_event_labels[as_event_levels]) +
+    coord_cartesian(ylim = c(0, 1)) +
+    labs(x = "exonic coverage threshold f", y = "fraction of ref loci with coverage >= f") +
+    pub_theme +
+    theme(legend.position = "bottom")
+} else {
+  cat("no fuzzy_recall data")
+}
+```
+
+## Per-event scorecard
+
+Headline numbers per AS event class.
+
+```{r pub_scorecard}
+if (
+  !is.null(fuzzy$jaccard) && !is.null(fuzzy$strand) && !is.null(fuzzy$recall) &&
+  nrow(fuzzy$jaccard) > 0 && nrow(fuzzy$strand) > 0 && nrow(fuzzy$recall) > 0
+) {
+  jrow <- fuzzy$jaccard %>%
+    mutate(jaccard = as.numeric(jaccard)) %>%
+    group_by(sample) %>%
+    summarise(median_jaccard = median(jaccard),
+              pct_jaccard_ge_0_5 = mean(jaccard >= 0.5) * 100,
+              .groups = "drop")
+  srow <- fuzzy$strand %>%
+    mutate(n = as.integer(n_fastder_transcripts)) %>%
+    pivot_wider(id_cols = sample, names_from = category, values_from = n, values_fill = 0) %>%
+    mutate(total = concordant + discordant + unstranded + unmatched,
+           pct_concordant = concordant / total * 100,
+           pct_discordant = discordant / total * 100) %>%
+    select(sample, pct_concordant, pct_discordant)
+  rrow <- fuzzy$recall %>%
+    mutate(threshold = as.numeric(threshold), recall = as.numeric(recall)) %>%
+    filter(threshold == 0.5) %>%
+    select(sample, locus_recall_at_0_5 = recall) %>%
+    mutate(locus_recall_at_0_5 = locus_recall_at_0_5 * 100)
+  scorecard <- jrow %>%
+    left_join(srow, by = "sample") %>%
+    left_join(rrow, by = "sample") %>%
+    mutate(as_event = label_as(sample)) %>%
+    select(as_event, median_jaccard, pct_jaccard_ge_0_5, pct_concordant, pct_discordant, locus_recall_at_0_5)
+  knitr::kable(scorecard, digits = 2,
+               col.names = c("AS event", "median Jaccard",
+                             "% Jaccard >= 0.5", "% strand concordant",
+                             "% strand discordant", "% loci with >= 50% coverage"))
+}
 ```
 
 # gffcompare metrics
@@ -199,4 +374,159 @@ ggplot(cs, aes(x = total_exon_length, y = score)) +
   scale_y_log10() +
   facet_wrap(~ param_id) +
   theme_bw()
+```
+
+# Fuzzy fastder vs reference
+
+These metrics drop gffcompare's exact-boundary requirement and look at how much fastder transcripts overlap reference transcripts on the same strand. Useful for fastder because its exon boundaries come from coverage drop-offs, not splice-site coordinates, so it never wins on transcript-exact matching.
+
+## Reciprocal-best Jaccard per reference transcript
+
+For each reference transcript, the highest exonic Jaccard against any fastder transcript on the same strand. A value of 1 means perfect exonic match; 0 means no overlap.
+
+```{r jaccard_hist, fig.width = 6, fig.height = 6}
+if (!is.null(fuzzy$jaccard) && nrow(fuzzy$jaccard) > 0) {
+  fj <- fuzzy$jaccard
+  fj$jaccard <- as.numeric(fj$jaccard)
+  ggplot(fj, aes(x = jaccard)) +
+    geom_histogram(bins = 30, boundary = 0) +
+    facet_grid(sample ~ param_id) +
+    theme_bw() +
+    theme(aspect.ratio = 1, legend.position = "none")
+} else {
+  cat("no fuzzy_jaccard data")
+}
+```
+
+```{r jaccard_summary}
+if (!is.null(fuzzy$jaccard) && nrow(fuzzy$jaccard) > 0) {
+  fj <- fuzzy$jaccard
+  fj$jaccard <- as.numeric(fj$jaccard)
+  jsum <- fj %>%
+    group_by(sample, param_id) %>%
+    summarise(
+      n_ref_transcripts = n(),
+      pct_jaccard_zero = mean(jaccard == 0) * 100,
+      median_jaccard = median(jaccard),
+      mean_jaccard = mean(jaccard),
+      pct_jaccard_ge_0_5 = mean(jaccard >= 0.5) * 100,
+      pct_jaccard_ge_0_9 = mean(jaccard >= 0.9) * 100,
+      .groups = "drop"
+    )
+  knitr::kable(jsum, digits = 2)
+}
+```
+
+## Boundary-distance histogram
+
+Signed bp distance from each fastder exon's start to the nearest ref exon start (same strand), and the same for ends. Tight peak at zero means boundaries align; wide spread means they don't.
+
+```{r boundary_hist, fig.width = 6, fig.height = 6}
+if (!is.null(fuzzy$distances) && nrow(fuzzy$distances) > 0) {
+  fd <- fuzzy$distances
+  fd$distance <- as.integer(fd$distance)
+  fd_clip <- fd %>% mutate(distance = pmax(pmin(distance, 200), -200))
+  ggplot(fd_clip, aes(x = distance)) +
+    geom_histogram(bins = 80, boundary = 0) +
+    facet_grid(sample + param_id ~ boundary) +
+    theme_bw() +
+    theme(aspect.ratio = 1, legend.position = "none")
+} else {
+  cat("no fuzzy_distances data")
+}
+```
+
+```{r boundary_summary}
+if (!is.null(fuzzy$distances) && nrow(fuzzy$distances) > 0) {
+  fd <- fuzzy$distances
+  fd$distance <- as.integer(fd$distance)
+  bsum <- fd %>%
+    group_by(sample, param_id, boundary) %>%
+    summarise(
+      n = n(),
+      pct_within_5bp = mean(abs(distance) <= 5) * 100,
+      pct_within_50bp = mean(abs(distance) <= 50) * 100,
+      median_abs = median(abs(distance)),
+      .groups = "drop"
+    )
+  knitr::kable(bsum, digits = 2)
+}
+```
+
+## Locus recall at fixed coverage thresholds
+
+Fraction of reference loci with at least f of their exonic length covered by any fastder exon on the same strand, for f in {0.1, 0.5, 0.7, 0.9, 0.95}.
+
+```{r locus_recall_curve, fig.width = 6, fig.height = 6}
+if (!is.null(fuzzy$recall) && nrow(fuzzy$recall) > 0) {
+  fr <- fuzzy$recall
+  fr$threshold <- as.numeric(fr$threshold)
+  fr$recall <- as.numeric(fr$recall)
+  ggplot(fr, aes(x = threshold, y = recall)) +
+    geom_line() +
+    geom_point(size = 2) +
+    coord_cartesian(ylim = c(0, 1)) +
+    facet_grid(sample ~ param_id) +
+    theme_bw() +
+    theme(aspect.ratio = 1, legend.position = "none")
+} else {
+  cat("no fuzzy_recall data")
+}
+```
+
+```{r locus_recall_table}
+if (!is.null(fuzzy$recall) && nrow(fuzzy$recall) > 0) {
+  knitr::kable(fuzzy$recall, digits = 3)
+}
+```
+
+## Strand concordance per fastder transcript
+
+For each fastder StitchedER, the best-overlapping reference transcript (any strand) is selected. The fastder strand is then classified as concordant, discordant, unstranded (fastder emitted '.'), or unmatched (no ref overlap on any strand). Counts and fractions are per (sample, param_id).
+
+```{r strand_counts, fig.width = 6, fig.height = 6}
+if (!is.null(fuzzy$strand) && nrow(fuzzy$strand) > 0) {
+  fs <- fuzzy$strand
+  fs$n_fastder_transcripts <- as.integer(fs$n_fastder_transcripts)
+  fs$category <- factor(fs$category, levels = c("concordant", "discordant", "unstranded", "unmatched"))
+  ggplot(fs, aes(x = sample, y = n_fastder_transcripts, fill = category)) +
+    geom_col() +
+    facet_wrap(~ param_id) +
+    theme_bw() +
+    theme(aspect.ratio = 1)
+} else {
+  cat("no fuzzy_strand data")
+}
+```
+
+```{r strand_pct, fig.width = 6, fig.height = 6}
+if (!is.null(fuzzy$strand) && nrow(fuzzy$strand) > 0) {
+  fs <- fuzzy$strand
+  fs$n_fastder_transcripts <- as.integer(fs$n_fastder_transcripts)
+  fs$category <- factor(fs$category, levels = c("concordant", "discordant", "unstranded", "unmatched"))
+  fs_pct <- fs %>%
+    group_by(sample, param_id) %>%
+    mutate(pct = n_fastder_transcripts / sum(n_fastder_transcripts) * 100) %>%
+    ungroup()
+  ggplot(fs_pct, aes(x = sample, y = pct, fill = category)) +
+    geom_col() +
+    facet_wrap(~ param_id) +
+    theme_bw() +
+    theme(aspect.ratio = 1)
+}
+```
+
+```{r strand_table}
+if (!is.null(fuzzy$strand) && nrow(fuzzy$strand) > 0) {
+  fs <- fuzzy$strand
+  fs$n_fastder_transcripts <- as.integer(fs$n_fastder_transcripts)
+  fs_wide <- fs %>%
+    pivot_wider(names_from = category, values_from = n_fastder_transcripts, values_fill = 0) %>%
+    mutate(total = concordant + discordant + unstranded + unmatched,
+           pct_concordant = concordant / total * 100,
+           pct_discordant = discordant / total * 100,
+           pct_unstranded = unstranded / total * 100,
+           pct_unmatched = unmatched / total * 100)
+  knitr::kable(fs_wide, digits = 2)
+}
 ```

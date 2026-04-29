@@ -14,7 +14,7 @@ import re
 TRANSCRIPT_ID_RE = re.compile(r'transcript_id "([^"]+)"')
 
 
-def parse_gtf(gtf_path, param_id):
+def parse_gtf(gtf_path, param_id, scenario):
     """Yield one dict per transcript in the gtf."""
     current = None
     with open(gtf_path) as f:
@@ -31,6 +31,7 @@ def parse_gtf(gtf_path, param_id):
                 if current is not None:
                     yield current
                 current = {
+                    "scenario": scenario,
                     "param_id": param_id,
                     "chrom": chrom,
                     "transcript_id": tx_id,
@@ -48,23 +49,27 @@ def parse_gtf(gtf_path, param_id):
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--gtf-path-file", action="append", required=True,
-                   help="Path to a .gtf_path file (repeat for each param combo)")
+                   help="Path to a .gtf_path file (repeat for each combo)")
     p.add_argument("--param-id", action="append", required=True,
                    help="param_id for each --gtf-path-file (in same order)")
+    p.add_argument("--scenario", action="append", required=True,
+                   help="scenario for each --gtf-path-file (in same order)")
     p.add_argument("--out", required=True, help="Output CSV path")
     args = p.parse_args()
-    if len(args.gtf_path_file) != len(args.param_id):
-        p.error("--gtf-path-file and --param-id must be paired")
+    if not (len(args.gtf_path_file) == len(args.param_id) == len(args.scenario)):
+        p.error("--gtf-path-file, --param-id, and --scenario must be paired")
 
     rows = []
-    for gtf_path_file, param_id in zip(args.gtf_path_file, args.param_id):
+    for gtf_path_file, param_id, scenario in zip(
+        args.gtf_path_file, args.param_id, args.scenario
+    ):
         with open(gtf_path_file) as f:
             gtf_path = f.read().strip()
         if not op.isfile(gtf_path):
-            raise FileNotFoundError(f"missing GTF for param {param_id}: {gtf_path}")
-        rows.extend(parse_gtf(gtf_path, param_id))
+            raise FileNotFoundError(f"missing GTF for {scenario}/{param_id}: {gtf_path}")
+        rows.extend(parse_gtf(gtf_path, param_id, scenario))
 
-    fieldnames = ["param_id", "chrom", "transcript_id", "strand",
+    fieldnames = ["scenario", "param_id", "chrom", "transcript_id", "strand",
                   "n_exons", "total_exon_length", "score"]
     with open(args.out, "w", newline="") as fh:
         w = csv.DictWriter(fh, fieldnames=fieldnames)
