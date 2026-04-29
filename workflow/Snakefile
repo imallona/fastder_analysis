@@ -829,19 +829,22 @@ rule match_chr_prefix:
 #      restores the old BedGraph-fed pipeline with no further changes.
 #   2. It documents the historical conversion step that produced the
 #      BedGraph fixtures used in earlier benchmarks.
-# To re-enable: add `bedgraph_done=op.join(FASTDER_DIR, "convert_bedgraph.DONE")`
-# back to run_fastder's input clause and change its symlink loop to *.bedGraph.
+# To re-enable: add
+# `bedgraph_done=op.join(FASTDER_DIR, "{scenario}", "convert_bedgraph.DONE")`
+# to run_fastder's input clause and change its symlink loop to *.bedGraph.
+# Paths carry the {scenario} subdirectory so the rule composes with the
+# scenario-aware layout introduced by the make_scenario rule.
 rule bigwig_to_bedgraph:
     input:
-        op.join(FASTDER_DIR, "extract.DONE")
+        op.join(FASTDER_DIR, "{scenario}", "extract.DONE")
     output:
-        touch(op.join(FASTDER_DIR, "convert_bedgraph.DONE"))
+        touch(op.join(FASTDER_DIR, "{scenario}", "convert_bedgraph.DONE"))
     benchmark:
-        op.join(BENCH_DIR, "bigwig_to_bedgraph.tsv")
+        op.join(BENCH_DIR, "bigwig_to_bedgraph_{scenario}.tsv")
     log:
-        op.join(LOG_DIR, "bigwig_to_bedgraph.log")
+        op.join(LOG_DIR, "bigwig_to_bedgraph_{scenario}.log")
     params:
-        fastder_dir=str(FASTDER_DIR),
+        fastder_dir=lambda wc: op.join(FASTDER_DIR, wc.scenario),
     conda:
         "envs/ucsc_tools.yaml"
     shell:

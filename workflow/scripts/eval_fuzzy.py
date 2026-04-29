@@ -1,4 +1,4 @@
-"""Fuzzy fastder vs reference comparison without gffcompare's exact-boundary requirement. Produces three CSVs: reciprocal-best Jaccard per ref transcript, per-fastder-exon distance to the nearest ref exon (same strand), and locus-recall at fixed coverage thresholds. All bedtools calls use -s for strand-aware overlap."""
+"""Fuzzy fastder vs reference comparison without gffcompare's exact-boundary requirement. Produces four CSVs: reciprocal-best Jaccard per ref transcript, per-fastder-exon distance to the nearest ref exon (same strand), locus-recall at coverage thresholds from 0.05 to 1.0, and strand concordance per fastder transcript. All same-strand bedtools calls use -s; the strand-concordance pass intentionally drops -s to detect discordant strand assignments. bedtools output is streamed line-by-line so the script stays memory-bounded on full-genome RR."""
 import argparse
 import csv
 import os.path as op
@@ -15,6 +15,18 @@ GFF_ATTR_RE = re.compile(r'(\w+)=([^;]+)')
 
 def parse_gtf_attributes(attr_str):
     return dict(GTF_ATTR_RE.findall(attr_str))
+
+
+def stream_lines(cmd):
+    """Run cmd and yield stdout lines as they appear, so a multi-GB bedtools
+    output never has to be buffered in memory at once."""
+    with subprocess.Popen(cmd, stdout=subprocess.PIPE, text=True) as proc:
+        assert proc.stdout is not None
+        for line in proc.stdout:
+            yield line.rstrip("\n")
+        rc = proc.wait()
+        if rc != 0:
+            raise subprocess.CalledProcessError(rc, cmd)
 
 
 def parse_gff_attributes(attr_str):
@@ -63,8 +75,7 @@ def reciprocal_best_jaccard(ref_bed, fastder_bed, sample, param_id, scenario, ou
     pair_overlap = defaultdict(int)
     pair_meta = {}
     cmd = ["bedtools", "intersect", "-s", "-wo", "-a", ref_bed, "-b", fastder_bed]
-    proc = subprocess.run(cmd, capture_output=True, text=True, check=True)
-    for line in proc.stdout.splitlines():
+    for line in stream_lines(cmd):
         cols = line.split("\t")
         ref_tx = cols[3]
         ref_gene = cols[4]
@@ -134,8 +145,7 @@ def boundary_distances(ref_bed, fastder_bed, sample, param_id, scenario, out_pat
                 subprocess.run(["sort", "-k1,1", "-k2,2n", path, "-o", path], check=True)
             cmd = ["bedtools", "closest", "-s", "-D", "ref", "-t", "first",
                    "-a", fast_one, "-b", ref_one]
-            proc = subprocess.run(cmd, capture_output=True, text=True, check=True)
-            for line in proc.stdout.splitlines():
+            for line in stream_lines(cmd):
                 cols = line.split("\t")
                 if len(cols) < 13 or cols[6] == ".":
                     continue
@@ -183,9 +193,8 @@ def locus_recall(ref_bed, fastder_bed, sample, param_id, scenario, out_path,
         return
 
     cmd = ["bedtools", "intersect", "-s", "-wo", "-a", ref_bed, "-b", fastder_bed]
-    proc = subprocess.run(cmd, capture_output=True, text=True, check=True)
     locus_covered_intervals = defaultdict(list)
-    for line in proc.stdout.splitlines():
+    for line in stream_lines(cmd):
         cols = line.split("\t")
         gene = cols[4]
         ref_start = int(cols[1])
@@ -239,10 +248,8 @@ def strand_concordance(ref_bed, fastder_bed, sample, param_id, scenario, out_pat
             fastder_strand[cols[3]] = cols[5]
 
     cmd = ["bedtools", "intersect", "-wo", "-a", fastder_bed, "-b", ref_bed]
-    proc = subprocess.run(cmd, capture_output=True, text=True, check=True)
-
     pair_overlap = defaultdict(int)
-    for line in proc.stdout.splitlines():
+    for line in stream_lines(cmd):
         cols = line.split("\t")
         fastder_tx = cols[3]
         ref_strand = cols[11]

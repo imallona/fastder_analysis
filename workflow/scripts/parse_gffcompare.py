@@ -6,7 +6,6 @@ matching counts, the missed and novel counts (count, total, and percent),
 and the header summary numbers.
 """
 import argparse
-import csv
 import json
 import re
 import sys

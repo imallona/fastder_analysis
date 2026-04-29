@@ -66,9 +66,9 @@ FASTDER_EVAL_CONFIG=../config/config_quick_light.yaml \
 
 ### Scenarios
 
-Each ASimulatoR sample is processed through two scenarios that differ in which transcripts contribute reads to the BedGraph that fastder sees:
+Each ASimulatoR sample is processed through two scenarios that differ in which transcripts contribute reads to the coverage track that fastder sees (a BigWig fed through libBigWig in the active build, or a BedGraph if the legacy conversion rule is wired back in):
 
-- `template_and_variant`: ASimulatoR default. Both the canonical (template) transcript and the alternative form are simulated, so a skipped exon still has reads from the template and the BedGraph shows continuous coverage with a dip rather than a hard zero.
+- `template_and_variant`: ASimulatoR default. Both the canonical (template) transcript and the alternative form are simulated, so a skipped exon still has reads from the template and the coverage track shows continuous coverage with a dip rather than a hard zero.
 - `variant_only`: post-filters the FASTQ to drop reads whose source transcript carries `template=TRUE` in the splicing_variants GFF, and rewrites the GFF to keep only the alternative isoforms. This isolates the AS event signal: the skipped exon has zero coverage and the gffcompare truth set contains only the alternative isoforms.
 
 The pipeline runs every downstream stage (alignment, BigWig, MM/RR aggregation, fastder, gffcompare, fuzzy eval) once per scenario. Results carry a `scenario` column so the summary report can compare them side by side.
@@ -81,7 +81,7 @@ After a successful run, `results/` contains:
 - `chain_stats.csv`: per-transcript statistics parsed from the fastder GTFs (number of exons, total exonic length, score, chromosome, strand) per (scenario, parameter combination).
 - `fuzzy_jaccard.csv`: per reference transcript, the highest exonic Jaccard against any fastder transcript on the same strand. Drops gffcompare's exact-boundary requirement.
 - `fuzzy_distances.csv`: signed bp distance from each fastder exon boundary to the nearest reference boundary on the same strand.
-- `fuzzy_locus_recall.csv`: fraction of reference loci with at least f of their exonic length covered by any fastder exon, at thresholds f in {0.1, 0.5, 0.7, 0.9, 0.95}.
+- `fuzzy_locus_recall.csv`: fraction of reference loci with at least f of their exonic length covered by any fastder exon, at thresholds f from 0.05 to 1.0 in 0.05 increments.
 - `fuzzy_strand.csv`: per fastder StitchedER, classified as concordant, discordant, unstranded, or unmatched against the best-overlapping reference transcript on any strand.
 - `summary.html`: rendered summary report covering all CSVs above, with a publication-style overview section faceting by AS event class.
 - `benchmarks.html`: rendered runtime and memory report parsed from the per-rule benchmark TSVs under `logs/benchmarks/`.

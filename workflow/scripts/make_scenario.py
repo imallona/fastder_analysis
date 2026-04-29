@@ -73,7 +73,7 @@ def filter_gff(gff_in, gff_out, template_ids):
                 out.write(line)
 
 
-READ_HEADER_TX_RE = re.compile(r'^@([^/:\s]+)')
+READ_HEADER_TX_RE = re.compile(r'^@[^/]+/([^;\s]+)')
 
 
 def fastq_iter(path):

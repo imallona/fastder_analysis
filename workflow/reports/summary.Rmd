@@ -401,7 +401,7 @@ if (length(scope_cols) > 0) {
 
 `r chain_path` (`r nrow(cs)` transcripts across `r length(unique(cs$param_id))` parameter combinations)
 
-The score column reflects the per-exon mean coverage written by fastder into GTF column 6, which is what drives the "mean coverage" axis below. Where the truth set (the simulated splicing_variants.gff3) is available, it is overlaid in red so a paper-grade reader can see how fastder's stitched output compares with what was simulated.
+The score column reflects the per-exon mean coverage written by fastder into GTF column 6, which is what drives the "mean coverage" axis below. The truth set (the simulated splicing_variants.gff3) is overlaid in red where available, so the rendered output can be compared directly with what was simulated. The Parameters column lists each fastder parameter combination, abbreviated; mc0.01 stands for min_coverage = 0.01. The pipeline's parameter grid has one combination here because `fastder.min_coverage` in the config is a one-element list; adding more values, or other knobs like min_length, position_tolerance, or coverage_tolerance, would expand the grid and produce more rows in this table.
 
 ```{r chain_summary_table}
 chain_summary <- cs %>%
@@ -427,7 +427,7 @@ knitr::kable(chain_summary, digits = 2,
 
 The grey bars show fastder's per-transcript exon count distribution. The red step trace is the truth distribution computed from the simulated splicing_variants.gff3. A close match means fastder is recovering the correct number of pieces per gene. The x axis is log10-scaled because most transcripts are single-exon and the long tail (one or two transcripts with many exons) compresses everything else otherwise.
 
-```{r n_exons_hist, fig.width = 5, fig.height = 5}
+```{r n_exons_hist, fig.width = 12, fig.height = 6}
 cs_plot <- cs %>% mutate(scenario = relabel_scenario(scenario))
 truth_plot <- if (!is.null(truth_chain)) {
   truth_chain %>%
@@ -454,7 +454,7 @@ p
 
 ## Per-chromosome transcript count
 
-```{r per_chrom_count, fig.width = 5, fig.height = 4}
+```{r per_chrom_count, fig.width = 14, fig.height = 5}
 chrom_counts <- cs %>%
   count(scenario, param_id, chrom) %>%
   mutate(scenario = relabel_scenario(scenario))
@@ -483,7 +483,7 @@ p
 
 ## Total exonic length per transcript
 
-```{r length_hist, fig.width = 4, fig.height = 8}
+```{r length_hist, fig.width = 14, fig.height = 6}
 cs_plot <- cs %>% mutate(scenario = relabel_scenario(scenario))
 ggplot(cs_plot, aes(x = total_exon_length)) +
   geom_histogram(bins = 30, fill = "grey60", colour = "grey30") +
@@ -496,7 +496,7 @@ ggplot(cs_plot, aes(x = total_exon_length)) +
 
 ## Mean coverage vs number of exons
 
-```{r score_vs_n_exons, fig.width = 4, fig.height = 8}
+```{r score_vs_n_exons, fig.width = 14, fig.height = 6}
 cs_plot <- cs %>% mutate(scenario = relabel_scenario(scenario))
 ggplot(cs_plot, aes(x = n_exons, y = score)) +
   geom_point(alpha = 0.3) +
@@ -508,7 +508,7 @@ ggplot(cs_plot, aes(x = n_exons, y = score)) +
 
 ## Mean coverage vs total exonic length
 
-```{r score_vs_length, fig.width = 4, fig.height = 8}
+```{r score_vs_length, fig.width = 14, fig.height = 6}
 cs_plot <- cs %>% mutate(scenario = relabel_scenario(scenario))
 ggplot(cs_plot, aes(x = total_exon_length, y = score)) +
   geom_point(alpha = 0.3) +
