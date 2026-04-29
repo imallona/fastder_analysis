@@ -1,5 +1,10 @@
 workflow/data
-workflow/.snakemake
 workflow/containers
 workflow/logs
 workflow/results
+workflow/snakemake.*.log
+workflow/snakemake.run.log
+.snakemake/
+**/.snakemake/
+**/__pycache__/
+snakemake.*.log

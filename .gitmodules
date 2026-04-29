@@ -3,5 +3,5 @@
 	url = https://github.com/langmead-lab/monorail-external.git
 [submodule "workflow/external/fastder"]
 	path = workflow/external/fastder
-	url = https://github.com/martina-lavanya/fastder.git
+	url = https://github.com/imallona/fastder.git
 	branch = main

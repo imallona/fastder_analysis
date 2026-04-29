@@ -1,0 +1,18 @@
+name: rmarkdown
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - r-base
+  - r-rmarkdown
+  - r-knitr
+  - r-ggplot2
+  - r-dplyr
+  - r-tidyr
+  - r-readr
+  - r-scales
+  - r-stringr
+  - r-circlize
+  - r-ggrepel
+  - bioconductor-complexheatmap
+  - pandoc

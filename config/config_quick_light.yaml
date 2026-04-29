@@ -1,0 +1,49 @@
+# Reduced-scope config for the monorail_light backend (chr21-only, no recount-pump).
+#
+# Use:
+#   FASTDER_EVAL_CONFIG=../config/config_quick_light.yaml \
+#     snakemake --use-conda --cores 12
+#
+# Differences vs config_quick.yaml:
+#   - monorail.backend: monorail_light
+#       Replaces recount-pump + recount-unify with a chr-restricted STAR
+#       alignment plus a Python aggregator emitting lean MM/RR files. Skips
+#       the multi-hour whole-genome reference download and the 2 GB of
+#       Singularity images. RR is restricted to fastder.chromosomes and the
+#       recount3 annotation columns are written as "." since fastder reads
+#       them but never accesses them — large memory win.
+#   - --use-singularity is no longer required (ASimulatoR still uses a
+#       container, so keep it if you want that step containerised).
+
+seed: 10
+cores: 12
+
+asimulator:
+  seq_depth: 100000
+  multi_events_per_exon: false
+  strand_specific: true
+  probs_as_freq: true
+
+  samples:
+    es:
+      es: 1.0
+    mixed:
+      es: 0.25
+      mes: 0.25
+      afe: 0.25
+      ale: 0.25
+
+monorail:
+  backend: monorail_light
+  ref_version: hg38
+  project_name: "local"
+  project_id: 101
+  pump_source: asimulator
+
+fastder:
+  stranded: false
+  min_coverage: [0.01]
+  chromosomes: ["chr21"]
+
+gffcompare:
+  reference_annotation: ""

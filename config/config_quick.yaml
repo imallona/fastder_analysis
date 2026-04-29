@@ -1,0 +1,45 @@
+# Reduced-scope config for quick local testing.
+# Use by setting the FASTDER_EVAL_CONFIG env var so this file fully replaces
+# config.yaml (avoids Snakemake's deep-merge of nested dicts):
+#
+#   FASTDER_EVAL_CONFIG=../config/config_quick.yaml \
+#     snakemake --use-conda --use-singularity --cores 4
+#
+# Scope reductions vs config.yaml:
+#   - 2 samples instead of 5 (es, mixed)
+#   - 100,000 reads/sample instead of 10,000,000 (100x fewer)
+#   - chr21 only (same as default)
+# The Singularity image pulls and Monorail reference download are unchanged
+# (they are not parameterised by sample count or depth).
+
+seed: 10
+cores: 12
+
+asimulator:
+  seq_depth: 100000
+  multi_events_per_exon: false
+  strand_specific: true
+  probs_as_freq: true
+
+  samples:
+    es:
+      es: 1.0
+    mixed:
+      es: 0.25
+      mes: 0.25
+      afe: 0.25
+      ale: 0.25
+
+monorail:
+  ref_version: hg38
+  project_name: "local"
+  project_id: 101
+  pump_source: asimulator
+
+fastder:
+  stranded: false
+  min_coverage: [0.01]
+  chromosomes: ["chr21"]
+
+gffcompare:
+  reference_annotation: ""
