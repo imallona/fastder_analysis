@@ -392,31 +392,48 @@ rule ml_star_index:
     shell:
         """
         mkdir -p {output}
-        # Concatenate per-chromosome FASTA files into a single index input.
-        # download_reference renames them as <chr>.fa (e.g. chr21.fa or 21.fa
-        # depending on the chromosomes argument; both are normalised here).
+        # Normalize chromosome names to the UCSC-style 'chrN' the rest of the
+        # pipeline expects. The Ensembl reference download stores FASTAs as
+        # '21.fa' with header '>21' and a GTF whose first column is '21';
+        # without this rewrite STAR's BAM, BigWig, SJ.out.tab and the lean
+        # RR file would all use '21' while the config and gffcompare label
+        # use 'chr21', leaving fastder with 0 junctions retained.
         chroms="{params.chroms}"
+        tmpdir=$(mktemp -d)
         fastas=()
         for c in $chroms; do
             stripped="${{c#chr}}"
             for cand in "{input.reference}/${{stripped}}.fa" "{input.reference}/${{c}}.fa"; do
-                if [ -f "$cand" ]; then fastas+=("$cand"); break; fi
+                if [ -f "$cand" ]; then
+                    sed -E 's/^>(chr)?([^ \\t]*)/>chr\\2/' "$cand" \
+                        > "$tmpdir/chr${{stripped}}.fa"
+                    fastas+=("$tmpdir/chr${{stripped}}.fa")
+                    break
+                fi
             done
         done
         if [ ${{#fastas[@]}} -eq 0 ]; then
             echo "[ml_star_index] No FASTA files found for chromosomes: $chroms" >&2
             exit 1
         fi
+        # Prefix the GTF first column with 'chr' (skip header lines starting with '#').
+        awk 'BEGIN{{FS=OFS="\\t"}}
+             /^#/ {{print; next}}
+             $1 !~ /^chr/ {{$1 = "chr" $1; print; next}}
+             {{print}}' \
+            "{input.reference}/Homo_sapiens.GRCh38.115.chr.gtf" \
+            > "$tmpdir/annotation.gtf"
         # genomeSAindexNbases must be tuned down for small genomes (STAR manual).
         genome_size=$(cat "${{fastas[@]}}" | awk '!/^>/{{tot+=length($0)}} END{{print tot}}')
         sa=$(python3 -c "import math; print(min(14, int(math.log2($genome_size)/2 - 1)))")
         STAR --runMode genomeGenerate \
             --genomeDir {output} \
             --genomeFastaFiles "${{fastas[@]}}" \
-            --sjdbGTFfile {input.reference}/Homo_sapiens.GRCh38.115.chr.gtf \
+            --sjdbGTFfile "$tmpdir/annotation.gtf" \
             --sjdbOverhang 100 \
             --genomeSAindexNbases "$sa" \
             --runThreadN {threads} > {log} 2>&1
+        rm -rf "$tmpdir"
         """
 
 
@@ -878,7 +895,9 @@ rule run_gffcompare:
         """
 
 
-# 13. Collect all gffcompare stats into a summary CSV
+# 13. Collect all gffcompare stats into a summary CSV. Parses every level
+# (Base, Exon, Intron, Intron chain, Transcript, Locus), the matching
+# counts, the missed and novel ratios, and the header summary numbers.
 rule collect_results:
     input:
         expand(
@@ -890,38 +909,35 @@ rule collect_results:
         op.join(RESULTS_DIR, "summary.csv"),
     benchmark:
         op.join(BENCH_DIR, "collect_results.tsv")
+    params:
+        parser=op.join(WORKFLOW_DIR, "scripts", "parse_gffcompare.py"),
     run:
         import csv
-        import re
-
-        def parse_base_level(stats_file):
-            """Extract Base level Sensitivity and Precision from a .stats file."""
-            with open(stats_file) as f:
-                for line in f:
-                    m = re.match(
-                        r"^\s*Base level\s*:\s*(\d+\.\d+)\s*\|\s*(\d+\.\d+)",
-                        line,
-                    )
-                    if m:
-                        return m.group(1), m.group(2)
-            return "", ""
+        import sys
+        sys.path.insert(0, op.dirname(params.parser))
+        import parse_gffcompare
 
         rows = []
         for stats_file in input:
             parts = Path(stats_file).parts
             pid = parts[-2]
             sample = parts[-3]
-            sensitivity, precision = parse_base_level(stats_file)
             row = {"sample": sample, "param_id": pid}
             row.update(PARAM_DICT.get(pid, {}))
-            row["sensitivity"] = sensitivity
-            row["precision"] = precision
+            row.update(parse_gffcompare.parse(stats_file))
             rows.append(row)
 
-        # Column order: sample, param_id, any grid params that were set, metrics
-        param_cols = sorted({k for r in rows for k in r if k not in
-                            {"sample", "param_id", "sensitivity", "precision"}})
-        fieldnames = ["sample", "param_id"] + param_cols + ["sensitivity", "precision"]
+        # Stable column order: sample, param_id, any grid params, then all
+        # parsed metric keys in sorted order.
+        meta_keys = {"sample", "param_id"}
+        param_cols = sorted({
+            k for r in rows for k in r
+            if k in PARAM_DICT.get(r["param_id"], {}) or k in (
+                set(PARAM_DICT.get(r["param_id"], {}).keys()) - meta_keys
+            )
+        })
+        metric_cols = sorted({k for r in rows for k in r if k not in meta_keys and k not in param_cols})
+        fieldnames = ["sample", "param_id"] + param_cols + metric_cols
 
         with open(output[0], "w", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=fieldnames)

@@ -2,7 +2,9 @@
 title: "fastder-evaluation summary"
 output:
   html_document:
-    toc: false
+    toc: true
+    toc_float: true
+    code_folding: hide
 params:
   summary_csv: NULL
   chain_stats_csv: NULL
@@ -13,8 +15,8 @@ knitr::opts_chunk$set(
   echo = FALSE,
   message = FALSE,
   warning = FALSE,
-  fig.width = 5,
-  fig.height = 5,
+  fig.width = 6,
+  fig.height = 6,
   fig.align = "center"
 )
 library(readr)
@@ -33,9 +35,6 @@ if (is.null(chain_path) || !file.exists(chain_path)) {
   stop("chain_stats_csv parameter must point to an existing chain_stats.csv")
 }
 df <- read_csv(summary_path, show_col_types = FALSE)
-df$sensitivity <- as.numeric(df$sensitivity)
-df$precision   <- as.numeric(df$precision)
-
 cs <- read_csv(chain_path, show_col_types = FALSE)
 cs$n_exons <- as.integer(cs$n_exons)
 cs$total_exon_length <- as.numeric(cs$total_exon_length)
@@ -47,31 +46,88 @@ cs$score <- as.numeric(cs$score)
 `r summary_path`
 
 ```{r summary_table}
-knitr::kable(df, digits = 3)
+knitr::kable(df, digits = 2)
 ```
 
-## Sensitivity vs precision
+## Sensitivity and precision across all levels
 
-```{r sens_prec_scatter}
-ggplot(df, aes(x = sensitivity, y = precision, colour = sample)) +
-  geom_point(size = 2) +
+Every row in `summary.csv` has `<level>_sens` and `<level>_prec` for the six
+gffcompare levels. Plot below shows them all on the same axes per sample.
+
+```{r levels_scatter, fig.width = 6, fig.height = 6}
+levels_long <- df %>%
+  pivot_longer(
+    cols = matches("_(sens|prec)$"),
+    names_to = c("level", "metric"),
+    names_pattern = "(.+)_(sens|prec)",
+    values_to = "value"
+  ) %>%
+  pivot_wider(names_from = metric, values_from = value)
+
+ggplot(levels_long, aes(x = sens, y = prec, colour = level, shape = sample)) +
+  geom_point(size = 3) +
   coord_fixed(xlim = c(0, 100), ylim = c(0, 100)) +
   theme_bw()
 ```
 
-## Per-sample sensitivity and precision
+## Per-level bars
 
-```{r sens_prec_bars, fig.width = 6, fig.height = 6}
-long <- df %>%
-  select(sample, param_id, sensitivity, precision) %>%
-  pivot_longer(cols = c(sensitivity, precision),
-               names_to = "metric", values_to = "value")
+```{r level_bars, fig.width = 6, fig.height = 6}
+levels_long_metric <- df %>%
+  pivot_longer(
+    cols = matches("_(sens|prec)$"),
+    names_to = c("level", "metric"),
+    names_pattern = "(.+)_(sens|prec)",
+    values_to = "value"
+  )
 
-ggplot(long, aes(x = sample, y = value, fill = metric)) +
+ggplot(levels_long_metric, aes(x = level, y = value, fill = metric)) +
   geom_col(position = position_dodge(width = 0.8), width = 0.7) +
-  facet_wrap(~ param_id) +
-  coord_fixed(ratio = 0.04) +
+  facet_wrap(~ sample) +
+  coord_flip() +
   theme_bw()
+```
+
+## Missed and novel features
+
+```{r missed_novel, fig.width = 6, fig.height = 6}
+mn <- df %>%
+  pivot_longer(
+    cols = matches("_(pct|count|total)$"),
+    names_to = c("kind", "feature", "field"),
+    names_pattern = "(missed|novel)_(exons|introns|loci)_(pct|count|total)",
+    values_to = "value"
+  ) %>%
+  filter(field == "pct")
+
+ggplot(mn, aes(x = feature, y = value, fill = kind)) +
+  geom_col(position = position_dodge(width = 0.8), width = 0.7) +
+  facet_wrap(~ sample) +
+  coord_flip() +
+  theme_bw()
+```
+
+## Matching counts
+
+```{r matching_counts}
+m_cols <- grep("^matching_", names(df), value = TRUE)
+if (length(m_cols) > 0) {
+  m <- df %>% select(sample, param_id, all_of(m_cols))
+  knitr::kable(m, digits = 0)
+}
+```
+
+## Query and reference scope
+
+```{r scope_table}
+scope_cols <- intersect(
+  c("query_mrnas", "query_loci", "query_multi_exon",
+    "ref_mrnas", "ref_loci", "ref_multi_exon", "super_loci"),
+  names(df)
+)
+if (length(scope_cols) > 0) {
+  knitr::kable(df %>% select(sample, param_id, all_of(scope_cols)), digits = 0)
+}
 ```
 
 # Stitched chain stats
@@ -95,8 +151,6 @@ knitr::kable(chain_summary, digits = 2)
 
 ## Number of exons per transcript
 
-Counts of single-exon (standalone ER) versus multi-exon (stitched) transcripts.
-
 ```{r n_exons_hist, fig.width = 6, fig.height = 6}
 ggplot(cs, aes(x = n_exons)) +
   geom_histogram(binwidth = 1, boundary = 0.5) +
@@ -118,9 +172,6 @@ ggplot(chrom_counts, aes(x = chrom, y = n)) +
 
 ## Total exonic length per transcript
 
-Distribution of summed exon length, log scale on x because lengths span
-several orders of magnitude.
-
 ```{r length_hist, fig.width = 6, fig.height = 6}
 ggplot(cs, aes(x = total_exon_length)) +
   geom_histogram(bins = 30) +
@@ -130,9 +181,6 @@ ggplot(cs, aes(x = total_exon_length)) +
 ```
 
 ## Score (mean coverage) vs number of exons
-
-One point per transcript. Detects whether longer chains have higher or lower
-average coverage on this dataset.
 
 ```{r score_vs_n_exons, fig.width = 6, fig.height = 6}
 ggplot(cs, aes(x = n_exons, y = score)) +

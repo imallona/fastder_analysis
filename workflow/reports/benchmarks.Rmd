@@ -2,7 +2,9 @@
 title: "fastder-evaluation runtime and memory"
 output:
   html_document:
-    toc: false
+    toc: true
+    toc_float: true
+    code_folding: hide
 params:
   bench_dir: NULL
 ---
