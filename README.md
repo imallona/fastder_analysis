@@ -86,6 +86,42 @@ After a successful run, `results/` contains:
 - `summary.html`: rendered summary report covering all CSVs above, with a publication-style overview section faceting by AS event class.
 - `benchmarks.html`: rendered runtime and memory report parsed from the per-rule benchmark TSVs under `logs/benchmarks/`.
 
+### Tool comparison
+
+The pipeline benchmarks fastder against two coverage-based baselines that consume the same simulated BigWigs:
+
+- `derfinder`: Bioconductor-flavored coverage-based expressed-region caller. CPM-normalised per-base mean coverage thresholded at `--cutoff`, then post-filtered by `--min-length`, with optional below-threshold gap-bridging via `--maxregiongap`. Wrapped by `workflow/scripts/run_derfinder.R`. Conda env: `workflow/envs/derfinder.yaml`.
+- `megadepth_baseline`: a thresholded segmenter that emits one transcript per maximal run of bases whose mean-across-samples CPM is at or above `--cutoff`. No gap-bridging, no splice-junction stitching. Wrapped by `workflow/scripts/run_megadepth_baseline.py`. Conda env: `workflow/envs/megadepth_baseline.yaml`.
+
+All three tools normalise per-sample coverage to CPM using the same `library_size = Σ length × value` formula (over the `fastder.chromosomes` set), then average per-sample CPMs across samples (zero-included for samples without coverage at a position). At a given numeric `--min-coverage` value, the threshold means the same thing for every tool.
+
+The point of the megadepth baseline is to isolate the lift fastder gets from its SJ-aware stitching over a naive coverage segmenter: identical coverage signal, identical normalisation, identical aggregation, only the region-call step differs.
+
+Common output contract: each tool writes a GTF at `data/tools/{tool}/{scenario}/{param_id}/output.gtf`. `run_gffcompare` and `eval_fuzzy_metrics` grade every tool against the same simulated truth, and `summary.csv` plus the four `fuzzy_*.csv` files carry a `tool` column.
+
+#### Parameter equivalence and grids
+
+The shared, swept parameters are encoded in the `param_id` directory component so a baseline run at e.g. `mc0.01` is directly comparable to any fastder run whose `param_id` contains `mc0.01`.
+
+| fastder axis | megadepth_baseline arg | derfinder arg | encoded as |
+|---|---|---|---|
+| `--min-coverage` (CPM) | `--cutoff` (CPM) | `--cutoff` (CPM) | `mc<v>` |
+| `--min-length` (bp, post-filter) | `--min-length` (bp, post-filter) | `--min-length` (bp, post-filter) | pinned to `fastder.min_length[0]` for baselines |
+| `--position-tolerance` (bp at SJ) | (n/a) | `--maxregiongap` (bp gap-bridge, behavioural analogue) | `pt<v>` (derfinder only) |
+| `--coverage-tolerance` | (n/a) | (n/a) | not encoded for baselines |
+
+Per-tool grids:
+
+- `fastder`: full cross-product of all four `fastder.*` config lists. `param_id = mc<v>_ml<v>_pt<v>_ct<v>` (each axis included only if the config supplies it).
+- `derfinder`: cross-product of `fastder.min_coverage` × `fastder.position_tolerance`. `param_id = mc<v>_pt<v>`.
+- `megadepth_baseline`: `fastder.min_coverage` only. `param_id = mc<v>`.
+
+Note on the `position_tolerance` mapping: fastder's `--position-tolerance` allows a few bp of slack at SJ-anchored boundaries, while derfinder's `--maxregiongap` bridges short below-threshold gaps inside a region. They're not identical, but both are tolerance knobs in the bp dimension; sweeping both lets the report show where they end up roughly comparable.
+
+Per-sample vs per-scenario: the baselines run *once per (scenario, param_id)* on the pooled BigWigs, then `run_gffcompare` and `eval_fuzzy_metrics` evaluate that GTF against each sample's truth GFF. fastder retains its full per-scenario, per-param sweep.
+
+Adding a third tool: write `run_<tool>` that emits the standardised GTF, add a `<tool>.yaml` env file, append to the `TOOLS` list in `workflow/Snakefile`, and register a param-id generator in `PARAM_IDS_BY_TOOL`. Stringtie and Scallop are the obvious next candidates as spliced-read assemblers operating from BAM rather than from coverage tracks; since they don't share the `--min-coverage` axis they would get their own grid.
+
 ### Reports
 
 The rules `render_summary_report` and `render_benchmarks_report` produce `workflow/results/summary.html` and `workflow/results/benchmarks.html` at the end of a pipeline run. To rebuild only the reports without re-running upstream rules, add `--forcerun render_summary_report render_benchmarks_report` to the snakemake invocation. Both rules share the conda env at `workflow/envs/rmarkdown.yaml`, which pulls R, rmarkdown and the tidyverse plus ComplexHeatmap and circlize for the parameter-annotated heatmaps.
@@ -99,9 +135,18 @@ workflow/envs/            one conda yaml per rule conda directive
 workflow/scripts/         python and R helpers called by the rules
 workflow/reports/         summary.Rmd and benchmarks.Rmd templates
 workflow/external/        fastder and monorail-external as git submodules
-data/                     pipeline scratch (asim, monorail_light, fastder)
-logs/                     per-rule logs and benchmark TSVs
-results/                  final CSVs and rendered HTML reports
+workflow/data/            pipeline scratch (asim, monorail_light, fastder, tools)
+workflow/logs/            per-rule logs and benchmark TSVs
+workflow/results/         final CSVs and rendered HTML reports
+tests/                    pytest unit tests for workflow/scripts/ helpers
+```
+
+### Running the tests
+
+The pytest suite covers the pure-python helpers in `workflow/scripts/`. From the repo root, with any conda env that has `pytest`, `numpy`, and `pyBigWig` available (the `megadepth_baseline` env satisfies all three):
+
+```
+pytest tests
 ```
 
 ### Parameters and choices

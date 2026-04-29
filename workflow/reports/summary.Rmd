@@ -102,7 +102,7 @@ if (is.null(summary_path) || !file.exists(summary_path)) {
 if (is.null(chain_path) || !file.exists(chain_path)) {
   stop("chain_stats_csv parameter must point to an existing chain_stats.csv")
 }
-df <- read_csv(summary_path, show_col_types = FALSE)
+df_all <- read_csv(summary_path, show_col_types = FALSE)
 cs <- read_csv(chain_path, show_col_types = FALSE)
 cs$n_exons <- as.integer(cs$n_exons)
 cs$total_exon_length <- as.numeric(cs$total_exon_length)
@@ -121,10 +121,346 @@ fuzzy_paths <- list(
   recall = params$fuzzy_recall_csv,
   strand = params$fuzzy_strand_csv
 )
-fuzzy <- lapply(fuzzy_paths, function(p) {
+fuzzy_all <- lapply(fuzzy_paths, function(p) {
   if (is.null(p) || !file.exists(p)) NULL else read_csv(p, show_col_types = FALSE)
 })
+
+# Sections below the "Tool comparison" block are fastder-only: they sweep
+# fastder's full parameter grid and facet by AS event class. The
+# baselines participate only along the shared axes (min_coverage and, for
+# derfinder, position_tolerance) so leaving them in those panels would
+# either crowd the figures with sparse points or collapse different
+# tools' rows together. Stash a fastder-filtered view here for the rest
+# of the report.
+df <- df_all %>% filter(tool == "fastder" | is.na(tool))
+fuzzy <- lapply(fuzzy_all, function(d) {
+  if (is.null(d)) NULL else d %>% filter(tool == "fastder" | is.na(tool))
+})
 ```
+
+# Tool comparison
+
+fastder vs the coverage baselines on the same simulated truth. Shared axes: `mc` (all three tools), `pt` (fastder + derfinder). Each panel below picks the best fastder param combo and matches the baselines at the same `mc` (and `pt` for derfinder) so only one axis varies at a time.
+
+```{r tool_setup}
+have_tool_data <- !is.null(fuzzy_all$jaccard) && nrow(fuzzy_all$jaccard) > 0 &&
+                  !is.null(fuzzy_all$strand) && nrow(fuzzy_all$strand) > 0 &&
+                  !is.null(fuzzy_all$recall) && nrow(fuzzy_all$recall) > 0 &&
+                  "tool" %in% names(fuzzy_all$jaccard)
+
+extract_mc <- function(pid) suppressWarnings(as.numeric(str_extract(pid, "(?<=mc)[0-9.]+")))
+extract_pt <- function(pid) {
+  v <- suppressWarnings(as.numeric(str_extract(pid, "(?<=pt)[0-9.]+")))
+  ifelse(is.na(v), 0, v)
+}
+
+if (have_tool_data) {
+  best_fastder_pid <- fuzzy_all$jaccard %>%
+    filter(tool == "fastder") %>%
+    mutate(jaccard = as.numeric(jaccard)) %>%
+    group_by(param_id) %>%
+    summarise(median_jaccard = median(jaccard), .groups = "drop") %>%
+    slice_max(median_jaccard, n = 1, with_ties = FALSE) %>%
+    pull(param_id)
+  best_mc <- extract_mc(best_fastder_pid)
+  best_pt <- extract_pt(best_fastder_pid)
+  best_megadepth_pid <- sprintf("mc%s", format(best_mc, trim = TRUE))
+  best_derfinder_pid <- sprintf("mc%s_pt%s", format(best_mc, trim = TRUE),
+                                format(best_pt, trim = TRUE))
+  pick_tool_param <- function(d) {
+    d %>% filter((tool == "fastder" & param_id == best_fastder_pid) |
+                 (tool == "megadepth_baseline" & param_id == best_megadepth_pid) |
+                 (tool == "derfinder" & param_id == best_derfinder_pid))
+  }
+}
+```
+
+```{r tool_picked, results = "asis"}
+if (have_tool_data) {
+  cat(sprintf(
+    "Selected: fastder `%s`, derfinder `%s`, megadepth_baseline `%s` (shared mc = %s, pt = %s).\n\n",
+    best_fastder_pid, best_derfinder_pid, best_megadepth_pid,
+    format(best_mc), format(best_pt)
+  ))
+}
+```
+
+## Per-tool best Jaccard
+
+```{r tool_jaccard, fig.width = 10, fig.height = 5}
+if (have_tool_data) {
+  fj <- fuzzy_all$jaccard %>%
+    pick_tool_param() %>%
+    mutate(jaccard = as.numeric(jaccard),
+           scenario = relabel_scenario(scenario))
+  ggplot(fj, aes(x = tool, y = jaccard, fill = tool)) +
+    geom_violin(alpha = 0.5, scale = "width", trim = TRUE, colour = "grey40") +
+    geom_jitter(width = 0.18, size = 0.25, alpha = 0.2, colour = "grey15") +
+    stat_summary(fun = median, geom = "point", shape = 21, size = 2.6,
+                 colour = "black", fill = "white", stroke = 0.7) +
+    scale_fill_brewer(palette = "Set2", guide = "none") +
+    facet_wrap(~ scenario, ncol = 2) +
+    coord_cartesian(ylim = c(0, 1)) +
+    labs(x = NULL, y = "Best exonic Jaccard against reference") +
+    pub_theme +
+    theme(axis.text.x = element_text(angle = 30, hjust = 1))
+} else {
+  cat("no per-tool data: summary.csv lacks a tool column or fuzzy CSVs are empty")
+}
+```
+
+## Per-tool locus recall at threshold 0.5
+
+Fraction of reference loci with at least 50% of their exonic length covered by any same-strand exon emitted by the tool.
+
+```{r tool_recall, fig.width = 10, fig.height = 5}
+if (have_tool_data) {
+  fr <- fuzzy_all$recall %>%
+    pick_tool_param() %>%
+    mutate(threshold = as.numeric(threshold),
+           recall = as.numeric(recall),
+           scenario = relabel_scenario(scenario)) %>%
+    filter(threshold == 0.5)
+  ggplot(fr, aes(x = tool, y = recall, fill = tool)) +
+    geom_col(position = position_dodge(width = 0.8), width = 0.7,
+             alpha = 0.85, colour = "grey20") +
+    scale_fill_brewer(palette = "Set2", guide = "none") +
+    facet_grid(scenario ~ sample) +
+    coord_cartesian(ylim = c(0, 1)) +
+    labs(x = NULL, y = "Locus recall at threshold 0.5") +
+    pub_theme +
+    theme(axis.text.x = element_text(angle = 30, hjust = 1),
+          aspect.ratio = NULL)
+} else {
+  cat("no per-tool recall data")
+}
+```
+
+## Per-tool strand concordance
+
+Fraction of each tool's transcripts whose strand matches the best-overlapping reference transcript on any strand.
+
+```{r tool_strand, fig.width = 10, fig.height = 5}
+if (have_tool_data) {
+  fs <- fuzzy_all$strand %>%
+    pick_tool_param() %>%
+    mutate(n = as.integer(n_fastder_transcripts),
+           scenario = relabel_scenario(scenario))
+  fs_pct <- fs %>%
+    group_by(scenario, sample, tool) %>%
+    mutate(pct = n / sum(n) * 100) %>%
+    ungroup()
+  fs_pct$category <- factor(fs_pct$category,
+                            levels = c("concordant", "discordant", "unstranded", "unmatched"))
+  ggplot(fs_pct, aes(y = tool, x = pct, fill = category)) +
+    geom_col() +
+    scale_fill_brewer(palette = "Set2", name = NULL) +
+    facet_grid(scenario ~ sample) +
+    labs(x = "Fraction of tool transcripts (%)", y = NULL) +
+    pub_theme +
+    theme(aspect.ratio = NULL, legend.position = "bottom")
+} else {
+  cat("no per-tool strand data")
+}
+```
+
+## Splice-junction-aware metrics
+
+The metrics above reward tools that emit one large transcript per locus. Below are metrics that need real splice-site structure.
+
+### Boundary precision
+
+Distance from each predicted exon boundary to the nearest reference exon boundary. fastder anchors to splice junctions; baselines only hit them by chance.
+
+```{r tool_boundary_precision, fig.width = 10, fig.height = 5}
+if (have_tool_data && !is.null(fuzzy_all$distances) && nrow(fuzzy_all$distances) > 0) {
+  fd <- fuzzy_all$distances %>%
+    pick_tool_param() %>%
+    mutate(distance = as.integer(distance),
+           abs_distance = abs(distance))
+  thresholds_bp <- c(0, 1, 5, 20, 50, 200)
+  rows <- lapply(thresholds_bp, function(thr) {
+    fd %>%
+      group_by(tool, scenario) %>%
+      summarise(pct = mean(abs_distance <= thr) * 100,
+                n = n(), .groups = "drop") %>%
+      mutate(threshold_bp = thr)
+  })
+  fd_pct <- bind_rows(rows) %>%
+    mutate(scenario = relabel_scenario(scenario),
+           threshold_label = factor(paste0("<=", threshold_bp, " bp"),
+                                    levels = paste0("<=", thresholds_bp, " bp")))
+  ggplot(fd_pct, aes(x = threshold_label, y = pct, fill = tool)) +
+    geom_col(position = position_dodge(width = 0.8), width = 0.7,
+             alpha = 0.85, colour = "grey20") +
+    scale_fill_brewer(palette = "Set2", guide = "none") +
+    facet_grid(tool ~ scenario) +
+    coord_cartesian(ylim = c(0, 100)) +
+    labs(x = "Distance threshold", y = "Predicted boundaries within threshold (%)") +
+    pub_theme +
+    theme(axis.text.x = element_text(angle = 30, hjust = 1),
+          aspect.ratio = NULL)
+} else {
+  cat("no per-tool boundary data")
+}
+```
+
+### Boundary distance ECDF
+
+Cumulative fraction of predicted boundaries within each distance. A steep curve on the left means the tool is hitting splice sites. At `position_tolerance = 0` derfinder reduces to megadepth_baseline so their curves coincide.
+
+```{r tool_boundary_ecdf, fig.width = 9, fig.height = 5}
+if (have_tool_data && !is.null(fuzzy_all$distances) && nrow(fuzzy_all$distances) > 0) {
+  # Plot order: baseline first, derfinder second, fastder last so all three
+  # curves remain visible when two coincide (e.g. derfinder at pt=0 ==
+  # megadepth_baseline). The geom_step is drawn in factor order, so the
+  # later-listed tool sits on top.
+  fd <- fuzzy_all$distances %>%
+    pick_tool_param() %>%
+    mutate(distance = as.integer(distance),
+           abs_distance = pmax(abs(distance), 1L),
+           scenario = relabel_scenario(scenario),
+           tool = factor(tool, levels = c("megadepth_baseline",
+                                          "derfinder", "fastder")))
+  ggplot(fd, aes(x = abs_distance, colour = tool, linetype = tool)) +
+    stat_ecdf(geom = "step", linewidth = 0.8, alpha = 0.8) +
+    scale_colour_brewer(palette = "Set2", name = NULL) +
+    scale_linetype_manual(values = c(megadepth_baseline = "11",
+                                     derfinder = "32",
+                                     fastder = "solid"),
+                          name = NULL) +
+    scale_x_log10(breaks = c(1, 5, 20, 100, 1000, 10000),
+                  labels = c("1", "5", "20", "100", "1k", "10k")) +
+    coord_cartesian(ylim = c(0, 1)) +
+    facet_wrap(~ scenario, ncol = 2) +
+    labs(x = "Absolute distance to nearest reference boundary (bp, log scale)",
+         y = "Cumulative fraction of predicted boundaries") +
+    pub_theme +
+    theme(legend.position = "bottom",
+          aspect.ratio = NULL)
+}
+```
+
+### Predicted transcript granularity
+
+Counted from fuzzy_jaccard.csv. Coverage baselines emit one transcript per coverage run; fastder splits the locus into isoform-like calls.
+
+```{r tool_transcript_granularity, fig.width = 9, fig.height = 4}
+if (have_tool_data && !is.null(fuzzy_all$jaccard) && nrow(fuzzy_all$jaccard) > 0) {
+  fj <- fuzzy_all$jaccard %>%
+    pick_tool_param() %>%
+    mutate(fastder_bp = as.numeric(fastder_bp),
+           scenario = relabel_scenario(scenario))
+  granularity <- fj %>%
+    filter(!is.na(fastder_transcript), fastder_transcript != "") %>%
+    distinct(tool, scenario, fastder_transcript, fastder_bp) %>%
+    group_by(tool, scenario) %>%
+    summarise(n_transcripts = n(),
+              median_bp = median(fastder_bp, na.rm = TRUE),
+              .groups = "drop")
+  gr_long <- granularity %>%
+    pivot_longer(c(n_transcripts, median_bp),
+                 names_to = "metric", values_to = "value") %>%
+    mutate(metric = recode(metric,
+                           n_transcripts = "Number of predicted transcripts",
+                           median_bp = "Median predicted transcript length (bp)"))
+  ggplot(gr_long, aes(x = tool, y = value, fill = tool)) +
+    geom_col(width = 0.7, alpha = 0.85, colour = "grey20") +
+    scale_fill_brewer(palette = "Set2", guide = "none") +
+    facet_grid(metric ~ scenario, scales = "free_y") +
+    labs(x = NULL, y = NULL) +
+    pub_theme +
+    theme(axis.text.x = element_text(angle = 30, hjust = 1),
+          aspect.ratio = NULL)
+}
+```
+
+### Multi-exon transcripts produced
+
+Counts from gffcompare (`query_mrnas`, `query_multi_exon`). Coverage baselines emit single-exon segments only; their multi-exon count is structural zero. fastder's count is the only meaningful row.
+
+```{r tool_multiexon, fig.width = 9, fig.height = 4}
+if ("tool" %in% names(df_all) && nrow(df_all) > 0) {
+  d <- df_all %>%
+    filter((tool == "fastder" & param_id == best_fastder_pid) |
+           (tool == "megadepth_baseline" & param_id == best_megadepth_pid) |
+           (tool == "derfinder" & param_id == best_derfinder_pid)) %>%
+    distinct(tool, scenario, param_id, query_mrnas, query_multi_exon) %>%
+    mutate(query_mrnas = as.integer(query_mrnas),
+           query_multi_exon = as.integer(query_multi_exon),
+           single_exon = query_mrnas - query_multi_exon,
+           scenario = relabel_scenario(scenario)) %>%
+    pivot_longer(c(query_multi_exon, single_exon),
+                 names_to = "kind", values_to = "n") %>%
+    mutate(kind = recode(kind,
+                         query_multi_exon = "multi-exon",
+                         single_exon = "single-exon"))
+  ggplot(d, aes(x = tool, y = n, fill = kind)) +
+    geom_col(width = 0.7, alpha = 0.85, colour = "grey20") +
+    scale_fill_brewer(palette = "Set2", name = NULL) +
+    facet_wrap(~ scenario, ncol = 2) +
+    labs(x = NULL, y = "Predicted transcripts") +
+    pub_theme +
+    theme(axis.text.x = element_text(angle = 30, hjust = 1),
+          aspect.ratio = NULL,
+          legend.position = "bottom")
+}
+```
+
+## Tolerance equivalence: fastder pt vs derfinder maxregiongap
+
+Median Jaccard along the position_tolerance / maxregiongap axis at the best mc. fastder slack sits at SJ boundaries; derfinder slack bridges below-threshold gaps. Comparable when the curves sit close.
+
+```{r tool_pt_axis, fig.width = 8, fig.height = 4}
+if (have_tool_data) {
+  pt_d <- fuzzy_all$jaccard %>%
+    filter(tool %in% c("fastder", "derfinder")) %>%
+    mutate(jaccard = as.numeric(jaccard),
+           mc = extract_mc(param_id),
+           pt = extract_pt(param_id)) %>%
+    filter(!is.na(mc), abs(mc - best_mc) < 1e-9)
+  if (nrow(pt_d) > 0 && length(unique(pt_d$pt)) > 1) {
+    pt_summary <- pt_d %>%
+      group_by(tool, scenario, pt) %>%
+      summarise(median_jaccard = median(jaccard), .groups = "drop") %>%
+      mutate(scenario = relabel_scenario(scenario))
+    ggplot(pt_summary, aes(x = pt, y = median_jaccard,
+                           colour = tool, group = tool)) +
+      geom_line(linewidth = 0.7) +
+      geom_point(size = 2) +
+      scale_colour_brewer(palette = "Set2") +
+      facet_wrap(~ scenario, ncol = 2) +
+      coord_cartesian(ylim = c(0, 1)) +
+      labs(x = "position_tolerance / maxregiongap (bp)",
+           y = "Median Jaccard",
+           colour = NULL) +
+      pub_theme +
+      theme(legend.position = "bottom")
+  } else {
+    cat("only one pt value in the grid; no equivalence sweep to plot")
+  }
+}
+```
+
+## Per-tool gffcompare summary
+
+Sensitivity and precision at every gffcompare level, per tool, at the parameters chosen above.
+
+```{r tool_gffcompare_table, results = "asis"}
+if (have_tool_data && nrow(df_all) > 0 && "tool" %in% names(df_all)) {
+  d <- df_all %>%
+    filter((tool == "fastder" & param_id == best_fastder_pid) |
+           (tool == "megadepth_baseline" & param_id == best_megadepth_pid) |
+           (tool == "derfinder" & param_id == best_derfinder_pid)) %>%
+    select(tool, scenario, sample, param_id,
+           matches("_(sens|prec)$"), matches("matching"))
+  collapsible_kable(d, "Show per-tool gffcompare table", digits = 2)
+}
+```
+
+The sections below sweep fastder's parameter grid and facet by AS event class. They are intentionally fastder-only: a parameter that is meaningless for derfinder cannot be plotted on its axis, and the AS event mapping is sample-specific in the same way for every tool.
+
+
 
 # Method performance across AS event types
 
@@ -488,6 +824,20 @@ Each box aggregates across samples and parameter combinations for one (level, sc
 Rows are sorted top to bottom from best to worst (sample, parameter) combination, where the score is the mean of the six gffcompare levels for that metric. Cell numbers give the value in percent. The annotation strip on the left tags each row with scenario, AS event class, and parameter values.
 
 ```{r level_bars_heatmap, fig.width = 11, fig.height = 6}
+# colorRamp2 fails if start == end, which happens whenever a parameter axis
+# has only one distinct value in the swept grid (e.g. config_quick uses a
+# single min_coverage). Pad to a flat single-color ramp in that case so the
+# annotation still renders.
+safe_ramp <- function(values, high) {
+  vals <- suppressWarnings(as.numeric(values))
+  vals <- vals[is.finite(vals)]
+  if (length(unique(vals)) < 2) {
+    v <- if (length(vals) == 0) 0 else vals[1]
+    return(colorRamp2(c(v - 1, v + 1), c(high, high)))
+  }
+  colorRamp2(range(vals), c("white", high))
+}
+
 build_level_heatmap <- function(metric_name, palette_high) {
   d <- levels_long_metric %>%
     filter(metric == metric_name) %>%
@@ -513,9 +863,9 @@ build_level_heatmap <- function(metric_name, palette_high) {
     col = list(
       Scenario = c("template + variant" = "#66c2a5", "variant only" = "#fc8d62"),
       `AS event` = as_event_palette,
-      `min_coverage` = colorRamp2(range(meta$min_coverage, na.rm = TRUE), c("white", "#08306b")),
-      `min_length` = colorRamp2(range(meta$min_length, na.rm = TRUE), c("white", "#7f2704")),
-      `coverage_tol` = colorRamp2(range(meta$coverage_tolerance, na.rm = TRUE), c("white", "#3f007d"))
+      `min_coverage` = safe_ramp(meta$min_coverage, "#08306b"),
+      `min_length` = safe_ramp(meta$min_length, "#7f2704"),
+      `coverage_tol` = safe_ramp(meta$coverage_tolerance, "#3f007d")
     ),
     annotation_name_side = "top",
     annotation_name_gp = gpar(fontsize = 8),
@@ -604,9 +954,9 @@ build_mn_heatmap <- function(kind_name, palette_high) {
     col = list(
       Scenario = c("template + variant" = "#66c2a5", "variant only" = "#fc8d62"),
       `AS event` = as_event_palette,
-      `min_coverage` = colorRamp2(range(meta$min_coverage, na.rm = TRUE), c("white", "#08306b")),
-      `min_length` = colorRamp2(range(meta$min_length, na.rm = TRUE), c("white", "#7f2704")),
-      `coverage_tol` = colorRamp2(range(meta$coverage_tolerance, na.rm = TRUE), c("white", "#3f007d"))
+      `min_coverage` = safe_ramp(meta$min_coverage, "#08306b"),
+      `min_length` = safe_ramp(meta$min_length, "#7f2704"),
+      `coverage_tol` = safe_ramp(meta$coverage_tolerance, "#3f007d")
     ),
     annotation_name_side = "top",
     annotation_name_gp = gpar(fontsize = 8)

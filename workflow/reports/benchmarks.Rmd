@@ -20,7 +20,22 @@ knitr::opts_chunk$set(
 )
 library(readr)
 library(dplyr)
+library(tidyr)
+library(stringr)
 library(ggplot2)
+library(ggrepel)
+
+pub_theme <- theme_bw(base_size = 12) +
+  theme(
+    aspect.ratio = 1,
+    panel.grid.major = element_line(colour = "grey88"),
+    panel.grid.minor = element_line(colour = "grey94"),
+    strip.background = element_rect(fill = "grey95", colour = NA),
+    plot.title = element_text(size = 13, face = "plain"),
+    legend.position = "none"
+  )
+
+TOOLS <- c("fastder", "derfinder", "megadepth_baseline")
 ```
 
 ```{r load}
@@ -50,47 +65,224 @@ parse_one <- function(path) {
 df <- bind_rows(lapply(files, parse_one))
 df$wall_s    <- as.numeric(df$s)
 df$max_rss_mb <- as.numeric(df$max_rss)
+
+# Derive a `tool` column for rules whose benchmark files encode the tool.
+# - run_fastder, run_derfinder, run_megadepth_baseline: tool = rule suffix.
+# - run_gffcompare, eval_fuzzy_metrics, link_fastder_gtf: wildcards begin
+#   with the tool name, so we extract the leading token.
+tool_from_rule <- function(rule) {
+  out <- rep(NA_character_, length(rule))
+  out[rule == "run_fastder"] <- "fastder"
+  out[rule == "run_derfinder"] <- "derfinder"
+  out[rule == "run_megadepth_baseline"] <- "megadepth_baseline"
+  out
+}
+tool_from_wildcards <- function(wc) {
+  m <- str_match(wc, paste0("^(", paste(TOOLS, collapse = "|"), ")_"))
+  m[, 2]
+}
+df$tool <- tool_from_rule(df$rule)
+needs_wc_tool <- df$rule %in% c("run_gffcompare", "eval_fuzzy_metrics", "link_fastder_gtf")
+df$tool[needs_wc_tool] <- tool_from_wildcards(df$wildcards[needs_wc_tool])
+
+# Drop the evaluation-harness rules from the benchmark displays. They are
+# not methods under test, just the gffcompare/fuzzy-eval scaffolding the
+# pipeline always runs once per (tool, scenario, sample, param_id).
+df <- df %>% filter(!rule %in% c("run_gffcompare", "eval_fuzzy_metrics"))
+
+# Extract scenario, sample and param_id where the wildcards string carries
+# them. These show up across most per-rule benchmarks; missing values stay
+# NA so plots can drop them with na.rm.
+df$scenario <- ifelse(grepl("template_and_variant", df$wildcards), "template_and_variant",
+                ifelse(grepl("variant_only", df$wildcards), "variant_only", NA_character_))
+df$param_id <- str_extract(df$wildcards, "mc[0-9.]+(?:_[a-z]+[0-9.]+)*")
+df$sample <- str_extract(df$wildcards,
+                         "(?<=_)(es|mixed|afe|ale|mes|mes|all)(?=_|$)")
 ```
 
 ## Inputs
 
-`r bench_dir` (`r length(files)` files)
+`r bench_dir` (`r length(files)` files).
 
-```{r table}
-knitr::kable(df %>% select(rule, wildcards, wall_s, max_rss_mb) %>% arrange(rule, wildcards),
-             digits = 1)
+`max_rss` from snakemake's benchmark TSVs. It is the per-process peak resident set size in MiB sampled by snakemake every 10 s; multi-process rules report the parent only, so high-fan-out runs (derfinder loading per-sample BigWigs simultaneously) may under-report.
+
+```{r table, results = "asis"}
+cat('<details><summary>Click to expand the full per-invocation table</summary>\n\n')
+cat(knitr::kable(
+  df %>% select(rule, wildcards, wall_s, max_rss_mb) %>% arrange(rule, wildcards),
+  digits = 1, format = "html"
+))
+cat('\n\n</details>\n\n')
 ```
 
 ## Wall time per rule
 
-Each point is one rule invocation. Rules run multiple times (for instance per
-sample) appear as multiple points.
+Each point is one rule invocation. Shape encodes which tool drove it (circle = fastder, triangle = derfinder, square = megadepth_baseline, x = none of these); panels split by scenario; the hollow black point marks each rule's median across invocations.
 
-```{r time, fig.width = 6, fig.height = 6}
-ggplot(df, aes(x = rule, y = wall_s)) +
-  geom_point() +
+```{r time, fig.width = 9, fig.height = 7}
+df_pl <- df %>%
+  mutate(scenario_lbl = ifelse(is.na(scenario), "n/a", scenario))
+medians_time <- df_pl %>%
+  group_by(rule, scenario_lbl) %>%
+  summarise(wall_s = median(wall_s, na.rm = TRUE), .groups = "drop")
+ggplot(df_pl, aes(x = rule, y = wall_s, shape = tool)) +
+  geom_jitter(alpha = 0.6, size = 1.6, width = 0.15, height = 0,
+              colour = "grey25") +
+  geom_point(data = medians_time, shape = 21, size = 2.4,
+             colour = "black", fill = "white", stroke = 0.7) +
   coord_flip() +
-  theme_bw()
+  scale_y_continuous(trans = "log10") +
+  scale_shape_manual(values = c(fastder = 16, derfinder = 17,
+                                megadepth_baseline = 15),
+                     na.value = 4) +
+  facet_wrap(~ scenario_lbl, ncol = 2) +
+  labs(x = NULL, y = "Wall time (s, log scale)") +
+  pub_theme +
+  theme(aspect.ratio = NULL)
 ```
 
 ## Max resident memory per rule
 
-Same data, switched axis.
+Same encoding as above (shape = tool, panel = scenario, hollow = median).
 
-```{r mem, fig.width = 6, fig.height = 6}
-ggplot(df, aes(x = rule, y = max_rss_mb)) +
-  geom_point() +
+```{r mem, fig.width = 9, fig.height = 7}
+medians_mem <- df_pl %>%
+  group_by(rule, scenario_lbl) %>%
+  summarise(max_rss_mb = median(max_rss_mb, na.rm = TRUE), .groups = "drop")
+ggplot(df_pl, aes(x = rule, y = max_rss_mb, shape = tool)) +
+  geom_jitter(alpha = 0.6, size = 1.6, width = 0.15, height = 0,
+              colour = "grey25") +
+  geom_point(data = medians_mem, shape = 21, size = 2.4,
+             colour = "black", fill = "white", stroke = 0.7) +
   coord_flip() +
-  theme_bw()
+  scale_y_continuous(trans = "log10") +
+  scale_shape_manual(values = c(fastder = 16, derfinder = 17,
+                                megadepth_baseline = 15),
+                     na.value = 4) +
+  facet_wrap(~ scenario_lbl, ncol = 2) +
+  labs(x = NULL, y = "Max resident set size (MiB, log scale)") +
+  pub_theme +
+  theme(aspect.ratio = NULL)
 ```
 
-## Wall time vs max memory
+## Wall time vs max memory (tool runners only)
 
-Each rule invocation as a single point. Useful for spotting rules that are
-both slow and memory hungry.
+Each invocation of a tool runner (`run_fastder`, `run_derfinder`, `run_megadepth_baseline`) as a single point; the centroid is the median across that runner's invocations.
 
-```{r scatter, fig.width = 6, fig.height = 6}
-ggplot(df, aes(x = wall_s, y = max_rss_mb, colour = rule)) +
-  geom_point(size = 2) +
-  theme_bw()
+```{r scatter, fig.width = 7, fig.height = 7}
+df_runners <- df %>% filter(rule %in% c("run_fastder", "run_derfinder",
+                                        "run_megadepth_baseline"))
+if (nrow(df_runners) > 0) {
+  df_centroids <- df_runners %>%
+    group_by(rule) %>%
+    summarise(wall_s = median(wall_s, na.rm = TRUE),
+              max_rss_mb = median(max_rss_mb, na.rm = TRUE),
+              .groups = "drop")
+  ggplot(df_runners, aes(x = wall_s, y = max_rss_mb)) +
+    geom_point(size = 2, alpha = 0.4, colour = "grey40") +
+    ggrepel::geom_text_repel(data = df_centroids, aes(label = rule),
+                             size = 3, max.overlaps = Inf,
+                             segment.color = "grey60", segment.size = 0.3) +
+    geom_point(data = df_centroids, size = 2.4, colour = "grey15") +
+    scale_x_continuous(trans = "log10") +
+    scale_y_continuous(trans = "log10") +
+    labs(x = "Wall time (s, log scale)", y = "Max RSS (MiB, log scale)") +
+    pub_theme
+} else {
+  cat("no tool runner benchmarks yet")
+}
+```
+
+# Per-tool footprint
+
+The three tools (`fastder`, `derfinder`, `megadepth_baseline`) each run in a dedicated rule (`run_<tool>`) and feed two shared per-tool stages (`run_gffcompare`, `eval_fuzzy_metrics`). The plots below isolate the rules that carry a `tool` label so the comparison stays apples-to-apples.
+
+```{r tool_subset}
+df_tool <- df %>% filter(!is.na(tool))
+have_tool_data <- nrow(df_tool) > 0
+```
+
+## Tool runner: wall time
+
+```{r tool_runner_time, fig.width = 8, fig.height = 4.5}
+if (have_tool_data) {
+  d_run <- df_tool %>% filter(rule %in% c("run_fastder", "run_derfinder",
+                                          "run_megadepth_baseline"))
+  if (nrow(d_run) > 0) {
+    ggplot(d_run, aes(x = tool, y = wall_s, fill = tool)) +
+      geom_violin(alpha = 0.5, scale = "width", trim = TRUE, colour = "grey40") +
+      geom_jitter(width = 0.15, size = 1.4, alpha = 0.6) +
+      stat_summary(fun = median, geom = "point", shape = 21, size = 3,
+                   colour = "black", fill = "white", stroke = 0.7) +
+      scale_fill_brewer(palette = "Set2", guide = "none") +
+      labs(x = NULL, y = "Wall time (s)") +
+      pub_theme +
+      theme(axis.text.x = element_text(angle = 30, hjust = 1))
+  } else {
+    cat("no tool runner benchmarks yet")
+  }
+}
+```
+
+## Tool runner: max resident memory
+
+This is the most direct way to spot which tool is memory-hungry. Derfinder loads per-sample coverage Rles for every chromosome it processes and converts them to dense numeric vectors before thresholding, so its peak grows roughly linearly in (number of samples) x (chromosome length).
+
+```{r tool_runner_mem, fig.width = 8, fig.height = 4.5}
+if (have_tool_data) {
+  d_run <- df_tool %>% filter(rule %in% c("run_fastder", "run_derfinder",
+                                          "run_megadepth_baseline"))
+  if (nrow(d_run) > 0) {
+    ggplot(d_run, aes(x = tool, y = max_rss_mb, fill = tool)) +
+      geom_violin(alpha = 0.5, scale = "width", trim = TRUE, colour = "grey40") +
+      geom_jitter(width = 0.15, size = 1.4, alpha = 0.6) +
+      stat_summary(fun = median, geom = "point", shape = 21, size = 3,
+                   colour = "black", fill = "white", stroke = 0.7) +
+      scale_fill_brewer(palette = "Set2", guide = "none") +
+      labs(x = NULL, y = "Max RSS (MiB)") +
+      pub_theme +
+      theme(axis.text.x = element_text(angle = 30, hjust = 1))
+  }
+}
+```
+
+## Tool runner: time vs memory
+
+```{r tool_runner_scatter, fig.width = 9, fig.height = 4}
+if (have_tool_data) {
+  d_run <- df_tool %>% filter(rule %in% c("run_fastder", "run_derfinder",
+                                          "run_megadepth_baseline"))
+  if (nrow(d_run) > 0) {
+    ggplot(d_run, aes(x = wall_s, y = max_rss_mb)) +
+      geom_point(size = 2.5, alpha = 0.8, colour = "grey20") +
+      facet_wrap(~ tool, ncol = 3) +
+      labs(x = "Wall time (s)", y = "Max RSS (MiB)") +
+      pub_theme
+  }
+}
+```
+
+## Per-tool summary table
+
+Median, max, and total wall time and max-RSS for the per-tool rules.
+
+```{r tool_summary_table, results = "asis"}
+if (have_tool_data) {
+  d_run <- df_tool %>% filter(rule %in% c("run_fastder", "run_derfinder",
+                                          "run_megadepth_baseline"))
+  if (nrow(d_run) > 0) {
+    summary_tbl <- d_run %>%
+      group_by(tool) %>%
+      summarise(
+        runs = n(),
+        wall_s_median = median(wall_s, na.rm = TRUE),
+        wall_s_max = max(wall_s, na.rm = TRUE),
+        wall_s_total = sum(wall_s, na.rm = TRUE),
+        max_rss_mb_median = median(max_rss_mb, na.rm = TRUE),
+        max_rss_mb_peak = max(max_rss_mb, na.rm = TRUE),
+        .groups = "drop"
+      )
+    print(knitr::kable(summary_tbl, digits = 1, format = "html"))
+  }
+}
 ```
