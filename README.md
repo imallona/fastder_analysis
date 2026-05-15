@@ -1,6 +1,55 @@
 # FastDER Evaluation Snakemake Pipeline
 
-This pipeline simulates RNA-seq data with ASimulatoR, aligns it against chr21, and runs fastder against the simulated truth set to measure detection accuracy. The fastder code lives in a submodule pointing at [imallona/fastder](https://github.com/imallona/fastder), which is a fork of [martinalavanya/fastder](https://github.com/martinalavanya/fastder) with three extra features used by this evaluation: lean MM/RR parsing, libBigWig support so coverage is read straight from BigWig without an intermediate BedGraph, and strand-aware stitching that propagates SJ strand into the StitchedER output.
+This repository holds the evaluation pipeline for fastder and accompanies the fastder paper. It runs fastder on both simulated and real RNA-seq data and compares it against derfinder and a coverage-based baseline.
+
+Simulated data is produced with ASimulatoR, which gives a known set of true transcripts to grade against. Real data comes either from recount3, where a study has already been processed by the Monorail pipeline, or from FASTQ files already on disk.
+
+The pipeline is used in two ways. The first is method comparison: fastder is benchmarked against derfinder and a coverage-only baseline, mainly on simulated data, where a known truth set allows precision and recall to be measured. The second is a worked biological example: fastder is run on a real dataset with a known expected result, a TDP-43 knockdown against a matched control, where loss of TDP-43 is known to produce specific cryptic exons. The two uses map onto the run modes below: the simulation configs are for benchmarking, and the recount3 config is the worked example.
+
+The fastder code is a git submodule pointing at [imallona/fastder](https://github.com/imallona/fastder), a fork of [martinalavanya/fastder](https://github.com/martinalavanya/fastder) with three changes this evaluation relies on: lean MM/RR parsing, reading coverage straight from BigWig through libBigWig instead of an intermediate BedGraph, and strand-aware stitching that carries the splice junction strand into the StitchedER output.
+
+## Workflow at a glance
+
+The run modes differ only in how the per-sample coverage BigWigs and the
+MM/RR splice junction files are produced. Everything after that point is the
+same.
+
+```mermaid
+flowchart TD
+    SIM[ASimulatoR simulated reads]
+    LOCAL[local FASTQ files]
+    SRA[SRA reads]
+    R3[recount3 hosted data]
+
+    SIM --> PUMP[recount-pump and recount-unify]
+    LOCAL --> PUMP
+    SRA --> PUMP
+    SIM --> STAR[STAR alignment and lean MM/RR]
+    LOCAL --> STAR
+    R3 --> SUBSET[per-group subset]
+
+    PUMP -->|monorail| COV[coverage BigWigs and MM/RR junctions]
+    STAR -->|monorail_light| COV
+    SUBSET -->|recount3| COV
+
+    COV --> TOOLS[fastder, derfinder, megadepth_baseline]
+    TOOLS --> GTF[one GTF per tool and group]
+    TRUTH[truth set: simulated GFF or Ensembl annotation] --> EVAL
+    GTF --> EVAL[gffcompare and fuzzy metrics]
+    EVAL --> OUT[summary.csv, fuzzy CSVs, HTML reports]
+```
+
+## Benchmarking strategy at a glance
+
+| Aspect | What the pipeline does |
+|---|---|
+| Question | fastder uses splice junction information when it calls expressed regions. Does that help, compared with tools that look only at coverage? |
+| Tools compared | `fastder`, `derfinder` and `megadepth_baseline`. All three read the same coverage BigWigs, use the same CPM normalisation, and are run at the same parameter values. |
+| Input data | Simulated reads (ASimulatoR, chr21, with a known set of true transcripts), or real data (a recount3 study, compared against the Ensembl annotation). |
+| Parameters | Each tool is run at the same parameter values, for example `min_coverage`. The values are recorded in the `param_id`, so runs can be compared directly. |
+| Grading | `gffcompare`, which asks for matching exon boundaries, plus softer measures: best Jaccard overlap, distance to the nearest boundary, how much of each locus is recovered, and strand agreement. |
+| Grouping | Simulated runs are split by the type of splicing change. Real runs are split by sample group, for example a knockdown group and a control group. |
+| Output | `summary.csv` and the `fuzzy_*.csv` files have `tool`, `scenario` and `param_id` columns; the HTML reports place the tools next to each other. |
 
 ## Running the Pipeline
 
@@ -34,25 +83,51 @@ the R script in the host environment, which fails with
 `there is no package called 'ASimulatoR'`. The heavy backend additionally
 needs Singularity for `recount-pump` and `recount-unify`.
 
-### Backend and configs
+### Run modes
 
-Two backends share the same Snakefile, selected by `monorail.backend` in the
-config:
+A run is set by two config settings. `monorail.backend` chooses how the reads
+are processed. For the two backends that process reads, `monorail.pump_source`
+chooses where the reads come from.
 
-- `monorail` (default): runs the full `recount-pump` and `recount-unify`
-  Singularity stack. This downloads multi-GB Monorail reference indexes the
-  first time it runs.
-- `monorail_light`: replaces pump and unify with a chromosome-restricted STAR
-  alignment plus a small Python script that emits lean MM and RR files.
-  Skips the multi-hour reference download.
+Every run ends at the same fastder inputs, namely per-sample coverage BigWigs
+and the MM/RR splice junction files.
 
-Five configs are included, ordered by simulation size:
+Backends (`monorail.backend`):
+
+- `monorail` (default): the full Monorail stack. Runs `recount-pump` and
+  `recount-unify` in Singularity containers: STAR alignment, BigWig coverage,
+  junction extraction, then aggregation across samples. Downloads the multi-GB
+  Monorail reference indexes the first time it runs.
+- `monorail_light`: a lighter alternative. Runs a chromosome-restricted STAR
+  alignment directly, then a small Python script builds the lean MM and RR
+  files from the STAR `SJ.out.tab` outputs. No Singularity and no whole-genome
+  reference download.
+- `recount3`: no read processing. Downloads coverage and junctions that the
+  recount3 resource already holds, Monorail-processed, for a published SRA
+  study, and reshapes them per sample group. No alignment and no containers.
+  See `workflow/rules/recount3.smk`.
+
+Read sources for the `monorail` and `monorail_light` backends
+(`monorail.pump_source`):
+
+- `asimulator`: reads simulated by ASimulatoR.
+- `sra`: reads downloaded from SRA at run time.
+- `local`: paired FASTQ files already on disk, listed under
+  `monorail.local_samples`. This is the SRA path with the download step
+  skipped.
+
+The `recount3` backend has no read source; its data comes from recount3
+directly.
+
+Seven configs are included:
 
 - `config/config_quick_light.yaml`: 2 samples, 100k reads, chr21, monorail_light. Smoke test.
-- `config/config_quick.yaml`: 2 samples, 100k reads, chr21, heavy backend.
+- `config/config_quick.yaml`: 2 samples, 100k reads, chr21, monorail backend.
 - `config/config_medium_light.yaml`: 5 samples, 1M reads, chr21, monorail_light.
-- `config/config_full_light.yaml`: 5 samples, 10M reads, chr21, monorail_light. Recommended for figures.
-- `config/config.yaml`: 5 samples, 10M reads, chr21, heavy backend (full Monorail stack).
+- `config/config_full_light.yaml`: 5 samples, 10M reads, chr21, monorail_light. Recommended for the simulation figures.
+- `config/config.yaml`: 5 samples, 10M reads, chr21, monorail backend (full Monorail stack).
+- `config/config_local.yaml`: local FASTQ files, monorail_light backend. Edit `monorail.local_samples` to point at your own paired FASTQ files.
+- `config/config_recount3.yaml`: real data, recount3 backend. TDP-43 knockdown versus scramble control in motor-neuron RNA-seq (recount3 study SRP166282, GEO GSE121569), split into a knockdown group and a control group, on chr8 and chr19. `--use-singularity` is not needed for this config.
 
 To pick a non-default config, set the `FASTDER_EVAL_CONFIG` environment
 variable. Snakemake's own `--configfile` flag does a deep merge that unions
@@ -64,40 +139,45 @@ FASTDER_EVAL_CONFIG=../config/config_quick_light.yaml \
   snakemake --use-conda --use-singularity --cores 12
 ```
 
-### Scenarios
+### Scenarios and sample groups
 
-Each ASimulatoR sample is processed through two scenarios that differ in which transcripts contribute reads to the coverage track that fastder sees (a BigWig fed through libBigWig in the active build, or a BedGraph if the legacy conversion rule is wired back in):
+The pipeline runs every downstream stage once per scenario, and the results carry a `scenario` column. What the scenario axis means depends on the input. The ASimulatoR scenarios are controlled conditions for method comparison; the recount3 groups are the two arms of the worked biological example.
 
-- `template_and_variant`: ASimulatoR default. Both the canonical (template) transcript and the alternative form are simulated, so a skipped exon still has reads from the template and the coverage track shows continuous coverage with a dip rather than a hard zero.
-- `variant_only`: post-filters the FASTQ to drop reads whose source transcript carries `template=TRUE` in the splicing_variants GFF, and rewrites the GFF to keep only the alternative isoforms. This isolates the AS event signal: the skipped exon has zero coverage and the gffcompare truth set contains only the alternative isoforms.
+For ASimulatoR input there are two scenarios. They differ in which transcripts contribute reads to the coverage track that fastder sees:
 
-The pipeline runs every downstream stage (alignment, BigWig, MM/RR aggregation, fastder, gffcompare, fuzzy eval) once per scenario. Results carry a `scenario` column so the summary report can compare them side by side.
+- `template_and_variant`: the ASimulatoR default. Both the canonical (template) transcript and the alternative form are simulated, so a skipped exon still has reads from the template and the coverage track shows a dip rather than a hard zero.
+- `variant_only`: the FASTQ is post-filtered to drop reads whose source transcript carries `template=TRUE` in the splicing_variants GFF, and the GFF is rewritten to keep only the alternative isoforms. The skipped exon then has zero coverage, and the gffcompare truth set contains only the alternative isoforms.
+
+For recount3 input the scenario axis carries the sample groups instead, for example a knockdown group and a control group, so each group is called and graded on its own.
+
+For SRA and local FASTQ input there is a single scenario, `all`.
 
 ### Outputs
 
-After a successful run, `results/` contains:
+After a successful run, `results/<config>/` contains:
 
-- `summary.csv`: gffcompare metrics per (scenario, sample, parameter combination), every level (Base, Exon, Intron, Intron chain, Transcript, Locus) plus matching counts and missed/novel ratios.
-- `chain_stats.csv`: per-transcript statistics parsed from the fastder GTFs (number of exons, total exonic length, score, chromosome, strand) per (scenario, parameter combination).
-- `fuzzy_jaccard.csv`: per reference transcript, the highest exonic Jaccard against any fastder transcript on the same strand. Drops gffcompare's exact-boundary requirement.
-- `fuzzy_distances.csv`: signed bp distance from each fastder exon boundary to the nearest reference boundary on the same strand.
-- `fuzzy_locus_recall.csv`: fraction of reference loci with at least f of their exonic length covered by any fastder exon, at thresholds f from 0.05 to 1.0 in 0.05 increments.
-- `fuzzy_strand.csv`: per fastder StitchedER, classified as concordant, discordant, unstranded, or unmatched against the best-overlapping reference transcript on any strand.
-- `summary.html`: rendered summary report covering all CSVs above, with a publication-style overview section faceting by AS event class.
-- `benchmarks.html`: rendered runtime and memory report parsed from the per-rule benchmark TSVs under `logs/benchmarks/`.
+- `summary.csv`: gffcompare metrics per (tool, scenario, sample, parameter combination), at every level (Base, Exon, Intron, Intron chain, Transcript, Locus), plus matching counts and missed and novel ratios.
+- `chain_stats.csv`: per-transcript statistics parsed from the fastder GTFs (number of exons, total exonic length, score, chromosome, strand).
+- `fuzzy_jaccard.csv`: per reference transcript, the highest exonic Jaccard against any called transcript on the same strand. This drops gffcompare's exact-boundary requirement.
+- `fuzzy_distances.csv`: signed bp distance from each called exon boundary to the nearest reference boundary on the same strand.
+- `fuzzy_locus_recall.csv`: fraction of reference loci with at least f of their exonic length covered, at thresholds f from 0.05 to 1.0 in 0.05 steps.
+- `fuzzy_strand.csv`: each called StitchedER classified as concordant, discordant, unstranded, or unmatched against the best-overlapping reference transcript.
+- `summary.html`: the summary report covering the CSVs above, faceted by scenario.
+- `benchmarks.html`: runtime and memory report parsed from the per-rule benchmark TSVs under `logs/benchmarks/`.
+- `recount3.html`: written only by the recount3 backend. Shows the coverage view at the TDP-43 cryptic exon loci, the knockdown and control groups side by side, and a sample dissimilarity summary.
 
 ### Tool comparison
 
-The pipeline benchmarks fastder against two coverage-based baselines that consume the same simulated BigWigs:
+The pipeline benchmarks fastder against two coverage-based baselines that consume the same coverage BigWigs, whether those come from simulated or real data:
 
 - `derfinder`: Bioconductor-flavored coverage-based expressed-region caller. CPM-normalised per-base mean coverage thresholded at `--cutoff`, then post-filtered by `--min-length`, with optional below-threshold gap-bridging via `--maxregiongap`. Wrapped by `workflow/scripts/run_derfinder.R`. Conda env: `workflow/envs/derfinder.yaml`.
 - `megadepth_baseline`: a thresholded segmenter that emits one transcript per maximal run of bases whose mean-across-samples CPM is at or above `--cutoff`. No gap-bridging, no splice-junction stitching. Wrapped by `workflow/scripts/run_megadepth_baseline.py`. Conda env: `workflow/envs/megadepth_baseline.yaml`.
 
 All three tools normalise per-sample coverage to CPM using the same `library_size = Σ length × value` formula (over the `fastder.chromosomes` set), then average per-sample CPMs across samples (zero-included for samples without coverage at a position). At a given numeric `--min-coverage` value, the threshold means the same thing for every tool.
 
-The point of the megadepth baseline is to isolate the lift fastder gets from its SJ-aware stitching over a naive coverage segmenter: identical coverage signal, identical normalisation, identical aggregation, only the region-call step differs.
+The point of the megadepth baseline is to show what fastder gains from its splice-junction-aware stitching over a coverage-only segmenter. The coverage signal, the normalisation and the aggregation are identical; only the region-call step differs.
 
-Common output contract: each tool writes a GTF at `data/tools/{tool}/{scenario}/{param_id}/output.gtf`. `run_gffcompare` and `eval_fuzzy_metrics` grade every tool against the same simulated truth, and `summary.csv` plus the four `fuzzy_*.csv` files carry a `tool` column.
+Common output contract: each tool writes a GTF at `data/tools/{tool}/{scenario}/{param_id}/output.gtf`. `run_gffcompare` and `eval_fuzzy_metrics` grade every tool against the same truth set, which is the simulated GFF for ASimulatoR input and the Ensembl annotation for real data. `summary.csv` and the four `fuzzy_*.csv` files carry a `tool` column.
 
 #### Parameter equivalence and grids
 
@@ -116,7 +196,7 @@ Per-tool grids:
 - `derfinder`: cross-product of `fastder.min_coverage` × `fastder.position_tolerance`. `param_id = mc<v>_pt<v>`.
 - `megadepth_baseline`: `fastder.min_coverage` only. `param_id = mc<v>`.
 
-Note on the `position_tolerance` mapping: fastder's `--position-tolerance` allows a few bp of slack at SJ-anchored boundaries, while derfinder's `--maxregiongap` bridges short below-threshold gaps inside a region. They're not identical, but both are tolerance knobs in the bp dimension; sweeping both lets the report show where they end up roughly comparable.
+Note on the `position_tolerance` mapping: fastder's `--position-tolerance` allows a few bp of slack at SJ-anchored boundaries, while derfinder's `--maxregiongap` bridges short below-threshold gaps inside a region. They are not identical, but both are tolerance settings measured in base pairs, so sweeping both lets the report show where they end up roughly comparable.
 
 Per-sample vs per-scenario: the baselines run *once per (scenario, param_id)* on the pooled BigWigs, then `run_gffcompare` and `eval_fuzzy_metrics` evaluate that GTF against each sample's truth GFF. fastder retains its full per-scenario, per-param sweep.
 
@@ -124,18 +204,19 @@ Adding a third tool: write `run_<tool>` that emits the standardised GTF, add a `
 
 ### Reports
 
-The rules `render_summary_report` and `render_benchmarks_report` produce `workflow/results/summary.html` and `workflow/results/benchmarks.html` at the end of a pipeline run. To rebuild only the reports without re-running upstream rules, add `--forcerun render_summary_report render_benchmarks_report` to the snakemake invocation. Both rules share the conda env at `workflow/envs/rmarkdown.yaml`, which pulls R, rmarkdown and the tidyverse plus ComplexHeatmap and circlize for the parameter-annotated heatmaps.
+The rules `render_summary_report` and `render_benchmarks_report` produce `summary.html` and `benchmarks.html` at the end of a pipeline run. The recount3 backend additionally runs `render_recount3_report`, which produces `recount3.html`. To rebuild only the reports without re-running upstream rules, add `--forcerun` with the report rule names to the snakemake invocation. The report rules share the conda env at `workflow/envs/rmarkdown.yaml`, which pulls R, rmarkdown and the tidyverse, ComplexHeatmap and circlize for the heatmaps, and rtracklayer and Gviz for the recount3 coverage view.
 
 ### Repository layout
 
 ```
-config/                   per-config YAMLs, see "Backend and configs" above
+config/                   per-config YAMLs, see "Run modes" above
 workflow/Snakefile        all rules
+workflow/rules/           rule files included by the Snakefile (recount3.smk)
 workflow/envs/            one conda yaml per rule conda directive
 workflow/scripts/         python and R helpers called by the rules
-workflow/reports/         summary.Rmd and benchmarks.Rmd templates
+workflow/reports/         summary.Rmd, benchmarks.Rmd and recount3.Rmd templates
 workflow/external/        fastder and monorail-external as git submodules
-workflow/data/            pipeline scratch (asim, monorail_light, fastder, tools)
+workflow/data/            pipeline scratch (asim, monorail_light, recount3, fastder, tools)
 workflow/logs/            per-rule logs and benchmark TSVs
 workflow/results/         final CSVs and rendered HTML reports
 tests/                    pytest unit tests for workflow/scripts/ helpers
@@ -149,31 +230,39 @@ The pytest suite covers the pure-python helpers in `workflow/scripts/`. From the
 pytest tests
 ```
 
-### Parameters and choices
+### Configuration settings
 
-Knobs that affect what gets simulated and how fastder is evaluated:
+Settings shared by every run mode:
 
-- `asimulator.seq_depth`: total reads per sample. 10M on chr21 alone gives roughly 22x mean coverage, generous for a method-evaluation simulation.
-- `asimulator.samples`: dict of sample name to AS event mix. A single key like `es: 1.0` makes every multi-exon gene carry an exon-skipping event. The `mixed` sample with four 0.25 weights distributes the four event classes across genes.
-- `asimulator.probs_as_freq`: when true (our default), the values in `asimulator.samples` are treated as frequencies, so the listed values per sample sum to the fraction of multi-exon genes that carry any event. With them summing to 1.0 every gene gets one event, which is unrealistic but maximizes signal.
-- `asimulator.strand_specific`: ASimulatoR is run strand-aware so the simulated reads carry strand and the truth GFF has correct strand columns.
-- `monorail.backend`: `monorail` for the full recount-pump and recount-unify Singularity stack, or `monorail_light` for the lean STAR plus Python aggregator. The light backend skips the multi-hour reference download and the 2 GB of Singularity images.
-- `fastder.chromosomes`: passed straight through to fastder's `--chr` flag and used to filter the RR output, so fastder only processes the named chromosomes.
-- `fastder.min_coverage`, `fastder.min_length`, `fastder.position_tolerance`, `fastder.coverage_tolerance`: lists. The pipeline runs the cross-product, so each combination becomes one fastder run with its own GTF and downstream evaluation. Omit a list to use fastder's internal default.
-- `fastder.stranded`: switches the BigWig pipeline between unstranded all.bw and per-strand plus.bw + minus.bw. fastder reads either via libBigWig.
+- `fastder.chromosomes`: passed to fastder's `--chr` flag and used to filter the RR output, so only the named chromosomes are processed. Omit it to process chr1 to chr22 and chrX.
+- `fastder.min_coverage`, `fastder.min_length`, `fastder.position_tolerance`, `fastder.coverage_tolerance`: lists. The pipeline runs the cross-product, so each combination becomes one fastder run with its own GTF and evaluation. Omit a list to use fastder's internal default.
+- `fastder.stranded`: switches the BigWig pipeline between an unstranded `all.bw` and per-strand `plus.bw` and `minus.bw`. The recount3 backend does not support this, because recount3 hosts unstranded coverage only.
+- `monorail.backend`: see Run modes above.
 
-## Pipeline overview (not done)
-`workflow/scripts/download_reference_ensembl.sh`:
-This script retrieves Ensembl GRCh38 release 115 reference data, downloading chromosomes 1 through 22 and X along with the corresponding GTF, and outputs a cleaned reference set for downstream use.
+Simulation settings (`asimulator.*`, used when `pump_source` is `asimulator`):
+
+- `asimulator.seq_depth`: total reads per sample. 10M on chr21 alone gives roughly 22x mean coverage.
+- `asimulator.samples`: a map from sample name to its alternative-splicing event mix. A single key like `es: 1.0` makes every multi-exon gene carry an exon-skipping event. The `mixed` sample with four 0.25 weights spreads the four event classes across genes.
+- `asimulator.probs_as_freq`: when true, the values in `asimulator.samples` are read as frequencies, so they sum to the fraction of multi-exon genes that carry any event. With them summing to 1.0 every gene gets one event, which is not realistic but gives the strongest signal.
+- `asimulator.strand_specific`: runs ASimulatoR strand-aware, so the reads carry strand and the truth GFF has correct strand columns.
+
+Real-data settings:
+
+- `monorail.local_samples`: for `pump_source: local`. A map from sample name to its paired FASTQ paths (`fq1`, `fq2`).
+- `monorail.sra_samples`: for `pump_source: sra`. A map from run accession to its `study_acc`.
+- `recount3.study_acc` and `recount3.groups`: for the recount3 backend. The SRA study to pull, and the sample groups, where each group becomes one scenario. See `config/config_recount3.yaml`.
+- `gffcompare.reference_annotation`: the annotation used as the truth set for real data. It is not used for ASimulatoR input, which has its own simulated truth.
 
 ## Known issues
 
 With old conda versions, the workflow may fail during environment activation with an assertion involving `CONDA_SHLVL` / `old_conda_shlvl`. A workaround is to run `export CONDA_SHLVL=0` before starting Snakemake, or to use a recent conda version.
 
-# Note
+## Cloning with submodules
 
-By default, git clone <big-repo> does not fetch the contents of submodules.
+`git clone` does not fetch submodule contents by default. To clone with submodules included:
 
-To clone including submodules: `git clone --recurse-submodules <big-repo-url>`
+`git clone --recurse-submodules <repo-url>`
 
-If you already cloned the big repo and want to populate submodules afterward: `git submodule update --init --recursive`
+If the repository is already cloned, populate the submodules with:
+
+`git submodule update --init --recursive`

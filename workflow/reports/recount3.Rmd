@@ -1,0 +1,235 @@
+---
+title: "recount3 backend: TDP-43 knockdown versus control"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    df_print: paged
+params:
+  manifest_csv: ""
+  summary_csv: ""
+  reference_gtf: ""
+  study: ""
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE,
+                      fig.width = 10, fig.height = 6)
+suppressPackageStartupMessages({
+  library(rtracklayer)
+  library(GenomicRanges)
+  library(Gviz)
+  library(ggplot2)
+})
+```
+
+This report compares the two sample groups of recount3 study
+`r params$study`: a TDP-43 knockdown group and a scramble control group. The
+coverage and splice junctions come from recount3, which holds the
+Monorail-processed outputs. Each group was processed on its own, so the
+called regions of the knockdown group and the control group can be placed
+side by side.
+
+Loss of TDP-43 is known to let two cryptic exons appear, one in STMN2 on
+chr8 and one in UNC13A on chr19. These cryptic exons are not part of the
+Ensembl annotation, so they cannot be scored as true positives. The aim here
+is a simple visual check: a cryptic exon should show up as coverage and as a
+called region in the knockdown group, and should be weak or absent in the
+control group.
+
+```{r load-manifest}
+manifest <- read.csv(params$manifest_csv, stringsAsFactors = FALSE)
+manifest <- manifest[order(manifest$group, manifest$sample), ]
+knitr::kable(manifest[, c("group", "sample")],
+             caption = "Samples and their groups", row.names = FALSE)
+
+groups <- unique(manifest$group)
+group_colors <- setNames(
+  c("#d73027", "#4575b4")[seq_along(groups)], groups)
+```
+
+```{r regions}
+# Cryptic exon loci, hg38. The window has some flank so the gene context is
+# visible. Coordinates are approximate gene spans, not exact exon positions.
+regions <- data.frame(
+  gene  = c("STMN2", "UNC13A"),
+  chrom = c("chr8", "chr19"),
+  start = c(79590000, 17580000),
+  end   = c(79690000, 17710000),
+  stringsAsFactors = FALSE
+)
+knitr::kable(regions, caption = "Plotted regions (hg38)")
+```
+
+## Coverage view at the cryptic exon loci
+
+For each locus the panel shows, from top to bottom: the position axis, the
+Ensembl gene models, one coverage track per sample (knockdown in red,
+control in blue), and the fastder called regions for each group. A cryptic
+exon should appear as a coverage signal inside an intron in the knockdown
+samples that is missing in the control samples, with a matching fastder
+region in the knockdown group.
+
+```{r gene-models}
+# The Ensembl GTF uses chromosome names without the "chr" prefix; the BigWigs
+# and the fastder GTF use "chr". Rename the annotation to match.
+gene_models <- NULL
+if (nzchar(params$reference_gtf) && file.exists(params$reference_gtf)) {
+  gene_models <- tryCatch({
+    ann <- import(params$reference_gtf)
+    seqlevels(ann) <- paste0("chr", sub("^chr", "", seqlevels(ann)))
+    ann
+  }, error = function(e) NULL)
+}
+
+fastder_regions <- function(group) {
+  gtf <- unique(manifest$fastder_gtf[manifest$group == group])
+  gtf <- gtf[nzchar(gtf) & file.exists(gtf)]
+  if (length(gtf) == 0) return(GRanges())
+  tryCatch(import(gtf[1]), error = function(e) GRanges())
+}
+fastder_by_group <- lapply(groups, fastder_regions)
+names(fastder_by_group) <- groups
+```
+
+```{r coverage-plots, results="asis"}
+for (i in seq_len(nrow(regions))) {
+  r <- regions[i, ]
+  cat("\n\n### ", r$gene, " (", r$chrom, ":", r$start, "-", r$end, ")\n\n",
+      sep = "")
+  plotted <- tryCatch({
+    tracks <- list(GenomeAxisTrack())
+
+    if (!is.null(gene_models)) {
+      in_window <- gene_models[seqnames(gene_models) == r$chrom &
+                               start(gene_models) <= r$end &
+                               end(gene_models) >= r$start &
+                               gene_models$type == "exon"]
+      if (length(in_window) > 0) {
+        tracks <- c(tracks, AnnotationTrack(
+          in_window, name = "Ensembl", group = in_window$transcript_id,
+          stacking = "squish", fill = "grey60", col = NA))
+      }
+    }
+
+    for (j in seq_len(nrow(manifest))) {
+      m <- manifest[j, ]
+      tracks <- c(tracks, DataTrack(
+        range = m$bigwig, genome = "hg38", chromosome = r$chrom,
+        name = paste0(m$sample, "\n", m$group), type = "histogram",
+        col.histogram = group_colors[m$group],
+        fill.histogram = group_colors[m$group]))
+    }
+
+    for (group in groups) {
+      gr <- fastder_by_group[[group]]
+      if (length(gr) > 0) {
+        gr <- gr[seqnames(gr) == r$chrom &
+                 start(gr) <= r$end & end(gr) >= r$start]
+      }
+      tracks <- c(tracks, AnnotationTrack(
+        gr, name = paste0("fastder\n", group), chromosome = r$chrom,
+        fill = group_colors[group], col = NA, stacking = "dense"))
+    }
+
+    plotTracks(tracks, from = r$start, to = r$end, chromosome = r$chrom,
+               background.title = "white", col.title = "black",
+               col.axis = "black", sizes = NULL)
+    TRUE
+  }, error = function(e) {
+    cat("Could not draw this region:", conditionMessage(e), "\n")
+    FALSE
+  })
+}
+```
+
+## Sample dissimilarity
+
+To check that the knockdown and control samples differ as expected, coverage
+is averaged in 50 kb bins over the analysed chromosomes, then compared
+between every pair of samples. If the knockdown affects the transcriptome,
+the knockdown samples should be more similar to each other than to the
+control samples.
+
+```{r dissimilarity}
+bin_width <- 50000
+
+dissim <- tryCatch({
+  analysed_chroms <- unique(regions$chrom)
+  # Chromosome lengths come from the first BigWig, so the bins stay within
+  # bounds. The whole analysed chromosomes are used, not only the plotted
+  # windows.
+  si <- seqinfo(BigWigFile(manifest$bigwig[1]))
+  si <- si[intersect(analysed_chroms, seqnames(si))]
+  region <- as(si, "GRanges")
+  bins <- unlist(tile(region, width = bin_width))
+
+  cov_mat <- sapply(seq_len(nrow(manifest)), function(j) {
+    gr <- import.bw(manifest$bigwig[j], which = region)
+    seqinfo(gr) <- merge(seqinfo(gr), si)[seqnames(seqinfo(gr))]
+    cov <- coverage(gr, weight = "score")
+    binnedAverage(bins, cov, "mean_cov")$mean_cov
+  })
+  colnames(cov_mat) <- manifest$sample
+  cov_mat <- cov_mat[stats::complete.cases(cov_mat), , drop = FALSE]
+  list(cor = cor(cov_mat, method = "spearman"), n_bins = nrow(cov_mat))
+}, error = function(e) {
+  message("dissimilarity failed: ", conditionMessage(e))
+  NULL
+})
+```
+
+```{r dissimilarity-plot}
+if (!is.null(dissim)) {
+  cor_mat <- dissim$cor
+  long <- expand.grid(s1 = rownames(cor_mat), s2 = colnames(cor_mat))
+  long$correlation <- as.vector(cor_mat)
+  group_of <- setNames(manifest$group, manifest$sample)
+  long$s1 <- factor(long$s1, levels = manifest$sample)
+  long$s2 <- factor(long$s2, levels = manifest$sample)
+
+  print(
+    ggplot(long, aes(s1, s2, fill = correlation)) +
+      geom_tile() +
+      geom_text(aes(label = sprintf("%.3f", correlation)), size = 3) +
+      scale_fill_gradient(low = "white", high = "#4575b4", limits = c(NA, 1)) +
+      labs(x = NULL, y = NULL,
+           title = "Spearman correlation of 50 kb binned coverage",
+           subtitle = paste(dissim$n_bins, "bins")) +
+      theme_minimal() +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  )
+
+  dendro <- hclust(as.dist(1 - cor_mat))
+  plot(dendro, main = "Sample clustering (1 - Spearman correlation)",
+       xlab = "", sub = "")
+} else {
+  cat("The dissimilarity summary could not be computed for this run.\n")
+}
+```
+
+## gffcompare metrics per group
+
+Each group's called regions are compared against the Ensembl annotation with
+gffcompare. The TDP-43 cryptic exons are not in that annotation, so they
+lower precision rather than raise sensitivity. Read these numbers as a
+general agreement check, not as a verdict on the cryptic exons.
+
+```{r summary-table}
+if (nzchar(params$summary_csv) && file.exists(params$summary_csv)) {
+  summ <- read.csv(params$summary_csv, stringsAsFactors = FALSE)
+  cols <- intersect(
+    c("tool", "scenario", "param_id", "transcript_sens", "transcript_prec",
+      "exon_sens", "exon_prec", "base_sens", "base_prec"),
+    colnames(summ))
+  knitr::kable(summ[, cols],
+               caption = "gffcompare metrics (scenario is the sample group)",
+               row.names = FALSE)
+} else {
+  cat("summary.csv was not available.\n")
+}
+```
+
+```{r session}
+sessionInfo()
+```

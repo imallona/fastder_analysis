@@ -29,14 +29,38 @@ CONTAINERS_DIR = op.join(WORKFLOW_DIR, "containers")
 PUMP_SIF = op.join(CONTAINERS_DIR, "recount-pump-1.1.3.sif")
 UNIFY_SIF = op.join(CONTAINERS_DIR, "recount-unify-1.1.1.sif")
 
-# Backend: "monorail" runs the recount-pump + recount-unify Singularity stack;
-# "monorail_light" replaces it with a chr-restricted STAR alignment + a small
-# Python script that emits lean MM/RR files. Light backend skips the multi-hour
-# whole-genome reference download and trims fastder's resident set by writing
-# RR with empty annotation strings.
+# Backend: selects how the per-sample coverage BigWigs and the MM/RR splice
+# junction files that fastder consumes are produced. All three backends end
+# at the same inputs; they differ in how much processing the pipeline runs.
+#
+#   monorail
+#     The full Monorail stack. Takes raw reads (FASTQ from ASimulatoR, or
+#     downloaded from SRA) and runs recount-pump and recount-unify inside
+#     Singularity containers: STAR alignment, BigWig coverage, junction
+#     extraction, then aggregation across samples. Downloads the multi-GB
+#     Monorail reference indexes on first use.
+#
+#   monorail_light
+#     A lightweight stand-in for the Monorail stack. Takes the same raw reads
+#     but runs a chromosome-restricted STAR alignment directly, then
+#     emit_lean_mm_rr.py builds the lean MM/RR files from the STAR SJ.out.tab
+#     outputs. No Singularity and no whole-genome reference download. Output
+#     is restricted to fastder.chromosomes.
+#
+#   recount3
+#     No read processing. Downloads coverage and junctions that the recount3
+#     resource already holds, Monorail-processed, for a published SRA study,
+#     and reshapes them per sample group. It does not align reads or run any
+#     containers. See workflow/rules/recount3.smk.
 BACKEND = config.get("monorail", {}).get("backend", "monorail")
-if BACKEND not in ("monorail", "monorail_light"):
-    raise ValueError(f"Unknown monorail.backend: '{BACKEND}'. Must be 'monorail' or 'monorail_light'.")
+if BACKEND not in ("monorail", "monorail_light", "recount3"):
+    raise ValueError(
+        f"Unknown monorail.backend: '{BACKEND}'. "
+        "Must be 'monorail', 'monorail_light' or 'recount3'."
+    )
+
+# recount3 ingestion rules and the R3_* constants they define.
+include: "rules/recount3.smk"
 
 # fastder
 FASTDER_DIR = op.join(DATA_DIR, "fastder")
@@ -55,7 +79,19 @@ LIGHT_STAR_IDX = op.join(LIGHT_DIR, "star_idx")
 ASIM_SAMPLES = list(config["asimulator"]["samples"].keys())
 
 # Per the IMPORTANT note above, every downstream stage runs once per scenario.
-SCENARIOS = ["template_and_variant", "variant_only"]
+# The scenario axis depends on the input:
+#   ASimulatoR input has the two template/variant scenarios.
+#   recount3 input uses one scenario per sample group, so a knockdown group
+#     and a control group stay separate (see config.recount3.groups).
+#   SRA and local FASTQ input have no scenarios, so a single "all" scenario
+#     is used.
+_PUMP_SOURCE_EARLY = config.get("monorail", {}).get("pump_source", "asimulator")
+if BACKEND == "recount3":
+    SCENARIOS = list(R3_GROUPS.keys())
+elif _PUMP_SOURCE_EARLY == "asimulator":
+    SCENARIOS = ["template_and_variant", "variant_only"]
+else:
+    SCENARIOS = ["all"]
 
 # Tools to benchmark against fastder. Each tool produces a GTF at the
 # standardised path data/tools/{tool}/{scenario}/{param_id}/output.gtf,
@@ -95,17 +131,48 @@ wildcard_constraints:
     sample="[^/]+",
     param_id="[^/]+",
 
-# Pump source determines which samples and inputs the pump rule uses
-PUMP_SOURCE = config["monorail"]["pump_source"]
-if PUMP_SOURCE == "asimulator":
+# Pump source determines which samples and inputs the pump rule uses.
+# The recount3 backend does not run the pump rule, so pump_source is optional
+# there.
+PUMP_SOURCE = config.get("monorail", {}).get("pump_source", "asimulator")
+if BACKEND == "recount3":
+    # Samples are the recount3 run accessions across all groups. The truth
+    # set is the reference annotation, so LABEL_EXT follows its suffix.
+    PUMP_SAMPLES = R3_ALL_SAMPLES
+    ref_ann = config.get("gffcompare", {}).get("reference_annotation", "")
+    LABEL_EXT = Path(ref_ann).suffix if ref_ann else ".gtf"
+elif PUMP_SOURCE == "asimulator":
     PUMP_SAMPLES = ASIM_SAMPLES
     LABEL_EXT = ".gff3"  # ASimulatoR always produces GFF3
 elif PUMP_SOURCE == "sra":
     PUMP_SAMPLES = list(config["monorail"]["sra_samples"].keys())
     ref_ann = config.get("gffcompare", {}).get("reference_annotation", "")
     LABEL_EXT = Path(ref_ann).suffix if ref_ann else ".gff3"
+elif PUMP_SOURCE == "local":
+    # Local FASTQ input: the same path as the SRA source, but the reads are
+    # already on disk, so the download step is skipped. Each sample names its
+    # paired FASTQ files under monorail.local_samples.
+    PUMP_SAMPLES = list(config["monorail"]["local_samples"].keys())
+    ref_ann = config.get("gffcompare", {}).get("reference_annotation", "")
+    LABEL_EXT = Path(ref_ann).suffix if ref_ann else ".gff3"
 else:
-    raise ValueError(f"Unknown pump_source: '{PUMP_SOURCE}'. Must be 'asimulator' or 'sra'.")
+    raise ValueError(
+        f"Unknown pump_source: '{PUMP_SOURCE}'. "
+        "Must be 'asimulator', 'sra' or 'local'."
+    )
+
+# Samples evaluated under each scenario. ASimulatoR runs evaluate each
+# simulated sample against its own truth GFF. recount3, SRA and local runs
+# are graded against the shared reference annotation, so the per-sample truth
+# dimension collapses to a single pseudo-sample named "reference".
+if BACKEND == "recount3" or PUMP_SOURCE in ("sra", "local"):
+    SAMPLES_BY_SCENARIO = {scenario: ["reference"] for scenario in SCENARIOS}
+else:
+    SAMPLES_BY_SCENARIO = {scenario: PUMP_SAMPLES for scenario in SCENARIOS}
+
+# True only when the run has a simulated per-sample truth set. recount3, SRA
+# and local input are graded against the reference annotation instead.
+HAS_SIM_TRUTH = (BACKEND != "recount3" and PUMP_SOURCE == "asimulator")
 
 # fastder parameter grid: every combination of the configured lists is run.
 # Each combo is a plain dict of {param_name: value} for explicitly-set params only.
@@ -191,17 +258,33 @@ def expand_tool_paths(template, **fixed):
     return out
 
 
+def expand_eval_paths(template):
+    """Expand an evaluation-output template over every tool and param grid,
+    every scenario, and the samples that belong to that scenario. Used by the
+    collect rules so the recount3 backend, whose groups hold different
+    samples, does not get an incorrect scenario-by-sample cross-product."""
+    out = []
+    for scenario in SCENARIOS:
+        for sample in SAMPLES_BY_SCENARIO[scenario]:
+            out.extend(expand_tool_paths(template, scenario=scenario, sample=sample))
+    return out
+
+
 def pump_input(wildcards):
     """Return file inputs for the pump rule.
-    Local sources declare the per-sample asim FASTQs as the dependency, since
-    run_asimulator now emits specific files rather than a parent directory.
-    SRA sources have no file inputs as data is downloaded at runtime.
+    The asimulator source declares the per-sample ASimulatoR FASTQs as the
+    dependency. The local source declares the user-provided FASTQ paths from
+    monorail.local_samples. The SRA source has no file inputs because the
+    reads are downloaded at run time.
     """
     if PUMP_SOURCE == "asimulator":
         return {
             "fq1": op.join(DATA_DIR, "asim", wildcards.sample, "sample_01_1.fastq"),
             "fq2": op.join(DATA_DIR, "asim", wildcards.sample, "sample_01_2.fastq"),
         }
+    if PUMP_SOURCE == "local":
+        sample_cfg = config["monorail"]["local_samples"][wildcards.sample]
+        return {"fq1": sample_cfg["fq1"], "fq2": sample_cfg["fq2"]}
     return {}
 
 
@@ -215,6 +298,8 @@ rule all:
         op.join(RESULTS_DIR, "fuzzy_locus_recall.csv"),
         op.join(RESULTS_DIR, "fuzzy_strand.csv"),
         op.join(RESULTS_DIR, "truth_chain_stats.csv"),
+        # The recount3 backend adds a report comparing the sample groups.
+        *([op.join(RESULTS_DIR, "recount3.html")] if BACKEND == "recount3" else []),
         op.join(RESULTS_DIR, "archive.DONE"),
     default_target: True
 
@@ -232,6 +317,8 @@ rule archive_reports:
         op.join(LOG_DIR, "archive_reports.log"),
     params:
         archive_root=op.join(RESULTS_DIR, "archive"),
+    conda:
+        "envs/base.yaml"
     shell:
         """
         ts=$(date +%Y%m%d_%H%M%S)
@@ -315,6 +402,8 @@ rule make_scenario:
         op.join(LOG_DIR, "make_scenario", "{sample}_{scenario}.log"),
     params:
         script=op.join(WORKFLOW_DIR, "scripts", "make_scenario.py"),
+    conda:
+        "envs/base.yaml"
     shell:
         """
         python3 {params.script} --scenario {wildcards.scenario} \
@@ -333,6 +422,8 @@ rule pull_containers:
         op.join(BENCH_DIR, "pull_containers.tsv")
     log:
         op.join(LOG_DIR, "pull_containers.log")
+    conda:
+        "envs/base.yaml"
     shell:
         """
         mkdir -p {CONTAINERS_DIR}
@@ -349,6 +440,8 @@ rule download_monorail_refs:
         op.join(BENCH_DIR, "download_monorail_refs.tsv")
     params:
         ref_version=config["monorail"]["ref_version"],
+    conda:
+        "envs/base.yaml"
     shell:
         """
         mkdir -p {MONORAIL_REF_DIR}
@@ -363,6 +456,8 @@ rule download_monorail_refs:
 #   asimulator: reads FASTQs from the run_asimulator output directories
 #   sra:        downloads reads from SRA at runtime using the run/study accessions
 #               defined in monorail.sra_samples
+#   local:      reads FASTQs already on disk, at the paths given in
+#               monorail.local_samples
 rule pump:
     input:
         unpack(pump_input),
@@ -382,9 +477,16 @@ rule pump:
         project_name=config["monorail"]["project_name"],
     run:
         os.makedirs(output[0], exist_ok=True)
-        if PUMP_SOURCE == "asimulator":
-            fp1 = op.join(DATA_DIR, "asim", wildcards.sample, "sample_01_1.fastq")
-            fp2 = op.join(DATA_DIR, "asim", wildcards.sample, "sample_01_2.fastq")
+        # asimulator and local both feed local FASTQ files to recount-pump;
+        # they differ only in where the files are. sra downloads at run time.
+        if PUMP_SOURCE in ("asimulator", "local"):
+            if PUMP_SOURCE == "asimulator":
+                fp1 = op.join(DATA_DIR, "asim", wildcards.sample, "sample_01_1.fastq")
+                fp2 = op.join(DATA_DIR, "asim", wildcards.sample, "sample_01_2.fastq")
+            else:
+                sample_cfg = config["monorail"]["local_samples"][wildcards.sample]
+                fp1 = sample_cfg["fq1"]
+                fp2 = sample_cfg["fq2"]
             shell(
                 "WORKING_DIR={output[0]}"
                 " bash {params.pump_script}"
@@ -444,9 +546,11 @@ rule unify:
 
         # Build the sample metadata (study_id<TAB>sample_id, with header).
         # study_id must match what pump encoded in its output filenames:
-        #   asimulator: pump was called with project_name as actual_study -> filenames: sample!project_name!...
-        #   sra:        pump was called with per-sample study_acc         -> filenames: sample!study_acc!...
-        if PUMP_SOURCE == "asimulator":
+        #   asimulator and local: pump used project_name as the study
+        #     -> filenames: sample!project_name!...
+        #   sra: pump used the per-sample study_acc
+        #     -> filenames: sample!study_acc!...
+        if PUMP_SOURCE in ("asimulator", "local"):
             rows = [(config["monorail"]["project_name"], s) for s in PUMP_SAMPLES]
         else:
             rows = [(config["monorail"]["sra_samples"][s]["study_acc"], s) for s in PUMP_SAMPLES]
@@ -486,7 +590,8 @@ rule generate_stranded_bigwigs:
     params:
         bam=lambda wc: op.join(DATA_DIR, "pump", wc.sample, "output", f"{wc.sample}_att0", "{}!{}!{}!local~sorted.bam".format(
                 wc.sample,
-                config["monorail"]["project_name"] if PUMP_SOURCE == "asimulator"
+                config["monorail"]["project_name"]
+                    if PUMP_SOURCE in ("asimulator", "local")
                     else config["monorail"]["sra_samples"][wc.sample]["study_acc"],
                 config["monorail"]["ref_version"],
             )),
@@ -599,11 +704,22 @@ rule ml_star_index:
 
 # Align one sample's paired FASTQs against the chr-restricted STAR index.
 # Outputs a coordinate-sorted BAM and STAR's SJ.out.tab (used by ml_emit_mm_rr).
+def ml_star_fastq_input(wc):
+    """Paired FASTQs for ml_star_align. ASimulatoR input uses the per-scenario
+    simulated reads; local input uses the paths from monorail.local_samples."""
+    if PUMP_SOURCE == "local":
+        sample_cfg = config["monorail"]["local_samples"][wc.sample]
+        return {"fq1": sample_cfg["fq1"], "fq2": sample_cfg["fq2"]}
+    return {
+        "fq1": op.join(DATA_DIR, "asim", wc.sample, wc.scenario, "sample_01_1.fastq"),
+        "fq2": op.join(DATA_DIR, "asim", wc.sample, wc.scenario, "sample_01_2.fastq"),
+    }
+
+
 rule ml_star_align:
     input:
+        unpack(ml_star_fastq_input),
         idx=str(LIGHT_STAR_IDX),
-        fq1=op.join(DATA_DIR, "asim", "{sample}", "{scenario}", "sample_01_1.fastq"),
-        fq2=op.join(DATA_DIR, "asim", "{sample}", "{scenario}", "sample_01_2.fastq"),
     output:
         bam=op.join(LIGHT_DIR, "{scenario}", "{sample}", "Aligned.sortedByCoord.out.bam"),
         sj=op.join(LIGHT_DIR, "{scenario}", "{sample}", "SJ.out.tab"),
@@ -729,6 +845,25 @@ rule ml_emit_mm_rr:
 # unify/pump output dirs; with monorail_light we read from the LIGHT_DIR
 # scratch produced by the ml_* rules above.
 def _extract_inputs(wc):
+    if BACKEND == "recount3":
+        # wc.scenario is a recount3 sample group. Inputs are the group's
+        # lean MM/RR (built by recount3_group_junctions) and the downloaded
+        # per-sample BigWigs for that group.
+        if STRANDED:
+            raise ValueError(
+                "fastder.stranded is not supported with the recount3 backend: "
+                "recount3 hosts unstranded coverage only."
+            )
+        group_samples = R3_GROUPS[wc.scenario]
+        return {
+            "rr": op.join(R3_DIR, wc.scenario, "junctions.ALL.RR"),
+            "mm": op.join(R3_DIR, wc.scenario, "junctions.ALL.MM"),
+            "samples_tsv": op.join(R3_DIR, wc.scenario, "junctions.ALL.samples.tsv"),
+            "bws": [op.join(R3_DIR, "bw", f"{s}.all.bw") for s in group_samples],
+            # The reference annotation is the gffcompare truth set; depend on
+            # the download so it is present before extract_fastder_inputs runs.
+            "reference_dir": rules.download_reference.output[0],
+        }
     if BACKEND == "monorail_light":
         light_scn = op.join(LIGHT_DIR, wc.scenario)
         result = {
@@ -744,10 +879,13 @@ def _extract_inputs(wc):
             )
         else:
             result["bws"] = expand(op.join(light_scn, "{sample}.all.bw"), sample=PUMP_SAMPLES)
-        result["sample_gffs"] = expand(
-            op.join(DATA_DIR, "asim", "{sample}", "{scenario}", "splicing_variants.gff3"),
-            sample=PUMP_SAMPLES, scenario=[wc.scenario],
-        )
+        # The per-sample truth GFFs exist only for ASimulatoR input. Local
+        # FASTQ input on this backend has no simulated truth.
+        if PUMP_SOURCE == "asimulator":
+            result["sample_gffs"] = expand(
+                op.join(DATA_DIR, "asim", "{sample}", "{scenario}", "splicing_variants.gff3"),
+                sample=PUMP_SAMPLES, scenario=[wc.scenario],
+            )
         return result
     # monorail (heavy) backend (scenario unused; legacy path)
     result = {
@@ -760,6 +898,11 @@ def _extract_inputs(wc):
              op.join(DATA_DIR, "stranded_bigwigs", "{sample}.minus.bw")],
             sample=PUMP_SAMPLES,
         )
+    # SRA and local input are graded against the reference annotation. Depend
+    # on the download so the annotation is present before the run body needs
+    # it (ASimulatoR input gets it through run_asimulator instead).
+    if PUMP_SOURCE in ("sra", "local"):
+        result["reference_dir"] = rules.download_reference.output[0]
     return result
 
 
@@ -777,6 +920,7 @@ rule extract_fastder_inputs:
         pump_dir=op.join(DATA_DIR, "pump"),
         light_dir=lambda wc: op.join(LIGHT_DIR, wc.scenario),
         scenario=lambda wc: wc.scenario,
+        scenario_samples=lambda wc: SAMPLES_BY_SCENARIO[wc.scenario],
         asim_dir=op.join(DATA_DIR, "asim"),
         project_name=config["monorail"]["project_name"],
         ref_version=config["monorail"]["ref_version"],
@@ -790,7 +934,27 @@ rule extract_fastder_inputs:
         fdir = Path(params.fastder_dir)
         fdir.mkdir(parents=True, exist_ok=True)
 
-        if params.backend == "monorail_light":
+        if params.backend == "recount3":
+            # 1. Copy the group's lean MM/RR straight in (already subset to
+            # the group's samples and filtered to the analysed chromosomes).
+            shutil.copy2(input.rr, fdir / "junctions.ALL.RR")
+            shutil.copy2(input.mm, fdir / "junctions.ALL.MM")
+
+            # 2. Copy the group's downloaded BigWigs. recount3_fetch_bigwig
+            # already names them {sample}.all.bw, which is what fastder wants.
+            for bw in input.bws:
+                shutil.copy2(bw, fdir / Path(bw).name)
+
+            # 3. Generate the BigWig-list CSV from the group samples.tsv.
+            bigwig_csv = fdir / "recount3_BigWig_list.csv"
+            shell(
+                "bash {params.samples_tsv_script}"
+                f" {input.samples_tsv}"
+                f" {bigwig_csv}"
+                " unstranded"
+                " >> {log} 2>&1"
+            )
+        elif params.backend == "monorail_light":
             # 1. Copy lean MM/RR straight in (already gunzipped, already filtered)
             shutil.copy2(input.rr, fdir / "junctions.ALL.RR")
             shutil.copy2(input.mm, fdir / "junctions.ALL.MM")
@@ -848,7 +1012,8 @@ rule extract_fastder_inputs:
             else:
                 for sample in PUMP_SAMPLES:
                     att_dir = Path(params.pump_dir) / sample / "output" / f"{sample}_att0"
-                    if PUMP_SOURCE == "asimulator":
+                    if PUMP_SOURCE in ("asimulator", "local"):
+                        # Both pump local files and label the study "local".
                         study = project
                     else:
                         study = config["monorail"]["sra_samples"][sample]["study_acc"]
@@ -870,11 +1035,14 @@ rule extract_fastder_inputs:
                 " >> {log} 2>&1"
             )
 
-        # 4. Copy label / reference GFF for gffcompare. With asimulator, the
-        # truth set comes from the per-scenario splicing_variants.gff3, so
-        # variant_only's truth contains only the alternative isoforms.
-        if PUMP_SOURCE == "asimulator":
-            for sample in PUMP_SAMPLES:
+        # 4. Copy label / reference GFF for gffcompare, one per sample that
+        # this scenario is evaluated against. With the ASimulatoR backends the
+        # truth set is the per-scenario splicing_variants.gff3, so the
+        # variant_only truth contains only the alternative isoforms. With the
+        # recount3 backend the truth is the reference annotation and there is
+        # one pseudo-sample, "reference".
+        if HAS_SIM_TRUTH:
+            for sample in params.scenario_samples:
                 gff_src = (Path(str(params.asim_dir)) / sample
                            / params.scenario / "splicing_variants.gff3")
                 if not gff_src.exists():
@@ -883,13 +1051,18 @@ rule extract_fastder_inputs:
                     shutil.copy2(gff_src, fdir / f"{sample}_label.gff3")
         else:
             ref_ann = config.get("gffcompare", {}).get("reference_annotation", "")
-            if ref_ann:
-                ref_path = Path(ref_ann)
-                if not ref_path.is_absolute():
-                    ref_path = Path(str(WORKFLOW_DIR)) / ref_ann
-                if ref_path.exists():
-                    for sample in PUMP_SAMPLES:
-                        shutil.copy2(ref_path, fdir / f"{sample}_label{ref_path.suffix}")
+            if not ref_ann:
+                raise ValueError(
+                    "gffcompare.reference_annotation must be set for the "
+                    f"'{params.backend}' backend; it is the gffcompare truth set."
+                )
+            ref_path = Path(ref_ann)
+            if not ref_path.is_absolute():
+                ref_path = Path(str(WORKFLOW_DIR)) / ref_ann
+            if not ref_path.exists():
+                raise FileNotFoundError(f"reference_annotation not found: {ref_path}")
+            for sample in params.scenario_samples:
+                shutil.copy2(ref_path, fdir / f"{sample}_label{ref_path.suffix}")
 
 
 # 8. Match chr prefix convention for files used by gffcompare
@@ -904,6 +1077,8 @@ rule match_chr_prefix:
         op.join(LOG_DIR, "match_chr_prefix_{scenario}.log")
     params:
         fastder_dir=lambda wc: op.join(FASTDER_DIR, wc.scenario),
+    conda:
+        "envs/base.yaml"
     shell:
         """
         for file in {params.fastder_dir}/*_label.gff3 {params.fastder_dir}/*_label.gtf; do
@@ -1060,6 +1235,8 @@ rule link_fastder_gtf:
         op.join(BENCH_DIR, "link_fastder_gtf", "{scenario}_{param_id}.tsv")
     log:
         op.join(LOG_DIR, "link_fastder_gtf", "{scenario}_{param_id}.log"),
+    conda:
+        "envs/base.yaml"
     shell:
         """
         mkdir -p $(dirname {output.gtf})
@@ -1164,9 +1341,8 @@ rule run_gffcompare:
 # counts, the missed and novel ratios, and the header summary numbers.
 rule collect_results:
     input:
-        lambda wc: expand_tool_paths(
+        lambda wc: expand_eval_paths(
             op.join(RESULTS_DIR, "{tool}", "{scenario}", "{sample}", "{param_id}", "gffcompare.stats"),
-            scenario=SCENARIOS, sample=PUMP_SAMPLES,
         ),
     output:
         op.join(RESULTS_DIR, "summary.csv"),
@@ -1280,18 +1456,14 @@ rule eval_fuzzy_metrics:
 # 15b. Concatenate the per-(tool, scenario, sample, param_id) fuzzy CSVs.
 rule collect_fuzzy_metrics:
     input:
-        jaccard=lambda wc: expand_tool_paths(
-            op.join(RESULTS_DIR, "{tool}", "{scenario}", "{sample}", "{param_id}", "fuzzy_jaccard.csv"),
-            scenario=SCENARIOS, sample=PUMP_SAMPLES),
-        distances=lambda wc: expand_tool_paths(
-            op.join(RESULTS_DIR, "{tool}", "{scenario}", "{sample}", "{param_id}", "fuzzy_distances.csv"),
-            scenario=SCENARIOS, sample=PUMP_SAMPLES),
-        recall=lambda wc: expand_tool_paths(
-            op.join(RESULTS_DIR, "{tool}", "{scenario}", "{sample}", "{param_id}", "fuzzy_locus_recall.csv"),
-            scenario=SCENARIOS, sample=PUMP_SAMPLES),
-        strand=lambda wc: expand_tool_paths(
-            op.join(RESULTS_DIR, "{tool}", "{scenario}", "{sample}", "{param_id}", "fuzzy_strand.csv"),
-            scenario=SCENARIOS, sample=PUMP_SAMPLES),
+        jaccard=lambda wc: expand_eval_paths(
+            op.join(RESULTS_DIR, "{tool}", "{scenario}", "{sample}", "{param_id}", "fuzzy_jaccard.csv")),
+        distances=lambda wc: expand_eval_paths(
+            op.join(RESULTS_DIR, "{tool}", "{scenario}", "{sample}", "{param_id}", "fuzzy_distances.csv")),
+        recall=lambda wc: expand_eval_paths(
+            op.join(RESULTS_DIR, "{tool}", "{scenario}", "{sample}", "{param_id}", "fuzzy_locus_recall.csv")),
+        strand=lambda wc: expand_eval_paths(
+            op.join(RESULTS_DIR, "{tool}", "{scenario}", "{sample}", "{param_id}", "fuzzy_strand.csv")),
     output:
         jaccard=op.join(RESULTS_DIR, "fuzzy_jaccard.csv"),
         distances=op.join(RESULTS_DIR, "fuzzy_distances.csv"),
@@ -1332,8 +1504,12 @@ rule collect_fuzzy_metrics:
 # 16. Render the Rmarkdown summary report.
 rule collect_truth_stats:
     input:
-        gffs=expand(op.join(DATA_DIR, "asim", "{sample}", "{scenario}", "splicing_variants.gff3"),
-                    sample=PUMP_SAMPLES, scenario=SCENARIOS),
+        # Only ASimulatoR input has simulated truth GFFs. recount3, SRA and
+        # local input have nothing to aggregate; the rule then writes a
+        # header-only CSV.
+        gffs=lambda wc: (expand(
+            op.join(DATA_DIR, "asim", "{sample}", "{scenario}", "splicing_variants.gff3"),
+            sample=PUMP_SAMPLES, scenario=SCENARIOS) if HAS_SIM_TRUTH else []),
     output:
         op.join(RESULTS_DIR, "truth_chain_stats.csv"),
     benchmark:
@@ -1342,18 +1518,22 @@ rule collect_truth_stats:
         op.join(LOG_DIR, "collect_truth_stats.log"),
     params:
         script=op.join(WORKFLOW_DIR, "scripts", "collect_truth_stats.py"),
-        scenarios=SCENARIOS,
-        samples=PUMP_SAMPLES,
     run:
-        # input.gffs is in the same expand order: sample changes fastest, scenario slowest.
-        args = []
-        for gff in input.gffs:
-            parts = Path(gff).parts
-            scenario = parts[-2]
-            sample = parts[-3]
-            args.extend(["--gff", gff, "--scenario", scenario, "--sample", sample])
-        shell("python3 {params.script} " + " ".join(f"'{a}'" for a in args)
-              + " --out {output} > {log} 2>&1")
+        if not input.gffs:
+            with open(output[0], "w") as fh:
+                fh.write("scenario,sample,transcript_id,chrom,"
+                         "n_exons,total_exon_length,strand\n")
+        else:
+            # input.gffs is in the same expand order: sample changes fastest,
+            # scenario slowest.
+            args = []
+            for gff in input.gffs:
+                parts = Path(gff).parts
+                scenario = parts[-2]
+                sample = parts[-3]
+                args.extend(["--gff", gff, "--scenario", scenario, "--sample", sample])
+            shell("python3 {params.script} " + " ".join(f"'{a}'" for a in args)
+                  + " --out {output} > {log} 2>&1")
 
 
 rule render_summary_report:
@@ -1407,5 +1587,75 @@ rule render_benchmarks_report:
             input = '{input.rmd}',
             output_file = '$(realpath -m {output})',
             params = list(bench_dir = '$(realpath {params.bench_dir})'),
+            quiet = TRUE)" > {log} 2>&1
+        """
+
+
+# Build the manifest the recount3 report reads: one row per sample, with the
+# group it belongs to, its coverage BigWig, and its group's fastder GTF.
+rule recount3_report_manifest:
+    input:
+        fastder_gtfs=expand(
+            op.join(DATA_DIR, "tools", "fastder", "{scenario}",
+                    PARAM_IDS[0] if PARAM_IDS else "default", "output.gtf"),
+            scenario=SCENARIOS),
+        bigwigs=expand(op.join(R3_DIR, "bw", "{sample}.all.bw"),
+                       sample=R3_ALL_SAMPLES),
+    output:
+        manifest=op.join(RESULTS_DIR, "recount3_manifest.csv"),
+    params:
+        groups=R3_GROUPS,
+    run:
+        import csv as _csv
+        gtf_by_group = {}
+        for gtf in input.fastder_gtfs:
+            gtf_by_group[Path(gtf).parts[-3]] = os.path.abspath(gtf)
+        bw_by_sample = {}
+        for bw in input.bigwigs:
+            name = Path(bw).name
+            if name.endswith(".all.bw"):
+                bw_by_sample[name[: -len(".all.bw")]] = os.path.abspath(bw)
+        with open(output.manifest, "w", newline="") as fh:
+            writer = _csv.writer(fh)
+            writer.writerow(["group", "sample", "bigwig", "fastder_gtf"])
+            for group, samples in params.groups.items():
+                for sample in samples:
+                    writer.writerow([group, sample, bw_by_sample[sample],
+                                     gtf_by_group.get(group, "")])
+
+
+# Render the recount3 comparison report. Only requested by rule all when the
+# backend is recount3. Shows the coverage view at the TDP-43 cryptic exons and
+# the sample dissimilarity summary, knockdown group versus control group.
+rule render_recount3_report:
+    input:
+        manifest=op.join(RESULTS_DIR, "recount3_manifest.csv"),
+        summary=op.join(RESULTS_DIR, "summary.csv"),
+        reference_dir=(rules.download_reference.output[0]
+                       if BACKEND == "recount3" else []),
+        rmd=op.join(WORKFLOW_DIR, "reports", "recount3.Rmd"),
+    output:
+        op.join(RESULTS_DIR, "recount3.html"),
+    log:
+        op.join(LOG_DIR, "render_recount3_report.log"),
+    params:
+        study=R3_STUDY,
+        reference_gtf=lambda wc: (
+            config["gffcompare"]["reference_annotation"]
+            if os.path.isabs(config.get("gffcompare", {}).get("reference_annotation", "x"))
+            else op.join(WORKFLOW_DIR,
+                         config.get("gffcompare", {}).get("reference_annotation", ""))
+        ),
+    conda:
+        "envs/rmarkdown.yaml"
+    shell:
+        """
+        Rscript -e "rmarkdown::render(
+            input = '{input.rmd}',
+            output_file = '$(realpath -m {output})',
+            params = list(manifest_csv = '$(realpath {input.manifest})',
+                          summary_csv = '$(realpath {input.summary})',
+                          reference_gtf = '{params.reference_gtf}',
+                          study = '{params.study}'),
             quiet = TRUE)" > {log} 2>&1
         """

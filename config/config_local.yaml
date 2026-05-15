@@ -1,0 +1,57 @@
+# Local FASTQ config: run the pipeline on paired FASTQ files already on disk.
+#
+# This is the SRA path with the download step skipped. The reads are not
+# simulated and not downloaded; they are read from the paths given below.
+# There is no simulated truth, so the called regions are compared against the
+# Ensembl annotation set in gffcompare.reference_annotation.
+#
+# Run with the lightweight backend (chromosome-restricted STAR alignment, no
+# containers):
+#   FASTDER_EVAL_CONFIG=../config/config_local.yaml \
+#     snakemake --use-conda --cores 8
+#
+# To use the full Monorail stack instead, set monorail.backend to monorail
+# and run with --use-singularity.
+
+seed: 10
+cores: 8
+
+# Not used with local FASTQ input, but the Snakefile reads asimulator.samples
+# at parse time, so the block must exist.
+asimulator:
+  seq_depth: 10000000
+  multi_events_per_exon: false
+  strand_specific: true
+  probs_as_freq: true
+  samples:
+    es:
+      es: 1.0
+
+monorail:
+  ref_version: hg38
+  project_name: "local"
+  project_id: 103
+  backend: monorail_light
+  pump_source: local
+
+  # Naming convention for local input: one entry per sample. The key is the
+  # sample name used throughout the results; fq1 and fq2 are the paths to its
+  # paired FASTQ files. Paths can be absolute or relative to the workflow
+  # directory.
+  local_samples:
+    sample_a:
+      fq1: "/path/to/sample_a_R1.fastq.gz"
+      fq2: "/path/to/sample_a_R2.fastq.gz"
+    sample_b:
+      fq1: "/path/to/sample_b_R1.fastq.gz"
+      fq2: "/path/to/sample_b_R2.fastq.gz"
+
+fastder:
+  stranded: false
+  min_coverage: [0.01]
+  chromosomes: ["chr21"]
+
+gffcompare:
+  # The truth set for local input is this annotation. download_reference
+  # fetches it restricted to fastder.chromosomes above.
+  reference_annotation: "data/reference/Homo_sapiens_GRCh38_Ensembl115/Homo_sapiens.GRCh38.115.chr.gtf"
