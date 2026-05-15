@@ -6,25 +6,10 @@
 # junction matrix. The downloaded files are then reshaped per sample group
 # into the lean MM/RR layout that extract_fastder_inputs feeds to fastder.
 #
-# This file is included by the main Snakefile after the path constants are
-# defined. It relies on op, DATA_DIR, LOG_DIR, BENCH_DIR and config.
-
-RECOUNT3_CFG = config.get("recount3") or {}
-R3_STUDY = RECOUNT3_CFG.get("study_acc", "")
-R3_BASE_URL = RECOUNT3_CFG.get("base_url", "http://duffel.rail.bio/recount3")
-R3_METADATA_URL = RECOUNT3_CFG.get("metadata_url", "http://idies.jhu.edu/recount3/data")
-R3_DIR = op.join(DATA_DIR, "recount3")
-
-# {group_name: [run_accession, ...]}
-R3_GROUPS = RECOUNT3_CFG.get("groups", {})
-# Flat list of every run accession across all groups.
-R3_ALL_SAMPLES = [s for runs in R3_GROUPS.values() for s in runs]
-
-
-def _r3_shard(accession):
-    """recount3 stores files in a directory named after the last two
-    characters of the study or run accession."""
-    return accession[-2:]
+# This file is included by the main Snakefile after the path constants and
+# the R3_* constants and _r3_shard helper are defined. It relies on op,
+# DATA_DIR, LOG_DIR, BENCH_DIR, WORKFLOW_DIR, config, the R3_* constants and
+# the _r3_shard helper.
 
 
 # recount3 study metadata. Maps recount3 rail_id to SRA run accession, which

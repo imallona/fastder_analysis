@@ -18,23 +18,12 @@
 # absent in the control group.
 #
 # Run with:
-#   FASTDER_EVAL_CONFIG=../config/config_recount3.yaml \
+#   FASTDER_EVAL_CONFIG=../config/config_klim_2019_tdp43_recount3.yaml \
 #     snakemake --use-conda --cores 8
 # --use-singularity is not needed: the recount3 backend has no container step.
 
 seed: 10
 cores: 8
-
-# Not used by the recount3 backend, but the Snakefile reads asimulator.samples
-# at parse time, so the block must exist.
-asimulator:
-  seq_depth: 10000000
-  multi_events_per_exon: false
-  strand_specific: true
-  probs_as_freq: true
-  samples:
-    es:
-      es: 1.0
 
 monorail:
   ref_version: hg38

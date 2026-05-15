@@ -2,7 +2,7 @@
 #
 # Use:
 #   FASTDER_EVAL_CONFIG=../config/config_quick_light.yaml \
-#     snakemake --use-conda --cores 12
+#     snakemake --use-conda --use-singularity --cores 12
 #
 # Differences vs config_quick.yaml:
 #   - monorail.backend: monorail_light
@@ -11,9 +11,10 @@
 #       the multi-hour whole-genome reference download and the 2 GB of
 #       Singularity images. RR is restricted to fastder.chromosomes and the
 #       recount3 annotation columns are written as "." since fastder reads
-#       them but never accesses them — large memory win.
-#   - --use-singularity is no longer required (ASimulatoR still uses a
-#       container, so keep it if you want that step containerised).
+#       them but never accesses them, a large memory win.
+#   - The recount-pump and recount-unify Singularity images are not pulled.
+#       --use-singularity is still required, because run_asimulator runs
+#       ASimulatoR inside a container.
 
 seed: 10
 cores: 12

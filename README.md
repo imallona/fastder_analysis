@@ -10,9 +10,7 @@ The fastder code is a git submodule pointing at [imallona/fastder](https://githu
 
 ## Workflow at a glance
 
-The run modes differ only in how the per-sample coverage BigWigs and the
-MM/RR splice junction files are produced. Everything after that point is the
-same.
+The run modes differ only in how the per-sample coverage BigWigs and the MM/RR splice junction files are produced. Everything after that point is the same.
 
 ```mermaid
 flowchart TD
@@ -55,84 +53,71 @@ flowchart TD
 
 ### Prerequisites
 
-1. Install Conda and Snakemake. Installation instructions are available at: https://snakemake.readthedocs.io/en/stable/getting_started/installation.html
-   
-   After installing Conda or Miniconda, Snakemake can be installed with:
-   
-   `conda create -c conda-forge -c bioconda -c nodefaults -n snakemake snakemake`
+Conda or Miniconda, and Singularity or Apptainer. Install Snakemake into a Conda environment named `snakemake`:
 
-3. Install Singularity or Apptainer.
+`conda create -c conda-forge -c bioconda -c nodefaults -n snakemake snakemake`
 
-### Execution
+Snakemake installation notes: https://snakemake.readthedocs.io/en/stable/getting_started/installation.html
 
-1. Activate the Conda environment containing Snakemake:
-   `conda activate snakemake`
+### Execution with the Makefile
 
-2. Navigate to the workflow directory:
-   `cd workflow/`
+The `Makefile` at the repository root is the entry point. Each target runs one analysis. From the repository root:
 
-3. Run the pipeline:
-   `snakemake --use-conda --use-singularity --cores <num_cores>`
+- `make sim` runs the 10M simulation (`config_full_simulation.yaml`).
+- `make simulations` runs the full depth sweep: 5M, 10M, 30M, 40M reads.
+- `make tdp43` runs the TDP-43 knockdown recount3 example.
+- `make meta` knits the cross-depth report once the simulation runs are done.
+- `make all` runs the simulations, then tdp43, then meta.
+- `make smoke` runs a quick 2-sample smoke test.
+- `make dryrun` does a `snakemake -n`; `make unlock` releases a stale lock.
 
-Replace `<num_cores>` with the number of CPU cores to allocate.
+`make help` lists the targets. Override the defaults on the command line, for example `make sim CORES=24`. The runs cap per-process virtual memory at 100 GB (`ULIMIT_KB`); raise or lower it the same way.
 
-`--use-singularity` is required: the `run_asimulator` rule pulls
-`docker://biomedbigdata/asimulator` to provide the ASimulatoR R package, and
-without that flag Snakemake skips the container directive and tries to run
-the R script in the host environment, which fails with
-`there is no package called 'ASimulatoR'`. The heavy backend additionally
-needs Singularity for `recount-pump` and `recount-unify`.
+### Execution by hand
+
+The Makefile targets are thin wrappers around a single command. To run a config directly, activate the Snakemake environment, change into the workflow directory, and select the config with the `FASTDER_EVAL_CONFIG` environment variable:
+
+```
+conda activate snakemake
+cd workflow/
+FASTDER_EVAL_CONFIG=../config/config_full_simulation.yaml \
+  snakemake --use-conda --use-singularity --cores <num_cores>
+```
+
+`--use-singularity` is required for any run with simulated input. The `run_asimulator` rule pulls `docker://biomedbigdata/asimulator` for the ASimulatoR R package. Without the flag, Snakemake skips the container directive and runs the R script on the host, which fails with `there is no package called 'ASimulatoR'`. The heavy `monorail` backend also needs Singularity for `recount-pump` and `recount-unify`. The recount3 backend uses no container, so `make tdp43` omits the flag.
 
 ### Run modes
 
-A run is set by two config settings. `monorail.backend` chooses how the reads
-are processed. For the two backends that process reads, `monorail.pump_source`
-chooses where the reads come from.
+A run is set by two config settings. `monorail.backend` chooses how the reads are processed. For the two backends that process reads, `monorail.pump_source` chooses where the reads come from.
 
-Every run ends at the same fastder inputs, namely per-sample coverage BigWigs
-and the MM/RR splice junction files.
+Every run ends at the same fastder inputs, namely per-sample coverage BigWigs and the MM/RR splice junction files.
 
 Backends (`monorail.backend`):
 
-- `monorail` (default): the full Monorail stack. Runs `recount-pump` and
-  `recount-unify` in Singularity containers: STAR alignment, BigWig coverage,
-  junction extraction, then aggregation across samples. Downloads the multi-GB
-  Monorail reference indexes the first time it runs.
-- `monorail_light`: a lighter alternative. Runs a chromosome-restricted STAR
-  alignment directly, then a small Python script builds the lean MM and RR
-  files from the STAR `SJ.out.tab` outputs. No Singularity and no whole-genome
-  reference download.
-- `recount3`: no read processing. Downloads coverage and junctions that the
-  recount3 resource already holds, Monorail-processed, for a published SRA
-  study, and reshapes them per sample group. No alignment and no containers.
-  See `workflow/rules/recount3.smk`.
+- `monorail` (default): the full Monorail stack. Runs `recount-pump` and `recount-unify` in Singularity containers: STAR alignment, BigWig coverage, junction extraction, then aggregation across samples. Downloads the multi-GB Monorail reference indexes the first time it runs.
+- `monorail_light`: a lighter alternative. Runs a chromosome-restricted STAR alignment directly, then a small Python script builds the lean MM and RR files from the STAR `SJ.out.tab` outputs. No Singularity and no whole-genome reference download.
+- `recount3`: no read processing. Downloads coverage and junctions that the recount3 resource already holds, Monorail-processed, for a published SRA study, and reshapes them per sample group. No alignment and no containers. See `workflow/rules/recount3.smk`.
 
-Read sources for the `monorail` and `monorail_light` backends
-(`monorail.pump_source`):
+Read sources for the `monorail` and `monorail_light` backends (`monorail.pump_source`):
 
 - `asimulator`: reads simulated by ASimulatoR.
 - `sra`: reads downloaded from SRA at run time.
-- `local`: paired FASTQ files already on disk, listed under
-  `monorail.local_samples`. This is the SRA path with the download step
-  skipped.
+- `local`: paired FASTQ files already on disk, listed under `monorail.local_samples`. This is the SRA path with the download step skipped.
 
-The `recount3` backend has no read source; its data comes from recount3
-directly.
+The `recount3` backend has no read source; its data comes from recount3 directly.
 
-Seven configs are included:
+The configs:
 
+- `config/config_full_simulation.yaml`: the paper-ready simulation. 5 samples, 10M reads, chr21, monorail_light backend, with the 8-combination fastder parameter grid. This is the 10M point of the depth sweep.
+- `config/config_full_simulation_5M.yaml`, `_30M.yaml`, `_40M.yaml`: the other depths of the sweep, generated from `config_full_simulation.yaml` by `workflow/scripts/make_sim_configs.py`.
+- `config/config_klim_2019_tdp43_recount3.yaml`: real data, recount3 backend. TDP-43 knockdown versus scramble control in motor-neuron RNA-seq (recount3 study SRP166282, GEO GSE121569), split into a knockdown group and a control group, on chr8 and chr19. `--use-singularity` is not needed for this config.
+- `config/config_local.yaml`: local FASTQ files, monorail_light backend. Edit `monorail.local_samples` to point at your own paired FASTQ files.
 - `config/config_quick_light.yaml`: 2 samples, 100k reads, chr21, monorail_light. Smoke test.
 - `config/config_quick.yaml`: 2 samples, 100k reads, chr21, monorail backend.
 - `config/config_medium_light.yaml`: 5 samples, 1M reads, chr21, monorail_light.
-- `config/config_full_light.yaml`: 5 samples, 10M reads, chr21, monorail_light. Recommended for the simulation figures.
 - `config/config.yaml`: 5 samples, 10M reads, chr21, monorail backend (full Monorail stack).
-- `config/config_local.yaml`: local FASTQ files, monorail_light backend. Edit `monorail.local_samples` to point at your own paired FASTQ files.
-- `config/config_recount3.yaml`: real data, recount3 backend. TDP-43 knockdown versus scramble control in motor-neuron RNA-seq (recount3 study SRP166282, GEO GSE121569), split into a knockdown group and a control group, on chr8 and chr19. `--use-singularity` is not needed for this config.
 
-To pick a non-default config, set the `FASTDER_EVAL_CONFIG` environment
-variable. Snakemake's own `--configfile` flag does a deep merge that unions
-nested dicts like `asimulator.samples`; the env var fully replaces the
-default config instead. Example:
+To pick a non-default config, set the `FASTDER_EVAL_CONFIG` environment variable. Snakemake's own `--configfile` flag does a deep merge that unions nested dicts like `asimulator.samples`; the env var fully replaces the default config instead. Example:
 
 ```
 FASTDER_EVAL_CONFIG=../config/config_quick_light.yaml \
@@ -170,10 +155,10 @@ After a successful run, `results/<config>/` contains:
 
 The pipeline benchmarks fastder against two coverage-based baselines that consume the same coverage BigWigs, whether those come from simulated or real data:
 
-- `derfinder`: Bioconductor-flavored coverage-based expressed-region caller. CPM-normalised per-base mean coverage thresholded at `--cutoff`, then post-filtered by `--min-length`, with optional below-threshold gap-bridging via `--maxregiongap`. Wrapped by `workflow/scripts/run_derfinder.R`. Conda env: `workflow/envs/derfinder.yaml`.
+- `derfinder`: a Bioconductor coverage-based expressed-region caller. CPM-normalised per-base mean coverage thresholded at `--cutoff`, then post-filtered by `--min-length`, with optional below-threshold gap-bridging via `--maxregiongap`. Wrapped by `workflow/scripts/run_derfinder.R`. Conda env: `workflow/envs/derfinder.yaml`.
 - `megadepth_baseline`: a thresholded segmenter that emits one transcript per maximal run of bases whose mean-across-samples CPM is at or above `--cutoff`. No gap-bridging, no splice-junction stitching. Wrapped by `workflow/scripts/run_megadepth_baseline.py`. Conda env: `workflow/envs/megadepth_baseline.yaml`.
 
-All three tools normalise per-sample coverage to CPM using the same `library_size = Σ length × value` formula (over the `fastder.chromosomes` set), then average per-sample CPMs across samples (zero-included for samples without coverage at a position). At a given numeric `--min-coverage` value, the threshold means the same thing for every tool.
+All three tools normalise per-sample coverage to CPM. The library size is `sum(length * value)` over the `fastder.chromosomes` set. Per-sample CPMs are then averaged across samples, counting a sample with no coverage at a position as zero. At a given numeric `--min-coverage` value the threshold means the same thing for every tool.
 
 The point of the megadepth baseline is to show what fastder gains from its splice-junction-aware stitching over a coverage-only segmenter. The coverage signal, the normalisation and the aggregation are identical; only the region-call step differs.
 
@@ -193,7 +178,7 @@ The shared, swept parameters are encoded in the `param_id` directory component s
 Per-tool grids:
 
 - `fastder`: full cross-product of all four `fastder.*` config lists. `param_id = mc<v>_ml<v>_pt<v>_ct<v>` (each axis included only if the config supplies it).
-- `derfinder`: cross-product of `fastder.min_coverage` × `fastder.position_tolerance`. `param_id = mc<v>_pt<v>`.
+- `derfinder`: cross-product of `fastder.min_coverage` and `fastder.position_tolerance`. `param_id = mc<v>_pt<v>`.
 - `megadepth_baseline`: `fastder.min_coverage` only. `param_id = mc<v>`.
 
 Note on the `position_tolerance` mapping: fastder's `--position-tolerance` allows a few bp of slack at SJ-anchored boundaries, while derfinder's `--maxregiongap` bridges short below-threshold gaps inside a region. They are not identical, but both are tolerance settings measured in base pairs, so sweeping both lets the report show where they end up roughly comparable.
@@ -250,7 +235,7 @@ Real-data settings:
 
 - `monorail.local_samples`: for `pump_source: local`. A map from sample name to its paired FASTQ paths (`fq1`, `fq2`).
 - `monorail.sra_samples`: for `pump_source: sra`. A map from run accession to its `study_acc`.
-- `recount3.study_acc` and `recount3.groups`: for the recount3 backend. The SRA study to pull, and the sample groups, where each group becomes one scenario. See `config/config_recount3.yaml`.
+- `recount3.study_acc` and `recount3.groups`: for the recount3 backend. The SRA study to pull, and the sample groups, where each group becomes one scenario. See `config/config_klim_2019_tdp43_recount3.yaml`.
 - `gffcompare.reference_annotation`: the annotation used as the truth set for real data. It is not used for ASimulatoR input, which has its own simulated truth.
 
 ## Known issues

@@ -1,0 +1,121 @@
+---
+title: "fastder-evaluation: simulation depth sweep"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+params:
+  results_root: NULL
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE,
+                      fig.width = 9, fig.height = 5, fig.align = "center")
+library(readr)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(stringr)
+```
+
+This report stitches the per-depth simulation runs into one view. Each run is
+a separate config (`config_full_simulation.yaml` for 10M reads,
+`config_full_simulation_<N>M.yaml` for the others) with its own results
+directory. The figures show how detection scales with sequencing depth.
+
+```{r load}
+root <- params$results_root
+run_dirs <- list.dirs(root, recursive = FALSE, full.names = TRUE)
+run_dirs <- run_dirs[grepl("^config_full_simulation", basename(run_dirs))]
+
+# The base config is the 10M point; the _<N>M variants name their depth.
+depth_of <- function(dir_name) {
+  m <- str_match(dir_name, "_([0-9]+)M$")[, 2]
+  if (is.na(m)) 10L else as.integer(m)
+}
+
+read_run <- function(dir_path, file_name) {
+  path <- file.path(dir_path, file_name)
+  if (!file.exists(path)) return(NULL)
+  read_csv(path, show_col_types = FALSE) %>%
+    mutate(depth_M = depth_of(basename(dir_path)))
+}
+
+summary_all <- bind_rows(lapply(run_dirs, read_run, "summary.csv"))
+distances_all <- bind_rows(lapply(run_dirs, read_run, "fuzzy_distances.csv"))
+```
+
+```{r check}
+if (is.null(summary_all) || nrow(summary_all) == 0) {
+  knitr::knit_exit("No per-depth results found under the results root. Run the
+  config_full_simulation configs first (see the Makefile).")
+}
+knitr::kable(
+  summary_all %>% distinct(depth_M) %>% arrange(depth_M),
+  caption = "Sequencing depths found", col.names = "depth (M reads/sample)")
+```
+
+## Sensitivity and precision versus depth
+
+Transcript-level and exon-level gffcompare metrics, averaged across samples
+and parameter combinations, line per tool, faceted by scenario.
+
+```{r sens_prec}
+levels_long <- bind_rows(
+  summary_all %>% transmute(tool, scenario, depth_M, level = "Transcript",
+                            sensitivity = transcript_sens,
+                            precision = transcript_prec),
+  summary_all %>% transmute(tool, scenario, depth_M, level = "Exon",
+                            sensitivity = exon_sens, precision = exon_prec)
+) %>%
+  pivot_longer(c(sensitivity, precision),
+               names_to = "metric", values_to = "value") %>%
+  group_by(tool, scenario, depth_M, level, metric) %>%
+  summarise(value = mean(value, na.rm = TRUE), .groups = "drop")
+
+ggplot(levels_long, aes(x = depth_M, y = value, colour = tool, shape = tool)) +
+  geom_line(linewidth = 0.7) +
+  geom_point(size = 2.4) +
+  scale_x_continuous(trans = "log10", breaks = sort(unique(levels_long$depth_M))) +
+  scale_colour_brewer(palette = "Set2", name = NULL) +
+  scale_shape(name = NULL) +
+  coord_cartesian(ylim = c(0, 100)) +
+  facet_grid(level + metric ~ scenario) +
+  labs(x = "Reads per sample (M, log scale)", y = "Percent") +
+  theme_bw(base_size = 11) +
+  theme(legend.position = "bottom")
+```
+
+## Boundary precision versus depth
+
+Fraction of predicted exon boundaries within 5 bp of a reference boundary,
+averaged across samples and parameter combinations.
+
+```{r boundary}
+if (!is.null(distances_all) && nrow(distances_all) > 0) {
+  b5 <- distances_all %>%
+    mutate(distance = as.integer(distance)) %>%
+    group_by(tool, scenario, depth_M, sample, param_id) %>%
+    summarise(pct = mean(abs(distance) <= 5) * 100, .groups = "drop") %>%
+    group_by(tool, scenario, depth_M) %>%
+    summarise(pct = mean(pct), .groups = "drop")
+  ggplot(b5, aes(x = depth_M, y = pct, colour = tool, shape = tool)) +
+    geom_line(linewidth = 0.7) +
+    geom_point(size = 2.4) +
+    scale_x_continuous(trans = "log10", breaks = sort(unique(b5$depth_M))) +
+    scale_colour_brewer(palette = "Set2", name = NULL) +
+    scale_shape(name = NULL) +
+    coord_cartesian(ylim = c(0, 100)) +
+    facet_wrap(~ scenario) +
+    labs(x = "Reads per sample (M, log scale)",
+         y = "Predicted boundaries within 5 bp (%)") +
+    theme_bw(base_size = 11) +
+    theme(legend.position = "bottom")
+} else {
+  cat("No fuzzy_distances data found.")
+}
+```
+
+```{r session}
+sessionInfo()
+```

@@ -16,17 +16,6 @@
 seed: 10
 cores: 8
 
-# Not used with local FASTQ input, but the Snakefile reads asimulator.samples
-# at parse time, so the block must exist.
-asimulator:
-  seq_depth: 10000000
-  multi_events_per_exon: false
-  strand_specific: true
-  probs_as_freq: true
-  samples:
-    es:
-      es: 1.0
-
 monorail:
   ref_version: hg38
   project_name: "local"
