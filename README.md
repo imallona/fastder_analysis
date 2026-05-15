@@ -4,9 +4,9 @@ This repository holds the evaluation pipeline for fastder and accompanies the fa
 
 Simulated data is produced with ASimulatoR, which gives a known set of true transcripts to grade against. Real data comes either from recount3, where a study has already been processed by the Monorail pipeline, or from FASTQ files already on disk.
 
-The pipeline is used in two ways. The first is method comparison: fastder is benchmarked against derfinder and a coverage-only baseline, mainly on simulated data, where a known truth set allows precision and recall to be measured. The second is a worked biological example: fastder is run on a real dataset with a known expected result, a TDP-43 knockdown against a matched control, where loss of TDP-43 is known to produce specific cryptic exons. The two uses map onto the run modes below: the simulation configs are for benchmarking, and the recount3 config is the worked example.
+The pipeline is used in two ways. The first is method comparison: the benchmark compares fastder against derfinder and a coverage-only baseline, mainly on simulated data. There a known truth set gives precision and recall. The second is a worked biological example: the pipeline runs fastder on a TDP-43 knockdown and a matched control. Loss of TDP-43 is known to produce specific cryptic exons, so the expected result is known in advance. The simulation configs serve the first use, and the recount3 config serves the second.
 
-The fastder code is a git submodule pointing at [imallona/fastder](https://github.com/imallona/fastder), a fork of [martinalavanya/fastder](https://github.com/martinalavanya/fastder) with three changes this evaluation relies on: lean MM/RR parsing, reading coverage straight from BigWig through libBigWig instead of an intermediate BedGraph, and strand-aware stitching that carries the splice junction strand into the StitchedER output.
+The fastder code is a git submodule pointing at [imallona/fastder](https://github.com/imallona/fastder), a fork of [martinalavanya/fastder](https://github.com/martinalavanya/fastder). It has three changes this evaluation relies on: lean MM/RR parsing, reading coverage straight from BigWig through libBigWig instead of an intermediate BedGraph, and strand-aware stitching that carries the splice junction strand into the StitchedER output.
 
 ## Workflow at a glance
 
