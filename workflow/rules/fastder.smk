@@ -205,6 +205,23 @@ rule extract_fastder_inputs:
         # variant_only truth contains only the alternative isoforms. With the
         # recount3 backend the truth is the reference annotation and there is
         # one pseudo-sample, "reference".
+        # The label is chr-prefixed here, at creation, so gffcompare sees the
+        # same chromosome names as the tool GTFs. Doing it here rather than in
+        # a separate in-place rewrite rule avoids a stale-marker race that left
+        # variant_only labels unprefixed.
+        def _chr_prefix(path):
+            p = Path(path)
+            lines = []
+            for ln in p.read_text().splitlines(keepends=True):
+                if ln.startswith("#") or not ln.strip():
+                    lines.append(ln)
+                    continue
+                cols = ln.split("\t")
+                if not cols[0].startswith("chr"):
+                    cols[0] = "chr" + cols[0]
+                lines.append("\t".join(cols))
+            p.write_text("".join(lines))
+
         if HAS_SIM_TRUTH:
             for sample in params.scenario_samples:
                 gff_src = (Path(str(params.asim_dir)) / sample
@@ -212,7 +229,9 @@ rule extract_fastder_inputs:
                 if not gff_src.exists():
                     gff_src = Path(str(params.asim_dir)) / sample / "splicing_variants.gff3"
                 if gff_src.exists():
-                    shutil.copy2(gff_src, fdir / f"{sample}_label.gff3")
+                    dst = fdir / f"{sample}_label.gff3"
+                    shutil.copy2(gff_src, dst)
+                    _chr_prefix(dst)
         else:
             ref_path = Path(str(REF_ANNOTATION))
             if not ref_path.is_absolute():
@@ -220,7 +239,9 @@ rule extract_fastder_inputs:
             if not ref_path.exists():
                 raise FileNotFoundError(f"reference annotation not found: {ref_path}")
             for sample in params.scenario_samples:
-                shutil.copy2(ref_path, fdir / f"{sample}_label{ref_path.suffix}")
+                dst = fdir / f"{sample}_label{ref_path.suffix}"
+                shutil.copy2(ref_path, dst)
+                _chr_prefix(dst)
 
 
 # 8. Match chr prefix convention for files used by gffcompare
