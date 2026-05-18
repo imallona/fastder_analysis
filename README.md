@@ -150,7 +150,7 @@ After a successful run, `results/<config>/` contains:
 - `fuzzy_distances.csv`: signed bp distance from each called exon boundary to the nearest reference boundary on the same strand.
 - `fuzzy_locus_recall.csv`: fraction of reference loci with at least f of their exonic length covered, at thresholds f from 0.05 to 1.0 in 0.05 steps.
 - `fuzzy_strand.csv`: each called StitchedER classified as concordant, discordant, unstranded, or unmatched against the best-overlapping reference transcript.
-- `summary.html`: the summary report covering the CSVs above, faceted by scenario.
+- `summary.html`: the summary report. For simulated input it grades the tools against the known truth set with the CSVs above, faceted by scenario. For runs without a simulated truth set (recount3, sra, local) it is instead a descriptive report of what each tool called and how the tool calls agree, with no precision or recall.
 - `benchmarks.html`: runtime and memory report parsed from the per-rule benchmark TSVs under `logs/benchmarks/`.
 - `recount3.html`: written only by the recount3 backend. Shows the coverage view at the TDP-43 cryptic exon loci, the knockdown and control groups side by side, and a sample dissimilarity summary.
 
@@ -192,7 +192,7 @@ Adding a third tool: write `run_<tool>` that emits the standardised GTF, add a `
 
 ### Reports
 
-The rules `render_summary_report` and `render_benchmarks_report` produce `summary.html` and `benchmarks.html` at the end of a pipeline run. The recount3 backend additionally runs `render_recount3_report`, which produces `recount3.html`. To rebuild only the reports without re-running upstream rules, add `--forcerun` with the report rule names to the snakemake invocation. The report rules share the conda env at `workflow/envs/rmarkdown.yaml`, which pulls R, rmarkdown and the tidyverse, ComplexHeatmap and circlize for the heatmaps, and rtracklayer and Gviz for the recount3 coverage view.
+The rules `render_summary_report` and `render_benchmarks_report` produce `summary.html` and `benchmarks.html` at the end of a pipeline run. `render_summary_report` renders `workflow/reports/summary.Rmd` for simulated runs, which have a truth set, and `workflow/reports/summary_custom.Rmd` for runs without one (recount3, sra, local). The recount3 backend additionally runs `render_recount3_report`, which produces `recount3.html`. To rebuild only the reports without re-running upstream rules, add `--forcerun` with the report rule names to the snakemake invocation. The report rules share the conda env at `workflow/envs/rmarkdown.yaml`, which pulls R, rmarkdown and the tidyverse, ComplexHeatmap and circlize for the heatmaps, and rtracklayer and Gviz for the recount3 coverage view.
 
 ### Repository layout
 

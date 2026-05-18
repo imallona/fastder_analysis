@@ -56,7 +56,12 @@ rule render_summary_report:
         # The truth label GFF is a side effect of extract_fastder_inputs;
         # depend on match_chr_prefix.DONE so it is in place before rendering.
         chr_prefix=op.join(FASTDER_DIR, _REPORT_SCENARIO, "match_chr_prefix.DONE"),
-        rmd=op.join(WORKFLOW_DIR, "reports", "summary.Rmd"),
+        # summary.Rmd grades the tools against a simulated truth set. Runs
+        # without one (recount3, sra, local) get the descriptive
+        # summary_custom.Rmd, which reports what the tools called and how
+        # the calls agree, with no precision or recall.
+        rmd=op.join(WORKFLOW_DIR, "reports",
+                    "summary.Rmd" if HAS_SIM_TRUTH else "summary_custom.Rmd"),
     output:
         op.join(RESULTS_DIR, "summary.html"),
     log:
