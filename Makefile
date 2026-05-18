@@ -9,10 +9,11 @@
 ##   make submodules         # fetch the fastder and monorail-external submodules
 ##   make sim                # the 10M paper simulation run
 ##   make simulations        # the full depth sweep: 5M, 10M, 30M, 40M
-##   make tdp43              # the TDP-43 knockdown recount3 example
+##   make tdp43              # TDP-43 recount3 showcase: STMN2, clean threshold
+##   make tdp43-panel        # TDP-43 recount3 panel: 5 cryptic exons, low threshold
 ##   make meta               # render the depth-sweep report (after the runs)
 ##   make smoke              # quick 2-sample smoke test
-##   make all                # simulations, then tdp43, then meta
+##   make all                # simulations, meta, then both tdp43 runs
 ##   make dryrun             # snakemake -n for the 10M simulation config
 ##   make unlock             # release a stale snakemake lock
 ##
@@ -38,16 +39,16 @@ ACTIVATE := source $(CONDA_INIT) && conda activate $(CONDA_ENV) && \
 SNAKEMAKE := snakemake --cores $(CORES) -p
 
 .DEFAULT_GOAL := help
-.PHONY: help all submodules sim simulations sim-5m sim-30m sim-40m tdp43 meta \
-        smoke dryrun unlock
+.PHONY: help all submodules sim simulations sim-5m sim-30m sim-40m tdp43 \
+        tdp43-panel meta smoke dryrun unlock
 
 help:
-	@echo "Targets: submodules sim simulations sim-5m sim-30m sim-40m tdp43 meta smoke all dryrun unlock"
+	@echo "Targets: submodules sim simulations sim-5m sim-30m sim-40m tdp43 tdp43-panel meta smoke all dryrun unlock"
 	@echo "Variables: CORES=$(CORES) ULIMIT_KB=$(ULIMIT_KB) CONDA_ENV=$(CONDA_ENV)"
 
-## meta only needs the simulation results, so it runs before tdp43: a tdp43
-## failure then cannot block the cross-depth report.
-all: simulations meta tdp43
+## meta only needs the simulation results, so it runs before the tdp43 runs:
+## a tdp43 failure then cannot block the cross-depth report.
+all: simulations meta tdp43 tdp43-panel
 
 ## Populate the git submodules. workflow/external/fastder must hold the fastder
 ## sources for the build_fastder rule to find a CMakeLists.txt; a plain
@@ -77,10 +78,19 @@ sim-40m:
 	  FASTDER_EVAL_CONFIG=../config/config_full_simulation_40M.yaml \
 	  $(SNAKEMAKE) --use-conda --use-singularity'
 
-## The recount3 backend has no ASimulatoR container step, so no --use-singularity.
+## TDP-43 recount3 showcase: a clean single threshold that isolates the STMN2
+## cryptic exon. The recount3 backend has no ASimulatoR container step, so no
+## --use-singularity.
 tdp43:
 	cd $(WORKFLOW_DIR) && bash -c '$(ACTIVATE) && \
 	  FASTDER_EVAL_CONFIG=../config/config_klim_2019_tdp43_recount3.yaml \
+	  $(SNAKEMAKE) --use-conda'
+
+## TDP-43 recount3 panel: a low single threshold that emits the wider cryptic
+## exon panel (STMN2, HDGFL2, ELAVL3, CELF5, KCNQ2), recovered via junctions.
+tdp43-panel:
+	cd $(WORKFLOW_DIR) && bash -c '$(ACTIVATE) && \
+	  FASTDER_EVAL_CONFIG=../config/config_klim_2019_tdp43_recount3_panel.yaml \
 	  $(SNAKEMAKE) --use-conda'
 
 smoke:

@@ -68,9 +68,10 @@ The `Makefile` at the repository root is the entry point. Each target runs one a
 - `make submodules` fetches the `fastder` and `monorail-external` git submodules; run it once after cloning.
 - `make sim` runs the 10M simulation (`config_full_simulation.yaml`).
 - `make simulations` runs the full depth sweep: 5M, 10M, 30M, 40M reads.
-- `make tdp43` runs the TDP-43 knockdown recount3 example.
+- `make tdp43` runs the TDP-43 recount3 showcase (the STMN2 cryptic exon, clean threshold).
+- `make tdp43-panel` runs the TDP-43 recount3 panel (five cryptic exons, low threshold).
 - `make meta` knits the cross-depth report once the simulation runs are done.
-- `make all` runs the simulations, then tdp43, then meta.
+- `make all` runs the simulations, the meta report, then both tdp43 runs.
 - `make smoke` runs a quick 2-sample smoke test.
 - `make dryrun` does a `snakemake -n`; `make unlock` releases a stale lock.
 
@@ -113,7 +114,8 @@ The configs:
 
 - `config/config_full_simulation.yaml`: the paper-ready simulation. 5 samples, 10M reads, chr21, monorail_light backend, with the 8-combination fastder parameter grid. This is the 10M point of the depth sweep.
 - `config/config_full_simulation_5M.yaml`, `_30M.yaml`, `_40M.yaml`: the other depths of the sweep, generated from `config_full_simulation.yaml` by `workflow/scripts/make_sim_configs.py`.
-- `config/config_klim_2019_tdp43_recount3.yaml`: real data, recount3 backend. TDP-43 knockdown versus scramble control in motor-neuron RNA-seq (recount3 study SRP166282, GEO GSE121569), split into a knockdown group and a control group, on chr8 and chr19. `--use-singularity` is not needed for this config.
+- `config/config_klim_2019_tdp43_recount3.yaml`: real data, recount3 backend. TDP-43 knockdown versus scramble control in motor-neuron RNA-seq (recount3 study SRP166282, GEO GSE121569), split into a knockdown group and a control group, on chr8, chr19 and chr20. This is the showcase run: a single clean `min_coverage` threshold (1.0 CPM) that isolates the STMN2 cryptic exon, which is well above the intronic noise floor. `--use-singularity` is not needed for this config.
+- `config/config_klim_2019_tdp43_recount3_panel.yaml`: the panel companion of the run above. Same dataset, but a single low `min_coverage` threshold (0.02 CPM) so the wider cryptic exon panel (STMN2, HDGFL2, ELAVL3, CELF5, KCNQ2) is emitted. Only STMN2 clears the coverage noise floor; the other four are recovered through their knockdown-specific splice junctions. See "TDP-43 cryptic exons: showcase and panel" below.
 - `config/config_local.yaml`: local FASTQ files, monorail_light backend. Edit `monorail.local_samples` to point at your own paired FASTQ files.
 - `config/config_quick_light.yaml`: 2 samples, 100k reads, chr21, monorail_light. Smoke test.
 - `config/config_quick.yaml`: 2 samples, 100k reads, chr21, monorail backend.
@@ -126,6 +128,17 @@ To pick a non-default config, set the `FASTDER_EVAL_CONFIG` environment variable
 FASTDER_EVAL_CONFIG=../config/config_quick_light.yaml \
   snakemake --use-conda --use-singularity --cores 12
 ```
+
+### TDP-43 cryptic exons: showcase and panel
+
+Loss of TDP-43 produces cryptic exons. The recount3 example is run twice, with two configs that differ only in the `min_coverage` threshold, because the cryptic exons span a wide coverage range.
+
+- Showcase (`config_klim_2019_tdp43_recount3.yaml`, `make tdp43`): a single clean threshold of 1.0 CPM. The STMN2 cryptic exon sits near 2 CPM, well above the intronic noise floor (about 0.1 CPM), so this threshold isolates it as a discrete called region with no surrounding noise. This run is the clean, unambiguous demonstration.
+- Panel (`config_klim_2019_tdp43_recount3_panel.yaml`, `make tdp43-panel`): a single low threshold of 0.02 CPM. The other cryptic exons in the panel (HDGFL2, ELAVL3, CELF5, KCNQ2) sit at the coverage noise floor, so no clean threshold can isolate them. The low threshold emits them, along with noise. They are identified not by coverage but by their splice junctions: each was picked from a knockdown-specific novel junction in the recount3 junction matrix, one absent in the controls.
+
+No single threshold serves both: a threshold high enough to keep STMN2 clean discards the weak cryptic exons, and a threshold low enough to emit them admits noise. The two runs make that explicit rather than hiding it in a parameter sweep. Each writes to its own `results/<config>/` directory, and both share one reference download because they use the same chromosome set (chr8, chr19, chr20).
+
+The cryptic exon panel and its coordinates are defined in `workflow/reports/recount3.Rmd`; the report draws each gene with a highlight box at the expected cryptic exon.
 
 ### Scenarios and sample groups
 

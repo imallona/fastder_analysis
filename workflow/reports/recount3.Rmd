@@ -30,17 +30,30 @@ Monorail-processed outputs. Each group was processed on its own, so the
 called regions of the knockdown group and the control group can be placed
 side by side.
 
-This report is specific to the TDP-43 knockdown experiment. The STMN2 and
-UNC13A cryptic exon loci used below are hardcoded for it (Klim et al. 2019,
-recount3 study SRP166282). If the recount3 backend is run on a different
-study, the cryptic exon panels still render but are not meaningful for it.
+This report is specific to the TDP-43 knockdown experiment. The cryptic exon
+panel used below (STMN2, HDGFL2, ELAVL3, CELF5, KCNQ2) is hardcoded for it
+(Klim et al. 2019, recount3 study SRP166282), with loci picked from the
+study's knockdown-specific novel splice junctions. If the recount3 backend is
+run on a different study, the cryptic exon panels still render but are not
+meaningful for it.
 
-Loss of TDP-43 is known to let two cryptic exons appear, one in STMN2 on
-chr8 and one in UNC13A on chr19. These cryptic exons are not part of the
-Ensembl annotation, so they cannot be scored as true positives. The aim here
-is a simple visual check: a cryptic exon should show up as coverage and as a
-called region in the knockdown group, and should be weak or absent in the
-control group.
+Loss of TDP-43 lets cryptic exons appear in a number of genes. The panel here
+covers STMN2 on chr8, HDGFL2, ELAVL3 and CELF5 on chr19, and KCNQ2 on chr20.
+These cryptic exons are not part of the Ensembl annotation, so they cannot be
+scored as true positives. The aim is a visual check: a cryptic exon should
+show up as a called region, and usually as coverage, in the knockdown group,
+and should be weak or absent in the control group. STMN2 is the strongest
+case; the others are weaker and are clearest as a called region rather than
+as a coverage peak.
+
+This dataset is analysed by two runs that differ only in the `min_coverage`
+threshold. The showcase run (`config_klim_2019_tdp43_recount3.yaml`) uses a
+clean 1.0 CPM threshold that isolates STMN2, the one cryptic exon well above
+the intronic noise floor. The panel run
+(`config_klim_2019_tdp43_recount3_panel.yaml`) uses a low 0.02 CPM threshold
+so the weaker cryptic exons are emitted too, at the cost of noise. This
+report renders for whichever run produced it; see the README section "TDP-43
+cryptic exons: showcase and panel" for the rationale.
 
 ```{r load-manifest}
 manifest <- read.csv(params$manifest_csv, stringsAsFactors = FALSE)
@@ -54,21 +67,23 @@ group_colors <- setNames(
 ```
 
 ```{r regions}
-# Plotted window per gene and the expected cryptic exon inside it, hg38. The
-# window carries flank so the gene context is visible. The UNC13A cryptic exon
-# coordinates are the well-characterised locus; the STMN2 coordinates are the
-# knockdown-specific coverage peak observed in this study's BigWigs (control
-# coverage there is near zero).
+# Cryptic exon panel for the TDP-43 knockdown, hg38. The plot window is the
+# gene body plus a small flank. The cryptic exon coordinates (ce_start,
+# ce_end) come from the knockdown-specific novel splice junctions in the
+# recount3 junction matrix: for HDGFL2 and ELAVL3 the cryptic exon is the gap
+# between a flanking junction pair; for STMN2, CELF5 and KCNQ2 a single
+# knockdown-specific junction was seen, so the box is anchored on it and on
+# the knockdown coverage peak.
 regions <- data.frame(
-  gene = c("STMN2", "UNC13A"),
-  chrom = c("chr8", "chr19"),
-  start = c(79590000, 17580000),
-  end = c(79690000, 17710000),
-  ce_start = c(79616800, 17642414),
-  ce_end = c(79617200, 17642541),
+  gene = c("STMN2", "HDGFL2", "ELAVL3", "CELF5", "KCNQ2"),
+  chrom = c("chr8", "chr19", "chr19", "chr19", "chr20"),
+  start = c(79606000, 4467000, 11446000, 3219000, 63395000),
+  end = c(79671000, 4507000, 11486000, 3302000, 63478000),
+  ce_start = c(79616821, 4492015, 11463496, 3278200, 63444558),
+  ce_end = c(79617200, 4492152, 11463662, 3278400, 63444758),
   stringsAsFactors = FALSE
 )
-knitr::kable(regions, caption = "Plotted window and expected cryptic exon (hg38)")
+knitr::kable(regions, caption = "Cryptic exon panel: plot window and expected cryptic exon (hg38)")
 ```
 
 ## Coverage view at the cryptic exon loci
@@ -128,7 +143,7 @@ for (tool in names(tools)) {
 }
 ```
 
-```{r coverage-plots, results="asis", fig.height=12}
+```{r coverage-plots, results="asis", fig.height=6}
 for (i in seq_len(nrow(regions))) {
   r <- regions[i, ]
   cat("\n\n### ", r$gene, " (", r$chrom, ":", r$start, "-", r$end, ")\n\n",
@@ -171,14 +186,19 @@ for (i in seq_len(nrow(regions))) {
         }
         body <- c(body, AnnotationTrack(
           gr, name = paste0(tool, "\n", group), chromosome = r$chrom,
-          fill = tool_colors[tool], col = NA, stacking = "squish"))
+          fill = tool_colors[tool], col = NA, stacking = "squish",
+          shape = "box"))
       }
     }
 
-    # Shade the expected cryptic exon across every track below the axis.
+    # Shade the expected cryptic exon across every track below the axis. The
+    # box is widened to four times the exon, so its edges fall in flanking
+    # sequence and stay visible instead of being hidden under the coverage
+    # peak.
+    ce_w <- r$ce_end - r$ce_start
     highlight <- HighlightTrack(
       trackList = body, chromosome = r$chrom,
-      start = r$ce_start, end = r$ce_end,
+      start = r$ce_start - 1.5 * ce_w, end = r$ce_end + 1.5 * ce_w,
       col = "#d73027", fill = "#fde0dd")
 
     plotTracks(list(axis_track, highlight),
