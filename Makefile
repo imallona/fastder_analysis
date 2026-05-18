@@ -6,6 +6,7 @@
 ## --configfile).
 ##
 ## Usage:
+##   make submodules         # fetch the fastder and monorail-external submodules
 ##   make sim                # the 10M paper simulation run
 ##   make simulations        # the full depth sweep: 5M, 10M, 30M, 40M
 ##   make tdp43              # the TDP-43 knockdown recount3 example
@@ -37,14 +38,20 @@ ACTIVATE := source $(CONDA_INIT) && conda activate $(CONDA_ENV) && \
 SNAKEMAKE := snakemake --cores $(CORES) -p
 
 .DEFAULT_GOAL := help
-.PHONY: help all sim simulations sim-5m sim-30m sim-40m tdp43 meta smoke \
-        dryrun unlock
+.PHONY: help all submodules sim simulations sim-5m sim-30m sim-40m tdp43 meta \
+        smoke dryrun unlock
 
 help:
-	@echo "Targets: sim simulations sim-5m sim-30m sim-40m tdp43 meta smoke all dryrun unlock"
+	@echo "Targets: submodules sim simulations sim-5m sim-30m sim-40m tdp43 meta smoke all dryrun unlock"
 	@echo "Variables: CORES=$(CORES) ULIMIT_KB=$(ULIMIT_KB) CONDA_ENV=$(CONDA_ENV)"
 
 all: simulations tdp43 meta
+
+## Populate the git submodules. workflow/external/fastder must hold the fastder
+## sources for the build_fastder rule to find a CMakeLists.txt; a plain
+## git clone leaves the submodules empty. Idempotent, safe to re-run.
+submodules:
+	git submodule update --init --recursive
 
 simulations: sim sim-5m sim-30m sim-40m
 

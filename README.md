@@ -59,10 +59,13 @@ Conda or Miniconda, and Singularity or Apptainer. Install Snakemake into a Conda
 
 Snakemake installation notes: https://snakemake.readthedocs.io/en/stable/getting_started/installation.html
 
+The fastder sources come in through a git submodule. A plain `git clone` leaves it empty, and `build_fastder` then fails with `does not appear to contain CMakeLists.txt`. Run `make submodules` (or `git submodule update --init --recursive`) once after cloning. See "Cloning with submodules" below.
+
 ### Execution with the Makefile
 
 The `Makefile` at the repository root is the entry point. Each target runs one analysis. From the repository root:
 
+- `make submodules` fetches the `fastder` and `monorail-external` git submodules; run it once after cloning.
 - `make sim` runs the 10M simulation (`config_full_simulation.yaml`).
 - `make simulations` runs the full depth sweep: 5M, 10M, 30M, 40M reads.
 - `make tdp43` runs the TDP-43 knockdown recount3 example.
