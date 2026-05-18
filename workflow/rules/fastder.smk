@@ -355,6 +355,11 @@ rule run_fastder:
     shell:
         """
         mkdir -p {params.run_dir}
+        # Drop any FASTDER_RESULT GTF left from an earlier run. fastder embeds
+        # its parameters (including coverage_tolerance) in the output file
+        # name, so a parameter change writes a new file instead of overwriting
+        # the old one; the glob below would then match both and emit two paths.
+        rm -f {params.run_dir}/FASTDER_RESULT_*.gtf
         # Symlink all shared inputs into the private run directory.
         # Includes .bw (parsed by fastder via libBigWig), MM, RR, and the CSV.
         for f in {params.fastder_dir}/*.bw \
