@@ -53,17 +53,18 @@ recount3:
 
 fastder:
   stranded: false
-  # min_coverage is in CPM. Real-data depth differs from the simulations, so
-  # this may need tuning once the first run is inspected.
-  min_coverage: [0.01]
+  # min_coverage is in CPM. Real-data depth differs from the simulations; this
+  # sweep brackets useful thresholds so the cryptic-exon calls can be compared.
+  min_coverage: [0.1, 0.5, 1.0]
   # chr19 carries the UNC13A cryptic exon, chr8 the STMN2 cryptic exon.
   chromosomes: ["chr8", "chr19"]
 
 gffcompare:
-  # The truth set for the recount3 backend is this annotation, copied per
-  # sample by extract_fastder_inputs. download_reference fetches it restricted
-  # to fastder.chromosomes above. The TDP-43 cryptic exons are not in this
+  # The truth set for the recount3 backend is the downloaded Ensembl
+  # annotation, copied per sample by extract_fastder_inputs. Leave
+  # reference_annotation empty to use that download (the scope-keyed reference
+  # path is resolved by the workflow). The TDP-43 cryptic exons are not in the
   # annotation, so they are reported as novel rather than as true positives;
   # the cryptic-exon result is read from the report, not from the gffcompare
   # precision numbers.
-  reference_annotation: "data/reference/Homo_sapiens_GRCh38_Ensembl115/Homo_sapiens.GRCh38.115.chr.gtf"
+  reference_annotation: ""

@@ -214,17 +214,11 @@ rule extract_fastder_inputs:
                 if gff_src.exists():
                     shutil.copy2(gff_src, fdir / f"{sample}_label.gff3")
         else:
-            ref_ann = config.get("gffcompare", {}).get("reference_annotation", "")
-            if not ref_ann:
-                raise ValueError(
-                    "gffcompare.reference_annotation must be set for the "
-                    f"'{params.backend}' backend; it is the gffcompare truth set."
-                )
-            ref_path = Path(ref_ann)
+            ref_path = Path(str(REF_ANNOTATION))
             if not ref_path.is_absolute():
-                ref_path = Path(str(WORKFLOW_DIR)) / ref_ann
+                ref_path = Path(str(WORKFLOW_DIR)) / ref_path
             if not ref_path.exists():
-                raise FileNotFoundError(f"reference_annotation not found: {ref_path}")
+                raise FileNotFoundError(f"reference annotation not found: {ref_path}")
             for sample in params.scenario_samples:
                 shutil.copy2(ref_path, fdir / f"{sample}_label{ref_path.suffix}")
 

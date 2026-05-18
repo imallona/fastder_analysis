@@ -239,7 +239,7 @@ Real-data settings:
 - `monorail.local_samples`: for `pump_source: local`. A map from sample name to its paired FASTQ paths (`fq1`, `fq2`).
 - `monorail.sra_samples`: for `pump_source: sra`. A map from run accession to its `study_acc`.
 - `recount3.study_acc` and `recount3.groups`: for the recount3 backend. The SRA study to pull, and the sample groups, where each group becomes one scenario. See `config/config_klim_2019_tdp43_recount3.yaml`.
-- `gffcompare.reference_annotation`: the annotation used as the truth set for real data. It is not used for ASimulatoR input, which has its own simulated truth.
+- `gffcompare.reference_annotation`: the annotation used as the truth set for real data (recount3, sra, local). Leave it empty to use the reference the workflow downloads; set it only to override with a different annotation. Not used for ASimulatoR input, which has its own simulated truth.
 
 ## Known issues
 

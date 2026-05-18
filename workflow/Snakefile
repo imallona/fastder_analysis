@@ -163,24 +163,21 @@ wildcard_constraints:
 PUMP_SOURCE = config.get("monorail", {}).get("pump_source", "asimulator")
 if BACKEND == "recount3":
     # Samples are the recount3 run accessions across all groups. The truth
-    # set is the reference annotation, so LABEL_EXT follows its suffix.
+    # set is the downloaded Ensembl annotation, a GTF.
     PUMP_SAMPLES = R3_ALL_SAMPLES
-    ref_ann = config.get("gffcompare", {}).get("reference_annotation", "")
-    LABEL_EXT = Path(ref_ann).suffix if ref_ann else ".gtf"
+    LABEL_EXT = ".gtf"
 elif PUMP_SOURCE == "asimulator":
     PUMP_SAMPLES = ASIM_SAMPLES
     LABEL_EXT = ".gff3"  # ASimulatoR always produces GFF3
 elif PUMP_SOURCE == "sra":
     PUMP_SAMPLES = list(config["monorail"]["sra_samples"].keys())
-    ref_ann = config.get("gffcompare", {}).get("reference_annotation", "")
-    LABEL_EXT = Path(ref_ann).suffix if ref_ann else ".gff3"
+    LABEL_EXT = ".gtf"
 elif PUMP_SOURCE == "local":
     # Local FASTQ input: the same path as the SRA source, but the reads are
     # already on disk, so the download step is skipped. Each sample names its
     # paired FASTQ files under monorail.local_samples.
     PUMP_SAMPLES = list(config["monorail"]["local_samples"].keys())
-    ref_ann = config.get("gffcompare", {}).get("reference_annotation", "")
-    LABEL_EXT = Path(ref_ann).suffix if ref_ann else ".gff3"
+    LABEL_EXT = ".gtf"
 else:
     raise ValueError(
         f"Unknown pump_source: '{PUMP_SOURCE}'. "
@@ -230,6 +227,12 @@ REF_CHROMS = [str(c).removeprefix("chr")
               for c in (_REF_CHROMS_CFG or [str(i) for i in range(1, 23)] + ["X"])]
 REF_GTF = op.join(REF_DIR, "Homo_sapiens.GRCh38.115.chr.gtf")
 REF_FASTAS = [op.join(REF_DIR, f"{c}.fa") for c in REF_CHROMS]
+
+# Reference annotation used as the gffcompare truth set for real data
+# (recount3, sra, local). It defaults to the downloaded GTF, so a config never
+# has to track the scope-keyed reference path by hand; gffcompare.reference_
+# annotation can still override it.
+REF_ANNOTATION = (config.get("gffcompare") or {}).get("reference_annotation") or REF_GTF
 
 # STAR index for the monorail_light backend, keyed by the same scope so a
 # single-chromosome index and a whole-genome index never share a directory.

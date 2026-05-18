@@ -41,6 +41,7 @@ fastder:
   chromosomes: ["chr21"]
 
 gffcompare:
-  # The truth set for local input is this annotation. download_reference
-  # fetches it restricted to fastder.chromosomes above.
-  reference_annotation: "data/reference/Homo_sapiens_GRCh38_Ensembl115/Homo_sapiens.GRCh38.115.chr.gtf"
+  # The truth set for local input is the downloaded Ensembl annotation. Leave
+  # reference_annotation empty to use that download (the scope-keyed reference
+  # path is resolved by the workflow).
+  reference_annotation: ""

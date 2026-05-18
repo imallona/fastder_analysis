@@ -116,12 +116,21 @@ rule render_benchmarks_report:
 
 
 # Build the manifest the recount3 report reads: one row per sample, with the
-# group it belongs to, its coverage BigWig, and its group's fastder GTF.
+# group it belongs to, its coverage BigWig, and its group's called-region GTF
+# for each tool (fastder, derfinder, megadepth_baseline).
 rule recount3_report_manifest:
     input:
         fastder_gtfs=expand(
             op.join(DATA_DIR, "tools", "fastder", "{scenario}",
-                    PARAM_IDS[0] if PARAM_IDS else "default", "output.gtf"),
+                    PARAM_IDS_BY_TOOL["fastder"][0], "output.gtf"),
+            scenario=SCENARIOS),
+        derfinder_gtfs=expand(
+            op.join(DATA_DIR, "tools", "derfinder", "{scenario}",
+                    PARAM_IDS_BY_TOOL["derfinder"][0], "output.gtf"),
+            scenario=SCENARIOS),
+        megadepth_gtfs=expand(
+            op.join(DATA_DIR, "tools", "megadepth_baseline", "{scenario}",
+                    PARAM_IDS_BY_TOOL["megadepth_baseline"][0], "output.gtf"),
             scenario=SCENARIOS),
         bigwigs=expand(op.join(R3_DIR, "bw", "{sample}.all.bw"),
                        sample=R3_ALL_SAMPLES),
@@ -131,9 +140,13 @@ rule recount3_report_manifest:
         groups=R3_GROUPS,
     run:
         import csv as _csv
-        gtf_by_group = {}
-        for gtf in input.fastder_gtfs:
-            gtf_by_group[Path(gtf).parts[-3]] = os.path.abspath(gtf)
+
+        def by_group(gtfs):
+            return {Path(g).parts[-3]: os.path.abspath(g) for g in gtfs}
+
+        fastder_by_group = by_group(input.fastder_gtfs)
+        derfinder_by_group = by_group(input.derfinder_gtfs)
+        megadepth_by_group = by_group(input.megadepth_gtfs)
         bw_by_sample = {}
         for bw in input.bigwigs:
             name = Path(bw).name
@@ -141,11 +154,16 @@ rule recount3_report_manifest:
                 bw_by_sample[name[: -len(".all.bw")]] = os.path.abspath(bw)
         with open(output.manifest, "w", newline="") as fh:
             writer = _csv.writer(fh)
-            writer.writerow(["group", "sample", "bigwig", "fastder_gtf"])
+            writer.writerow(["group", "sample", "bigwig",
+                             "fastder_gtf", "derfinder_gtf", "megadepth_gtf"])
             for group, samples in params.groups.items():
                 for sample in samples:
-                    writer.writerow([group, sample, bw_by_sample[sample],
-                                     gtf_by_group.get(group, "")])
+                    writer.writerow([
+                        group, sample, bw_by_sample[sample],
+                        fastder_by_group.get(group, ""),
+                        derfinder_by_group.get(group, ""),
+                        megadepth_by_group.get(group, ""),
+                    ])
 
 
 # Render the recount3 comparison report. Only requested by rule all when the
@@ -163,12 +181,7 @@ rule render_recount3_report:
         op.join(LOG_DIR, "render_recount3_report.log"),
     params:
         study=R3_STUDY,
-        reference_gtf=lambda wc: (
-            config["gffcompare"]["reference_annotation"]
-            if os.path.isabs(config.get("gffcompare", {}).get("reference_annotation", "x"))
-            else op.join(WORKFLOW_DIR,
-                         config.get("gffcompare", {}).get("reference_annotation", ""))
-        ),
+        reference_gtf=REF_ANNOTATION,
     conda:
         "../envs/rmarkdown.yaml"
     shell:
