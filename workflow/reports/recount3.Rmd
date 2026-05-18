@@ -147,7 +147,7 @@ for (tool in names(tools)) {
 }
 ```
 
-```{r coverage-plots, results="asis", fig.width=13, fig.height=11}
+```{r coverage-plots, results="asis", fig.width=13, fig.height=13}
 for (i in seq_len(nrow(regions))) {
   r <- regions[i, ]
   cat("\n\n### ", r$gene, " (", r$chrom, ":", r$start, "-", r$end, ")\n\n",
@@ -156,7 +156,10 @@ for (i in seq_len(nrow(regions))) {
     axis_track <- GenomeAxisTrack()
 
     # Tracks the highlight box is drawn across: gene models, coverage, regions.
+    # body_sizes gives each track an explicit relative height, so the thin
+    # region tracks are not starved of space by the coverage tracks.
     body <- list()
+    body_sizes <- numeric(0)
 
     if (!is.null(gene_models)) {
       in_window <- gene_models[seqnames(gene_models) == r$chrom &
@@ -167,6 +170,7 @@ for (i in seq_len(nrow(regions))) {
         body <- c(body, AnnotationTrack(
           in_window, name = "Ensembl", group = in_window$transcript_id,
           stacking = "squish", fill = "grey60", col = NA))
+        body_sizes <- c(body_sizes, 1.4)
       }
     }
 
@@ -178,6 +182,7 @@ for (i in seq_len(nrow(regions))) {
         name = paste0(m$group, "\n", m$sample), type = "histogram",
         col.histogram = group_colors[m$group],
         fill.histogram = group_colors[m$group]))
+      body_sizes <- c(body_sizes, 1.6)
     }
 
     # Called regions, one track per tool and group.
@@ -193,6 +198,7 @@ for (i in seq_len(nrow(regions))) {
           chromosome = r$chrom,
           fill = tool_colors[tool], col = NA, stacking = "squish",
           shape = "box"))
+        body_sizes <- c(body_sizes, 1.0)
       }
     }
 
@@ -210,7 +216,7 @@ for (i in seq_len(nrow(regions))) {
                from = r$start, to = r$end, chromosome = r$chrom,
                background.title = "white", col.title = "black",
                col.axis = "black", cex.title = 0.8, title.width = 2.2,
-               sizes = NULL)
+               sizes = c(0.6, body_sizes))
     TRUE
   }, error = function(e) {
     cat("Could not draw this region:", conditionMessage(e), "\n")
