@@ -119,6 +119,10 @@ tools <- c(fastder = "fastder_gtf",
 tool_colors <- c(fastder = "#1b9e77",
                  derfinder = "#d95f02",
                  megadepth_baseline = "#7570b3")
+# Short track-title labels; "megadepth_baseline" is too long for the strip.
+tool_labels <- c(fastder = "fastder",
+                 derfinder = "derfinder",
+                 megadepth_baseline = "megadepth")
 
 # Keep only the transcript features, so each called region is one block
 # rather than a gene/transcript/exon triple drawn on top of each other.
@@ -143,7 +147,7 @@ for (tool in names(tools)) {
 }
 ```
 
-```{r coverage-plots, results="asis", fig.height=6}
+```{r coverage-plots, results="asis", fig.width=13, fig.height=11}
 for (i in seq_len(nrow(regions))) {
   r <- regions[i, ]
   cat("\n\n### ", r$gene, " (", r$chrom, ":", r$start, "-", r$end, ")\n\n",
@@ -171,7 +175,7 @@ for (i in seq_len(nrow(regions))) {
       m <- manifest[j, ]
       body <- c(body, DataTrack(
         range = m$bigwig, genome = "hg38", chromosome = r$chrom,
-        name = paste0(m$sample, "\n", m$group), type = "histogram",
+        name = paste0(m$group, "\n", m$sample), type = "histogram",
         col.histogram = group_colors[m$group],
         fill.histogram = group_colors[m$group]))
     }
@@ -185,7 +189,8 @@ for (i in seq_len(nrow(regions))) {
                    start(gr) <= r$end & end(gr) >= r$start]
         }
         body <- c(body, AnnotationTrack(
-          gr, name = paste0(tool, "\n", group), chromosome = r$chrom,
+          gr, name = paste0(tool_labels[tool], "\n", group),
+          chromosome = r$chrom,
           fill = tool_colors[tool], col = NA, stacking = "squish",
           shape = "box"))
       }
@@ -204,7 +209,8 @@ for (i in seq_len(nrow(regions))) {
     plotTracks(list(axis_track, highlight),
                from = r$start, to = r$end, chromosome = r$chrom,
                background.title = "white", col.title = "black",
-               col.axis = "black", sizes = NULL)
+               col.axis = "black", cex.title = 0.8, title.width = 2.2,
+               sizes = NULL)
     TRUE
   }, error = function(e) {
     cat("Could not draw this region:", conditionMessage(e), "\n")
@@ -261,11 +267,13 @@ if (!is.null(dissim)) {
       geom_tile() +
       geom_text(aes(label = sprintf("%.3f", correlation)), size = 3) +
       scale_fill_gradient(low = "white", high = "#4575b4", limits = c(NA, 1)) +
+      coord_fixed() +
       labs(x = NULL, y = NULL,
            title = "Spearman correlation of 50 kb binned coverage",
            subtitle = paste(dissim$n_bins, "bins")) +
       theme_minimal() +
-      theme(axis.text.x = element_text(angle = 45, hjust = 1))
+      theme(axis.text.x = element_text(angle = 45, hjust = 1),
+            aspect.ratio = 1)
   )
 
   dendro <- hclust(as.dist(1 - cor_mat))
