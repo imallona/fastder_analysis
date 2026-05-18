@@ -74,6 +74,9 @@ rule ml_star_index:
 
 
 # Align one sample's paired FASTQs against the chr-restricted STAR index.
+# STAR emits the BAM unsorted; samtools sorts it. STAR's own BAM sort is
+# capped by --limitBAMsortRAM, whose default (0) ties the sort buffer to the
+# genome index size, which is too small for a chr-restricted index.
 # Outputs a coordinate-sorted BAM and STAR's SJ.out.tab (used by ml_emit_mm_rr).
 def ml_star_fastq_input(wc):
     """Paired FASTQs for ml_star_align. ASimulatoR input uses the per-scenario
@@ -110,10 +113,12 @@ rule ml_star_align:
             --genomeDir {input.idx} \
             --readFilesIn {input.fq1} {input.fq2} \
             --runThreadN {threads} \
-            --outSAMtype BAM SortedByCoordinate \
+            --outSAMtype BAM Unsorted \
             --outSAMstrandField intronMotif \
-            --limitBAMsortRAM 8000000000 \
             --outFileNamePrefix {params.outprefix} > {log} 2>&1
+        samtools sort -@ {threads} -o {output.bam} \
+            {params.outprefix}Aligned.out.bam >> {log} 2>&1
+        rm {params.outprefix}Aligned.out.bam
         samtools index {output.bam} >> {log} 2>&1
         """
 
