@@ -26,7 +26,7 @@ def _extract_inputs(wc):
             "bws": [op.join(R3_DIR, "bw", f"{s}.all.bw") for s in group_samples],
             # The reference annotation is the gffcompare truth set; depend on
             # the download so it is present before extract_fastder_inputs runs.
-            "reference_dir": rules.download_reference.output[0],
+            "reference_gtf": REF_GTF,
         }
     if BACKEND == "monorail_light":
         light_scn = op.join(LIGHT_DIR, wc.scenario)
@@ -66,7 +66,7 @@ def _extract_inputs(wc):
     # on the download so the annotation is present before the run body needs
     # it (ASimulatoR input gets it through run_asimulator instead).
     if PUMP_SOURCE in ("sra", "local"):
-        result["reference_dir"] = rules.download_reference.output[0]
+        result["reference_gtf"] = REF_GTF
     return result
 
 

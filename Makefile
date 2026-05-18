@@ -45,7 +45,9 @@ help:
 	@echo "Targets: submodules sim simulations sim-5m sim-30m sim-40m tdp43 meta smoke all dryrun unlock"
 	@echo "Variables: CORES=$(CORES) ULIMIT_KB=$(ULIMIT_KB) CONDA_ENV=$(CONDA_ENV)"
 
-all: simulations tdp43 meta
+## meta only needs the simulation results, so it runs before tdp43: a tdp43
+## failure then cannot block the cross-depth report.
+all: simulations meta tdp43
 
 ## Populate the git submodules. workflow/external/fastder must hold the fastder
 ## sources for the build_fastder rule to find a CMakeLists.txt; a plain

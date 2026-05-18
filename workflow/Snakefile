@@ -91,7 +91,6 @@ RESULTS_DIR = op.join(WORKFLOW_DIR, "results", CONFIG_BASENAME)
 
 # monorail_light scratch
 LIGHT_DIR = op.join(DATA_DIR, "monorail_light")
-LIGHT_STAR_IDX = op.join(LIGHT_DIR, "star_idx")
 
 # Experimental design. The asimulator block is optional: configs that use the
 # recount3, sra or local input do not need it.
@@ -206,6 +205,38 @@ HAS_SIM_TRUTH = (BACKEND != "recount3" and PUMP_SOURCE == "asimulator")
 # Omitted params are not passed to fastder, which uses its own internal defaults.
 FASTDER_CFG = config.get("fastder") or {}
 STRANDED = FASTDER_CFG.get("stranded", False)
+
+# Human reference download, keyed by chromosome scope. Configs that analyse
+# different chromosome sets get independent, cacheable reference folders
+# instead of clobbering one shared directory, and a chromosome-set change is
+# the only thing that forces a fresh download. The rule declares explicit
+# file outputs (the GTF and one FASTA per chromosome), never a directory:
+# ASimulatoR caches an exon-superset .rda next to the GTF, and a directory
+# output would let that write bump a directory mtime and re-trigger every
+# consumer.
+def _norm_chrom(c):
+    c = str(c)
+    return c if c.startswith("chr") else "chr" + c
+
+_REF_CHROMS_CFG = FASTDER_CFG.get("chromosomes") or []
+if _REF_CHROMS_CFG:
+    REF_SCOPE = "_".join(sorted({_norm_chrom(c) for c in _REF_CHROMS_CFG},
+                                key=lambda c: (len(c), c)))
+else:
+    REF_SCOPE = "full_genome"
+
+REF_DIR = op.join(DATA_DIR, "reference", "GRCh38_Ensembl115_" + REF_SCOPE)
+REF_CHROMS = [str(c).removeprefix("chr")
+              for c in (_REF_CHROMS_CFG or [str(i) for i in range(1, 23)] + ["X"])]
+REF_GTF = op.join(REF_DIR, "Homo_sapiens.GRCh38.115.chr.gtf")
+REF_FASTAS = [op.join(REF_DIR, f"{c}.fa") for c in REF_CHROMS]
+
+# STAR index for the monorail_light backend, keyed by the same scope so a
+# single-chromosome index and a whole-genome index never share a directory.
+# Outputs are the files STAR genomeGenerate always writes, not a directory.
+LIGHT_STAR_IDX = op.join(LIGHT_DIR, "star_idx_" + REF_SCOPE)
+STAR_IDX_FILES = ["SA", "SAindex", "Genome", "chrNameLength.txt",
+                  "genomeParameters.txt"]
 
 # Maps each parameter name to its (id_abbreviation, CLI flag).
 _PARAM_SPEC = {

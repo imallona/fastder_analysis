@@ -62,7 +62,7 @@ if (!is.null(chain_df)) {
 }
 ```
 
-This is the summary report for a run **without a simulated truth set**: real
+This is the summary report for a run without a simulated truth set: real
 data from recount3, SRA, or local FASTQ files. There is no known set of true
 transcripts to grade precision and recall against, so this report describes
 what each tool called and how the tool calls relate to each other, rather than

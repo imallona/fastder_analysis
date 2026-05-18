@@ -6,7 +6,8 @@
 # 2. Run ASimulatoR
 rule run_asimulator:
     input:
-        reference=rules.download_reference.output[0]
+        gtf=REF_GTF,
+        fastas=REF_FASTAS,
     output:
         # Explicit file outputs (rather than the parent directory) so snakemake
         # can chain make_scenario back to this rule via the FASTQ + GFF inputs.

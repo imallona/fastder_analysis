@@ -12,58 +12,48 @@
 # Build a STAR genome index restricted to the chromosomes fastder will analyse
 rule ml_star_index:
     input:
-        reference=rules.download_reference.output[0],
+        gtf=REF_GTF,
+        fastas=REF_FASTAS,
     output:
-        directory(str(LIGHT_STAR_IDX)),
+        idx=[op.join(LIGHT_STAR_IDX, f) for f in STAR_IDX_FILES],
     benchmark:
         op.join(BENCH_DIR, "ml_star_index.tsv")
     log:
         op.join(LOG_DIR, "ml_star_index.log"),
     params:
-        chroms=lambda wc: FASTDER_CFG.get("chromosomes") or [f"{i}" for i in range(1, 23)] + ["X"],
-        ncores=config["cores"],
+        idx_dir=LIGHT_STAR_IDX,
     threads: config["cores"]
     conda:
         "../envs/star.yaml"
     shell:
         """
-        mkdir -p {output}
+        mkdir -p {params.idx_dir}
         # Normalize chromosome names to the UCSC-style 'chrN' the rest of the
         # pipeline expects. The Ensembl reference download stores FASTAs as
         # '21.fa' with header '>21' and a GTF whose first column is '21';
         # without this rewrite STAR's BAM, BigWig, SJ.out.tab and the lean
         # RR file would all use '21' while the config and gffcompare label
         # use 'chr21', leaving fastder with 0 junctions retained.
-        chroms="{params.chroms}"
         tmpdir=$(mktemp -d)
         fastas=()
-        for c in $chroms; do
-            stripped="${{c#chr}}"
-            for cand in "{input.reference}/${{stripped}}.fa" "{input.reference}/${{c}}.fa"; do
-                if [ -f "$cand" ]; then
-                    sed -E 's/^>(chr)?([^ \\t]*)/>chr\\2/' "$cand" \
-                        > "$tmpdir/chr${{stripped}}.fa"
-                    fastas+=("$tmpdir/chr${{stripped}}.fa")
-                    break
-                fi
-            done
+        for fa in {input.fastas}; do
+            stripped=$(basename "$fa" .fa)
+            stripped="${{stripped#chr}}"
+            sed -E 's/^>(chr)?([^ \\t]*)/>chr\\2/' "$fa" \
+                > "$tmpdir/chr${{stripped}}.fa"
+            fastas+=("$tmpdir/chr${{stripped}}.fa")
         done
-        if [ ${{#fastas[@]}} -eq 0 ]; then
-            echo "[ml_star_index] No FASTA files found for chromosomes: $chroms" >&2
-            exit 1
-        fi
         # Prefix the GTF first column with 'chr' (skip header lines starting with '#').
         awk 'BEGIN{{FS=OFS="\\t"}}
              /^#/ {{print; next}}
              $1 !~ /^chr/ {{$1 = "chr" $1; print; next}}
              {{print}}' \
-            "{input.reference}/Homo_sapiens.GRCh38.115.chr.gtf" \
-            > "$tmpdir/annotation.gtf"
+            {input.gtf} > "$tmpdir/annotation.gtf"
         # genomeSAindexNbases must be tuned down for small genomes (STAR manual).
         genome_size=$(cat "${{fastas[@]}}" | awk '!/^>/{{tot+=length($0)}} END{{print tot}}')
         sa=$(python3 -c "import math; print(min(14, int(math.log2($genome_size)/2 - 1)))")
         STAR --runMode genomeGenerate \
-            --genomeDir {output} \
+            --genomeDir {params.idx_dir} \
             --genomeFastaFiles "${{fastas[@]}}" \
             --sjdbGTFfile "$tmpdir/annotation.gtf" \
             --sjdbOverhang 100 \
@@ -93,7 +83,7 @@ def ml_star_fastq_input(wc):
 rule ml_star_align:
     input:
         unpack(ml_star_fastq_input),
-        idx=str(LIGHT_STAR_IDX),
+        idx=[op.join(LIGHT_STAR_IDX, f) for f in STAR_IDX_FILES],
     output:
         bam=op.join(LIGHT_DIR, "{scenario}", "{sample}", "Aligned.sortedByCoord.out.bam"),
         sj=op.join(LIGHT_DIR, "{scenario}", "{sample}", "SJ.out.tab"),
@@ -103,6 +93,7 @@ rule ml_star_align:
         op.join(LOG_DIR, "ml_star_align", "{sample}_{scenario}.log"),
     params:
         outprefix=lambda wc: op.join(LIGHT_DIR, wc.scenario, wc.sample) + "/",
+        idx_dir=LIGHT_STAR_IDX,
     threads: config["cores"]
     conda:
         "../envs/star.yaml"
@@ -110,7 +101,7 @@ rule ml_star_align:
         """
         mkdir -p {params.outprefix}
         STAR --runMode alignReads \
-            --genomeDir {input.idx} \
+            --genomeDir {params.idx_dir} \
             --readFilesIn {input.fq1} {input.fq2} \
             --runThreadN {threads} \
             --outSAMtype BAM Unsorted \
@@ -176,7 +167,7 @@ rule ml_bam_to_bigwig:
 # and a TSV RR. Junctions are filtered to fastder.chromosomes (so RR has only
 # the rows fastder will analyse, not whole-genome) and the RR annotation
 # columns are emitted as "." since fastder reads them but never accesses them
-# downstream — see emit_lean_mm_rr.py for the rationale.
+# downstream; see emit_lean_mm_rr.py for the rationale.
 rule ml_emit_mm_rr:
     input:
         sj_files=expand(op.join(LIGHT_DIR, "{{scenario}}", "{sample}", "SJ.out.tab"),

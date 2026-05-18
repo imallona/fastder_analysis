@@ -155,8 +155,7 @@ rule render_recount3_report:
     input:
         manifest=op.join(RESULTS_DIR, "recount3_manifest.csv"),
         summary=op.join(RESULTS_DIR, "summary.csv"),
-        reference_dir=(rules.download_reference.output[0]
-                       if BACKEND == "recount3" else []),
+        reference_gtf=(REF_GTF if BACKEND == "recount3" else []),
         rmd=op.join(WORKFLOW_DIR, "reports", "recount3.Rmd"),
     output:
         op.join(RESULTS_DIR, "recount3.html"),
