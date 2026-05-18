@@ -298,7 +298,21 @@ rule bigwig_to_bedgraph:
 # FASTDER_USE_LIBBIGWIG=ON so the binary reads .bw files directly without an
 # intermediate BedGraph conversion step. libBigWig is fetched at configure
 # time and needs zlib and libcurl (provided by envs/fastder_build.yaml).
+# The source files are inputs so the binary rebuilds when the submodule moves.
+import glob
+
+_FASTDER_SRC = op.join(WORKFLOW_DIR, "external", "fastder")
+_FASTDER_SRC_FILES = sorted(
+    glob.glob(op.join(_FASTDER_SRC, "cpp", "*.cpp"))
+    + glob.glob(op.join(_FASTDER_SRC, "cpp", "*.h"))
+    + glob.glob(op.join(_FASTDER_SRC, "cpp", "*.hpp"))
+    + glob.glob(op.join(_FASTDER_SRC, "CMakeLists.txt"))
+)
+
+
 rule build_fastder:
+    input:
+        srcs=_FASTDER_SRC_FILES,
     output:
         op.join(FASTDER_BUILD_DIR, "fastder")
     benchmark:
