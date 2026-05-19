@@ -222,7 +222,7 @@ if (have_tool_data) {
 
 ## Per-tool locus recall at threshold 0.5
 
-Fraction of reference loci with at least 50% of their exonic length covered by any same-strand exon emitted by the tool.
+Fraction of reference loci with at least 50% of their exonic length covered by any exon emitted by the tool.
 
 ```{r tool_recall, fig.width = 10, fig.height = 5}
 if (have_tool_data) {
@@ -625,7 +625,7 @@ Each event class is run through two scenarios that differ in which transcripts c
 
 ## Per-event Jaccard against best reference partner
 
-For each reference transcript, the highest exonic Jaccard against any fastder transcript on the same strand. A value of 1 means the fastder match has the same exon set; 0 means no overlap.
+For each reference transcript, the highest exonic Jaccard against any fastder transcript. A value of 1 means the fastder match has the same exon set; 0 means no overlap.
 
 The parameter grid is decomposed: min_coverage is the panel row, the AS event is the panel column, and within each panel the boxes run over min_length and position_tolerance, split by scenario.
 
@@ -655,7 +655,7 @@ if (!is.null(fuzzy$jaccard) && nrow(fuzzy$jaccard) > 0) {
 
 ## Per-event boundary precision
 
-Cumulative fraction of fastder boundaries within an absolute distance of the nearest same-strand reference boundary. A steep curve on the left means the boundaries land on true splice sites. Shown at the best fastder parameter combination; the full parameter sweep for boundary precision is in the Tool comparison section.
+Cumulative fraction of fastder boundaries within an absolute distance of the nearest reference boundary. A steep curve on the left means the boundaries land on true splice sites. Shown at the best fastder parameter combination; the full parameter sweep for boundary precision is in the Tool comparison section.
 
 ```{r pub_boundary, fig.width = 11, fig.height = 5}
 if (!is.null(fuzzy$distances) && nrow(fuzzy$distances) > 0) {
@@ -687,7 +687,7 @@ if (!is.null(fuzzy$distances) && nrow(fuzzy$distances) > 0) {
 }
 ```
 
-Companion summary: fraction of fastder boundaries within +/- 5 bp, +/- 20 bp, and +/- 50 bp of a same-strand reference boundary.
+Companion summary: fraction of fastder boundaries within +/- 5 bp, +/- 20 bp, and +/- 50 bp of a reference boundary.
 
 ```{r pub_boundary_table, results = "asis"}
 if (!is.null(fuzzy$distances) && nrow(fuzzy$distances) > 0) {
@@ -1400,11 +1400,11 @@ ggplot(cs_plot, aes(x = total_exon_length, y = score)) +
 
 # Fuzzy fastder vs reference
 
-These metrics drop gffcompare's exact-boundary requirement and look at how much fastder transcripts overlap reference transcripts on the same strand. Useful for fastder because its exon boundaries come from coverage drop-offs, not splice-site coordinates, so it never wins on transcript-exact matching.
+These metrics drop gffcompare's exact-boundary requirement and look at how much fastder transcripts overlap reference transcripts. Useful for fastder because its exon boundaries come from coverage drop-offs, not splice-site coordinates, so it never wins on transcript-exact matching.
 
 ## Reciprocal-best Jaccard per reference transcript
 
-For each reference transcript, the highest exonic Jaccard against any fastder transcript on the same strand. A value of 1 means perfect exonic match; 0 means no overlap. Shown at the best fastder parameter combination, AS event on the rows and scenario on the columns; the full parameter sweep for Jaccard is in the "Per-event Jaccard" figure and the parameter-sensitivity panel above.
+For each reference transcript, the highest exonic Jaccard against any fastder transcript. A value of 1 means perfect exonic match; 0 means no overlap. Shown at the best fastder parameter combination, AS event on the rows and scenario on the columns; the full parameter sweep for Jaccard is in the "Per-event Jaccard" figure and the parameter-sensitivity panel above.
 
 ```{r jaccard_hist, fig.width = 6, fig.height = 8}
 if (!is.null(fuzzy$jaccard) && nrow(fuzzy$jaccard) > 0) {
@@ -1448,7 +1448,7 @@ if (!is.null(fuzzy$jaccard) && nrow(fuzzy$jaccard) > 0) {
 
 ## Boundary-distance ECDF across the parameter grid
 
-Cumulative fraction of fastder boundaries within an absolute distance to the nearest same-strand reference boundary, swept across the fastder parameter grid. The grid is decomposed: min_coverage and position_tolerance run along the columns, while exon start / exon end and min_length run along the rows, so no single facet axis carries all eight combinations. Colours highlight the AS event class and linetype encodes the scenario.
+Cumulative fraction of fastder boundaries within an absolute distance to the nearest reference boundary, swept across the fastder parameter grid. The grid is decomposed: min_coverage and position_tolerance run along the columns, while exon start / exon end and min_length run along the rows, so no single facet axis carries all eight combinations. Colours highlight the AS event class and linetype encodes the scenario.
 
 ```{r boundary_hist, fig.width = 11, fig.height = 9}
 if (!is.null(fuzzy$distances) && nrow(fuzzy$distances) > 0) {
@@ -1503,7 +1503,7 @@ if (!is.null(fuzzy$distances) && nrow(fuzzy$distances) > 0) {
 
 ## Locus recall at fixed coverage thresholds
 
-Fraction of reference loci with at least f of their exonic length covered by any fastder exon on the same strand, at thresholds f from 0.05 to 1.0 in steps of 0.05.
+Fraction of reference loci with at least f of their exonic length covered by any fastder exon, at thresholds f from 0.05 to 1.0 in steps of 0.05.
 
 The two scenario curves often cross in a single panel: template + variant tends to win at low thresholds (extra reads from both isoforms hit more loci even if only partially), while variant only wins at high thresholds (the reads land more concentrated on the alternative form, so the loci that are covered are covered nearly fully). This is the classic depth-versus-breadth trade-off, not an artefact.
 
