@@ -65,6 +65,11 @@ fastder:
   # threshold the calls include noise; the cryptic exons are read out from the
   # report via the knockdown-specific junctions and the near-zero control.
   min_coverage: [0.02]
+  # On, not swept: a cryptic exon is a leaky / novel splicing event, so
+  # splitting an expressed region at a fully contained junction is what
+  # resolves the cryptic exon as its own track region. There is no truth set
+  # here, so sweeping off/on would only duplicate the fastder track.
+  split_leaky_introns: [true]
   # Cryptic exon panel: chr8 (STMN2), chr19 (HDGFL2, ELAVL3, CELF5), chr20
   # (KCNQ2). Loci picked from knockdown-specific novel junctions in the
   # recount3 junction matrix.

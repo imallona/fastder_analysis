@@ -63,6 +63,11 @@ fastder:
   # cryptic exons fall below this; the panel config recovers them at a low
   # threshold using the junctions.
   min_coverage: [1.0]
+  # On, not swept: a cryptic exon is a leaky / novel splicing event, so
+  # splitting an expressed region at a fully contained junction is what
+  # resolves the cryptic exon as its own track region. There is no truth set
+  # here, so sweeping off/on would only duplicate the fastder track.
+  split_leaky_introns: [true]
   # chr8 carries STMN2. chr19 and chr20 are kept so this run shares the
   # reference download with the panel run and the report renders every panel.
   chromosomes: ["chr8", "chr19", "chr20"]

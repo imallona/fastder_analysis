@@ -241,12 +241,15 @@ LIGHT_STAR_IDX = op.join(LIGHT_DIR, "star_idx_" + REF_SCOPE)
 STAR_IDX_FILES = ["SA", "SAindex", "Genome", "chrNameLength.txt",
                   "genomeParameters.txt"]
 
-# Maps each parameter name to its (id_abbreviation, CLI flag).
+# Maps each parameter name to (id_abbreviation, CLI flag, is_boolean_flag).
+# A boolean-flag param contributes the bare flag when true and nothing when
+# false; its config value list holds booleans rather than numbers.
 _PARAM_SPEC = {
-    "min_coverage":       ("mc", "--min-coverage"),
-    "min_length":         ("ml", "--min-length"),
-    "position_tolerance": ("pt", "--position-tolerance"),
-    "coverage_tolerance": ("ct", "--coverage-tolerance"),
+    "min_coverage":        ("mc",  "--min-coverage",        False),
+    "min_length":          ("ml",  "--min-length",          False),
+    "position_tolerance":  ("pt",  "--position-tolerance",  False),
+    "coverage_tolerance":  ("ct",  "--coverage-tolerance",  False),
+    "split_leaky_introns": ("sli", "--split-leaky-introns", True),
 }
 
 # Cross-product of all configured value lists; {} means "run once with all defaults".
@@ -260,15 +263,25 @@ _PARAM_COMBOS = [dict(items) for items in itertools.product(*_grid_axes)] if _gr
 
 def _param_id(combo):
     """Short, directory-safe identifier for a parameter combination."""
-    abbr = {k: spec[0] for k, spec in _PARAM_SPEC.items()}
-    parts = [f"{abbr[k]}{v}" for k, v in combo.items()]
+    parts = []
+    for k, v in combo.items():
+        abbr, _flag, is_flag = _PARAM_SPEC[k]
+        token = int(bool(v)) if is_flag else v
+        parts.append(f"{abbr}{token}")
     return "_".join(parts) if parts else "default"
 
 
 def _fastder_cli_args(combo):
     """CLI flags to pass to fastder for this combination (only explicitly-set params)."""
-    flag = {k: spec[1] for k, spec in _PARAM_SPEC.items()}
-    return " ".join(f"{flag[k]} {v}" for k, v in combo.items())
+    args = []
+    for k, v in combo.items():
+        _abbr, flag, is_flag = _PARAM_SPEC[k]
+        if is_flag:
+            if v:
+                args.append(flag)
+        else:
+            args.append(f"{flag} {v}")
+    return " ".join(args)
 
 
 PARAM_IDS = [_param_id(c) for c in _PARAM_COMBOS]

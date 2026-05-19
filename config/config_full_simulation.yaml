@@ -44,15 +44,18 @@ monorail:
 
 fastder:
   stranded: false
-  # Final-run parameter grid: the cross-product is 2 x 2 x 4 = 16 fastder
+  # Final-run parameter grid: the cross-product is 2 x 2 x 4 x 2 = 32 fastder
   # runs per scenario. position_tolerance is swept so the fastder pt vs
   # derfinder maxregiongap comparison in the report has data. pt0 keeps the
   # degenerate "no stitching" corner; pt5 is fastder's default; pt10 and pt20
   # extend the range, since stitching only engages once pt exceeds the gap
   # between a coverage-derived ER edge and the true splice site.
+  # split_leaky_introns is swept off/on to measure the effect of splitting an
+  # expressed region at a fully contained splice junction.
   min_coverage: [0.01, 0.05]
   min_length: [10, 25]
   position_tolerance: [0, 5, 10, 20]
+  split_leaky_introns: [false, true]
   chromosomes: ["chr21"]
 
 gffcompare:
