@@ -1,27 +1,22 @@
-# GTEx structural-concordance atlas: genome-wide, fastder only.
+# GTEx tool comparison: all three tools, chr19 only.
 #
-# fastder is run once per tissue sub-group over the recount3 gtex data
-# source, genome-wide, with no read alignment. The report clusters the
-# per-sub-group expressed-region catalogs on structure; the sub-groups
-# of a tissue group together, showing that expressed-region shape, not
-# just abundance, carries tissue identity. No baseline tools: this run
-# is the structural atlas, not the tool comparison (see
-# config_gtex_comparison.yaml for that).
+# The same GTEx tissue sub-groups as config_gtex_concordance.yaml, but
+# restricted to chr19 and run with fastder, derfinder and the megadepth
+# baseline. This run provides the fastder-versus-baseline runtime and
+# gffcompare comparison on the GTEx sample set; one chromosome keeps the
+# baselines affordable. The genome-wide structural atlas is the separate
+# config_gtex_concordance.yaml run.
 #
-#   FASTDER_EVAL_CONFIG=../config/config_gtex_concordance.yaml \
+#   FASTDER_EVAL_CONFIG=../config/config_gtex_comparison.yaml \
 #     snakemake --use-conda --cores 12
 
 seed: 10
 cores: 12
 
-# Run fastder only; no derfinder or megadepth baseline. The
-# structural-concordance report uses the fastder catalogs alone.
-tools: [fastder]
-
 monorail:
   ref_version: hg38
   project_name: "recount3"
-  project_id: 103
+  project_id: 105
   backend: recount3
 
 recount3:
@@ -293,6 +288,7 @@ recount3:
 fastder:
   stranded: false
   min_coverage: [1.0]
+  chromosomes: ["chr19"]
 
 gffcompare:
   reference_annotation: ""

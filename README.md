@@ -70,9 +70,10 @@ The `Makefile` at the repository root is the entry point. Each target runs one a
 - `make simulations` runs the full depth sweep: 5M, 10M, 30M, 40M reads.
 - `make tdp43` runs the TDP-43 recount3 showcase (the STMN2 cryptic exon, clean threshold).
 - `make tdp43-panel` runs the TDP-43 recount3 panel (five cryptic exons, low threshold).
-- `make gtex` runs the GTEx four-tissue structural-concordance showcase.
+- `make gtex` runs the GTEx structural-concordance atlas (genome-wide, fastder only).
+- `make gtex-comparison` runs the GTEx tool comparison (chr19, all three tools).
 - `make meta` knits the cross-depth report once the simulation runs are done.
-- `make all` runs the simulations, the meta report, both tdp43 runs, then gtex.
+- `make all` runs the simulations, the meta report, the tdp43 runs, then the gtex runs.
 - `make smoke` runs a quick 2-sample smoke test.
 - `make dryrun` does a `snakemake -n`; `make unlock` releases a stale lock.
 
@@ -117,7 +118,8 @@ The configs:
 - `config/config_full_simulation_5M.yaml`, `_30M.yaml`, `_40M.yaml`: the other depths of the sweep, generated from `config_full_simulation.yaml` by `workflow/scripts/make_sim_configs.py`.
 - `config/config_klim_2019_tdp43_recount3.yaml`: real data, recount3 backend. TDP-43 knockdown versus scramble control in motor-neuron RNA-seq (recount3 study SRP166282, GEO GSE121569), split into a knockdown group and a control group, on chr8, chr19 and chr20. This is the showcase run: a single clean `min_coverage` threshold (1.0 CPM) that isolates the STMN2 cryptic exon, which is well above the intronic noise floor. `--use-singularity` is not needed for this config.
 - `config/config_klim_2019_tdp43_recount3_panel.yaml`: the panel companion of the run above. Same dataset, but a single low `min_coverage` threshold (0.02 CPM) so the wider cryptic exon panel (STMN2, HDGFL2, ELAVL3, CELF5, KCNQ2) is emitted. Only STMN2 clears the coverage noise floor; the other four are recovered through their knockdown-specific splice junctions. See "TDP-43 cryptic exons: showcase and panel" below.
-- `config/config_gtex_concordance.yaml`: real data, recount3 backend, gtex data source. fastder is run on four GTEx tissues (brain, heart, skeletal muscle, whole blood), each split into eight sample sub-groups, on chr1, chr11, chr17 and chr19. The structural-concordance report clusters the 32 per-sub-group expressed-region catalogs: the sub-groups of a tissue group together, which shows that expressed-region shape, not just abundance, carries tissue identity. `--use-singularity` is not needed for this config.
+- `config/config_gtex_concordance.yaml`: real data, recount3 backend, gtex data source. fastder is run genome-wide on four GTEx tissues (brain, heart, skeletal muscle, whole blood), each split into eight sample sub-groups. The structural-concordance report clusters the 32 per-sub-group expressed-region catalogs: the sub-groups of a tissue group together, which shows that expressed-region shape, not just abundance, carries tissue identity. This run sets `tools: [fastder]`, so no baseline runs and `--use-singularity` is not needed.
+- `config/config_gtex_comparison.yaml`: the same GTEx sub-groups restricted to chr19 and run with all three tools. It provides the fastder-versus-baseline runtime and gffcompare comparison on the GTEx sample set; one chromosome keeps the baselines affordable. The genome-wide structural atlas is the separate `config_gtex_concordance.yaml` run.
 - `config/config_local.yaml`: local FASTQ files, monorail_light backend. Edit `monorail.local_samples` to point at your own paired FASTQ files.
 - `config/config_quick_light.yaml`: 2 samples, 100k reads, chr21, monorail_light. Smoke test.
 - `config/config_quick.yaml`: 2 samples, 100k reads, chr21, monorail backend.
@@ -242,6 +244,7 @@ Settings shared by every run mode:
 - `fastder.min_coverage`, `fastder.min_length`, `fastder.position_tolerance`, `fastder.coverage_tolerance`: lists. The pipeline runs the cross-product, so each combination becomes one fastder run with its own GTF and evaluation. Omit a list to use fastder's internal default.
 - `fastder.stranded`: switches the BigWig pipeline between an unstranded `all.bw` and per-strand `plus.bw` and `minus.bw`. The recount3 backend does not support this, because recount3 hosts unstranded coverage only.
 - `monorail.backend`: see Run modes above.
+- `tools`: which region callers to run, a subset of `fastder`, `derfinder`, `megadepth_baseline`. Omit it to run all three; set `tools: [fastder]` for a fastder-only run with no baseline comparison, as `config_gtex_concordance.yaml` does.
 
 Simulation settings (`asimulator.*`, used when `pump_source` is `asimulator`):
 

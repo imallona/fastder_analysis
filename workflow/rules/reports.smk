@@ -38,6 +38,18 @@ _REPORT_TRUTH = op.join(FASTDER_DIR, _REPORT_SCENARIO,
                         SAMPLES_BY_SCENARIO[_REPORT_SCENARIO][0] + "_label" + LABEL_EXT)
 
 
+def _report_tool_gtf(tool):
+    """Representative GTF for a tool's track view in the summary report, or
+    an empty input when the tool is not in the selected set, so the rule
+    still resolves for a tools subset such as a fastder-only run."""
+    def _f(wildcards):
+        if tool not in PARAM_IDS_BY_TOOL:
+            return []
+        return op.join(DATA_DIR, "tools", tool, _REPORT_SCENARIO,
+                       PARAM_IDS_BY_TOOL[tool][0], "output.gtf")
+    return _f
+
+
 rule render_summary_report:
     input:
         summary=op.join(RESULTS_DIR, "summary.csv"),
@@ -47,12 +59,9 @@ rule render_summary_report:
         distances=op.join(RESULTS_DIR, "fuzzy_distances.csv"),
         recall=op.join(RESULTS_DIR, "fuzzy_locus_recall.csv"),
         strand=op.join(RESULTS_DIR, "fuzzy_strand.csv"),
-        fastder_gtf=op.join(DATA_DIR, "tools", "fastder", _REPORT_SCENARIO,
-                            PARAM_IDS_BY_TOOL["fastder"][0], "output.gtf"),
-        derfinder_gtf=op.join(DATA_DIR, "tools", "derfinder", _REPORT_SCENARIO,
-                              PARAM_IDS_BY_TOOL["derfinder"][0], "output.gtf"),
-        megadepth_gtf=op.join(DATA_DIR, "tools", "megadepth_baseline", _REPORT_SCENARIO,
-                              PARAM_IDS_BY_TOOL["megadepth_baseline"][0], "output.gtf"),
+        fastder_gtf=_report_tool_gtf("fastder"),
+        derfinder_gtf=_report_tool_gtf("derfinder"),
+        megadepth_gtf=_report_tool_gtf("megadepth_baseline"),
         # The truth label GFF is a side effect of extract_fastder_inputs;
         # depend on match_chr_prefix.DONE so it is in place before rendering.
         chr_prefix=op.join(FASTDER_DIR, _REPORT_SCENARIO, "match_chr_prefix.DONE"),
@@ -73,6 +82,11 @@ rule render_summary_report:
         "../envs/rmarkdown.yaml"
     shell:
         """
+        # A tool not in the selected set has an empty GTF input; pass an empty
+        # path for it, which the report reads as "tool absent".
+        fastder_gtf=$( [ -n "{input.fastder_gtf}" ] && realpath {input.fastder_gtf} || true )
+        derfinder_gtf=$( [ -n "{input.derfinder_gtf}" ] && realpath {input.derfinder_gtf} || true )
+        megadepth_gtf=$( [ -n "{input.megadepth_gtf}" ] && realpath {input.megadepth_gtf} || true )
         Rscript -e "rmarkdown::render(
             input = '{input.rmd}',
             output_file = '$(realpath -m {output})',
@@ -83,9 +97,9 @@ rule render_summary_report:
                           fuzzy_distances_csv = '$(realpath {input.distances})',
                           fuzzy_recall_csv = '$(realpath {input.recall})',
                           fuzzy_strand_csv = '$(realpath {input.strand})',
-                          fastder_gtf = '$(realpath {input.fastder_gtf})',
-                          derfinder_gtf = '$(realpath {input.derfinder_gtf})',
-                          megadepth_gtf = '$(realpath {input.megadepth_gtf})',
+                          fastder_gtf = '$fastder_gtf',
+                          derfinder_gtf = '$derfinder_gtf',
+                          megadepth_gtf = '$megadepth_gtf',
                           truth_gff = '$(realpath -m {params.truth_gff})',
                           track_scenario = '{params.track_scenario}'),
             quiet = TRUE)" > {log} 2>&1
@@ -118,20 +132,23 @@ rule render_benchmarks_report:
 # Build the manifest the recount3 report reads: one row per sample, with the
 # group it belongs to, its coverage BigWig, and its group's called-region GTF
 # for each tool (fastder, derfinder, megadepth_baseline).
+def _manifest_tool_gtfs(tool):
+    """Per-scenario GTFs of a tool for the recount3 manifest, or empty when
+    the tool is not in the selected set."""
+    def _f(wildcards):
+        if tool not in PARAM_IDS_BY_TOOL:
+            return []
+        return expand(op.join(DATA_DIR, "tools", tool, "{scenario}",
+                              PARAM_IDS_BY_TOOL[tool][0], "output.gtf"),
+                      scenario=SCENARIOS)
+    return _f
+
+
 rule recount3_report_manifest:
     input:
-        fastder_gtfs=expand(
-            op.join(DATA_DIR, "tools", "fastder", "{scenario}",
-                    PARAM_IDS_BY_TOOL["fastder"][0], "output.gtf"),
-            scenario=SCENARIOS),
-        derfinder_gtfs=expand(
-            op.join(DATA_DIR, "tools", "derfinder", "{scenario}",
-                    PARAM_IDS_BY_TOOL["derfinder"][0], "output.gtf"),
-            scenario=SCENARIOS),
-        megadepth_gtfs=expand(
-            op.join(DATA_DIR, "tools", "megadepth_baseline", "{scenario}",
-                    PARAM_IDS_BY_TOOL["megadepth_baseline"][0], "output.gtf"),
-            scenario=SCENARIOS),
+        fastder_gtfs=_manifest_tool_gtfs("fastder"),
+        derfinder_gtfs=_manifest_tool_gtfs("derfinder"),
+        megadepth_gtfs=_manifest_tool_gtfs("megadepth_baseline"),
         bigwigs=expand(op.join(R3_DIR, "bw", "{sample}.all.bw"),
                        sample=R3_ALL_SAMPLES),
     output:

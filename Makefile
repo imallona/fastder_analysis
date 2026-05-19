@@ -11,7 +11,8 @@
 ##   make simulations        # the full depth sweep: 5M, 10M, 30M, 40M
 ##   make tdp43              # TDP-43 recount3 showcase: STMN2, clean threshold
 ##   make tdp43-panel        # TDP-43 recount3 panel: 5 cryptic exons, low threshold
-##   make gtex               # GTEx 4-tissue structural-concordance showcase
+##   make gtex               # GTEx structural-concordance atlas (genome-wide, fastder only)
+##   make gtex-comparison    # GTEx tool comparison (chr19, all three tools)
 ##   make gtex-smoke         # reduced GTEx run, 12 BigWigs, to validate the path
 ##   make meta               # render the depth-sweep report (after the runs)
 ##   make smoke              # quick 2-sample smoke test
@@ -42,15 +43,15 @@ SNAKEMAKE := snakemake --cores $(CORES) -p
 
 .DEFAULT_GOAL := help
 .PHONY: help all submodules sim simulations sim-5m sim-30m sim-40m tdp43 \
-        tdp43-panel gtex gtex-smoke meta smoke dryrun unlock
+        tdp43-panel gtex gtex-comparison gtex-smoke meta smoke dryrun unlock
 
 help:
-	@echo "Targets: submodules sim simulations sim-5m sim-30m sim-40m tdp43 tdp43-panel gtex gtex-smoke meta smoke all dryrun unlock"
+	@echo "Targets: submodules sim simulations sim-5m sim-30m sim-40m tdp43 tdp43-panel gtex gtex-comparison gtex-smoke meta smoke all dryrun unlock"
 	@echo "Variables: CORES=$(CORES) ULIMIT_KB=$(ULIMIT_KB) CONDA_ENV=$(CONDA_ENV)"
 
 ## meta only needs the simulation results, so it runs before the tdp43 runs:
 ## a tdp43 failure then cannot block the cross-depth report.
-all: simulations meta tdp43 tdp43-panel gtex
+all: simulations meta tdp43 tdp43-panel gtex gtex-comparison
 
 ## Populate the git submodules. workflow/external/fastder must hold the fastder
 ## sources for the build_fastder rule to find a CMakeLists.txt; a plain
@@ -95,13 +96,21 @@ tdp43-panel:
 	  FASTDER_EVAL_CONFIG=../config/config_klim_2019_tdp43_recount3_panel.yaml \
 	  $(SNAKEMAKE) --use-conda'
 
-## GTEx structural-concordance showcase: fastder run once per tissue (brain,
-## heart, skeletal muscle, whole blood) over the recount3 gtex data source,
-## then the per-tissue expressed-region catalogs compared structurally. The
-## recount3 backend has no ASimulatoR container step, so no --use-singularity.
+## GTEx structural-concordance atlas: fastder run genome-wide, once per tissue
+## sub-group over the recount3 gtex data source, then the per-sub-group
+## expressed-region catalogs clustered structurally. fastder only, no
+## baselines. The recount3 backend has no ASimulatoR container step, so no
+## --use-singularity.
 gtex:
 	cd $(WORKFLOW_DIR) && bash -c '$(ACTIVATE) && \
 	  FASTDER_EVAL_CONFIG=../config/config_gtex_concordance.yaml \
+	  $(SNAKEMAKE) --use-conda'
+
+## GTEx tool comparison: the same sub-groups on chr19 with all three tools,
+## for the fastder-versus-baseline runtime and gffcompare comparison.
+gtex-comparison:
+	cd $(WORKFLOW_DIR) && bash -c '$(ACTIVATE) && \
+	  FASTDER_EVAL_CONFIG=../config/config_gtex_comparison.yaml \
 	  $(SNAKEMAKE) --use-conda'
 
 ## Reduced GTEx run: 2 tissues, 12 BigWigs, one chromosome. Exercises the

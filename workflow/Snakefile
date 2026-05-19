@@ -172,7 +172,14 @@ else:
 # from BAM, conda env: scallop). They consume BAM rather than coverage
 # tracks, so they don't share the --min-coverage axis with the three
 # above; they would get their own grid.
-TOOLS = ["fastder", "derfinder", "megadepth_baseline"]
+# Defaults to all three. A config may set `tools:` to a subset, for example
+# [fastder] for a fastder-only run with no baseline comparison.
+_ALL_TOOLS = ["fastder", "derfinder", "megadepth_baseline"]
+TOOLS = config.get("tools") or _ALL_TOOLS
+for _t in TOOLS:
+    if _t not in _ALL_TOOLS:
+        raise ValueError(f"Unknown tool '{_t}' in config.tools; "
+                         f"choose from {_ALL_TOOLS}.")
 
 # Wildcard constraints keep snakemake from matching path components against
 # unrelated wildcards (e.g. {sample} swallowing a scenario subdir).
@@ -327,11 +334,13 @@ def _parse_mc_pt(param_id):
     return mc, pt
 
 
-PARAM_IDS_BY_TOOL = {
+_PARAM_IDS_ALL_TOOLS = {
     "fastder": PARAM_IDS,
     "derfinder": _baseline_mc_pt_param_ids(),
     "megadepth_baseline": _baseline_mc_param_ids(),
 }
+# Restrict to the tools actually selected (see TOOLS above).
+PARAM_IDS_BY_TOOL = {t: _PARAM_IDS_ALL_TOOLS[t] for t in TOOLS}
 
 
 def expand_tool_paths(template, **fixed):
