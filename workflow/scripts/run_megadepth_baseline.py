@@ -27,14 +27,27 @@ import pyBigWig
 import numpy as np
 
 
-def load_bigwigs(bw_dir):
-    paths = sorted(glob.glob(op.join(bw_dir, "*.all.bw")))
-    if not paths:
-        paths = sorted(glob.glob(op.join(bw_dir, "*.plus.bw"))
-                       + glob.glob(op.join(bw_dir, "*.minus.bw")))
-    if not paths:
+def load_bigwig_samples(bw_dir):
+    """Return one entry per sample, each a list of that sample's BigWig
+    files. An unstranded sample has a single .all.bw. A stranded sample has
+    a .plus.bw and a .minus.bw; those are two strand tracks of the same
+    sample and must be treated as one sample, not two, or the CPM library
+    sizes and the averaging run over twice as many pseudo-samples."""
+    all_bw = sorted(glob.glob(op.join(bw_dir, "*.all.bw")))
+    if all_bw:
+        return [[p] for p in all_bw]
+    stranded = (glob.glob(op.join(bw_dir, "*.plus.bw"))
+                + glob.glob(op.join(bw_dir, "*.minus.bw")))
+    if not stranded:
         raise FileNotFoundError(f"no .bw files in {bw_dir}")
-    return paths
+    by_sample = {}
+    for path in stranded:
+        name = op.basename(path)
+        for suffix in (".plus.bw", ".minus.bw"):
+            if name.endswith(suffix):
+                by_sample.setdefault(name[: -len(suffix)], []).append(path)
+                break
+    return [sorted(by_sample[s]) for s in sorted(by_sample)]
 
 
 def common_chroms(bw_paths):
@@ -85,30 +98,34 @@ def library_size(bw_path, chroms):
     return total
 
 
-def mean_cpm_coverage(bw_paths, chrom, length, cpm_factors):
-    """Per-base mean CPM across all input BigWigs.
+def mean_cpm_coverage(samples, chrom, length, cpm_factors):
+    """Per-base mean CPM across samples.
 
-    cpm_factors[i] = library_size_i / 1e6, i.e. the divisor that turns
-    raw per-base coverage into CPM. Each sample's coverage is normalised
-    independently, then averaged across samples (samples without coverage
-    at a position contribute zero, matching fastder's Averager).
+    Each sample is a list of BigWig files: one for an unstranded sample,
+    two (plus and minus) for a stranded sample. A sample's raw coverage is
+    the sum of its tracks. cpm_factors[i] = library_size_i / 1e6 turns that
+    into CPM. Per-sample CPM is then averaged across samples (a sample with
+    no coverage at a position contributes zero, matching fastder's Averager).
     """
-    if len(bw_paths) != len(cpm_factors):
-        raise ValueError("bw_paths and cpm_factors must have the same length")
+    if len(samples) != len(cpm_factors):
+        raise ValueError("samples and cpm_factors must have the same length")
     acc = np.zeros(length, dtype=np.float64)
-    for path, factor in zip(bw_paths, cpm_factors):
+    for paths, factor in zip(samples, cpm_factors):
         if factor <= 0:
             continue
-        bw = pyBigWig.open(path)
-        try:
-            vals = bw.values(chrom, 0, length, numpy=True)
-        finally:
-            bw.close()
-        if vals is None:
-            continue
-        np.nan_to_num(vals, copy=False, nan=0.0)
-        acc += vals / factor
-    return acc / len(bw_paths)
+        sample_cov = np.zeros(length, dtype=np.float64)
+        for path in paths:
+            bw = pyBigWig.open(path)
+            try:
+                vals = bw.values(chrom, 0, length, numpy=True)
+            finally:
+                bw.close()
+            if vals is None:
+                continue
+            np.nan_to_num(vals, copy=False, nan=0.0)
+            sample_cov += vals
+        acc += sample_cov / factor
+    return acc / len(samples)
 
 
 def find_regions(coverage, cutoff, min_length):
@@ -143,14 +160,17 @@ def main():
                          "Default = intersection across all BigWigs.")
     args = ap.parse_args()
 
-    bw_paths = load_bigwigs(args.bigwig_dir)
-    chroms = args.chromosomes if args.chromosomes else common_chroms(bw_paths)
+    samples = load_bigwig_samples(args.bigwig_dir)
+    flat_paths = [p for sample in samples for p in sample]
+    chroms = args.chromosomes if args.chromosomes else common_chroms(flat_paths)
 
     # CPM scaling factor per sample, restricted to the user's chromosome set.
-    cpm_factors = [library_size(p, chroms) / 1e6 for p in bw_paths]
-    for path, factor in zip(bw_paths, cpm_factors):
+    # A stranded sample's library size is the sum of its plus and minus tracks.
+    cpm_factors = [sum(library_size(p, chroms) for p in sample) / 1e6
+                   for sample in samples]
+    for sample, factor in zip(samples, cpm_factors):
         if factor <= 0:
-            print(f"[megadepth_baseline] WARN: {op.basename(path)} has empty "
+            print(f"[megadepth_baseline] WARN: {op.basename(sample[0])} has empty "
                   f"library_size on chromosomes {chroms}; sample will be skipped.")
 
     os.makedirs(op.dirname(args.out_gtf), exist_ok=True)
@@ -160,8 +180,8 @@ def main():
                   f"chromosomes={','.join(chroms)}\n")
         gid = 0
         for chrom in chroms:
-            length = chrom_length(bw_paths, chrom)
-            cov = mean_cpm_coverage(bw_paths, chrom, length, cpm_factors)
+            length = chrom_length(flat_paths, chrom)
+            cov = mean_cpm_coverage(samples, chrom, length, cpm_factors)
             regions = find_regions(cov, args.cutoff, args.min_length)
             for start, end, mean_cov in regions:
                 gid += 1

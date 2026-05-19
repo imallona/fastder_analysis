@@ -1,0 +1,317 @@
+---
+title: "recount3 backend: TDP-43 knockdown versus control"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    df_print: paged
+params:
+  manifest_csv: ""
+  summary_csv: ""
+  reference_gtf: ""
+  study: ""
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE,
+                      fig.width = 10, fig.height = 6)
+suppressPackageStartupMessages({
+  library(rtracklayer)
+  library(GenomicRanges)
+  library(Gviz)
+  library(ggplot2)
+})
+```
+
+This report compares the two sample groups of recount3 study
+`r params$study`: a TDP-43 knockdown group and a scramble control group. The
+coverage and splice junctions come from recount3, which holds the
+Monorail-processed outputs. Each group was processed on its own, so the
+called regions of the knockdown group and the control group can be placed
+side by side.
+
+This report is specific to the TDP-43 knockdown experiment. The cryptic exon
+panel used below (STMN2, HDGFL2, ELAVL3, CELF5, KCNQ2) is hardcoded for it
+(Klim et al. 2019, recount3 study SRP166282), with loci picked from the
+study's knockdown-specific novel splice junctions. If the recount3 backend is
+run on a different study, the cryptic exon panels still render but are not
+meaningful for it.
+
+Loss of TDP-43 lets cryptic exons appear in many genes. The panel here
+covers STMN2 on chr8, HDGFL2, ELAVL3 and CELF5 on chr19, and KCNQ2 on chr20.
+These cryptic exons are not part of the Ensembl annotation, so they cannot be
+scored as true positives. The aim is a visual check: a cryptic exon should
+show up as a called region, and usually as coverage, in the knockdown group,
+and should be weak or absent in the control group. STMN2 is the strongest
+case. The others are weaker and are clearest as a called region rather than
+as a coverage peak.
+
+This dataset is analysed by two runs that differ only in the `min_coverage`
+threshold. The showcase run (`config_klim_2019_tdp43_recount3.yaml`) uses a
+clean 1.0 CPM threshold that isolates STMN2, the one cryptic exon well above
+the intronic noise floor. The panel run
+(`config_klim_2019_tdp43_recount3_panel.yaml`) uses a low 0.02 CPM threshold
+so the weaker cryptic exons are emitted too, at the cost of noise. This
+report renders for whichever run produced it; see the README section "TDP-43
+cryptic exons: showcase and panel" for the rationale.
+
+```{r load-manifest}
+manifest <- read.csv(params$manifest_csv, stringsAsFactors = FALSE)
+manifest <- manifest[order(manifest$group, manifest$sample), ]
+knitr::kable(manifest[, c("group", "sample")],
+             caption = "Samples and their groups", row.names = FALSE)
+
+groups <- unique(manifest$group)
+group_colors <- setNames(
+  c("#d73027", "#4575b4")[seq_along(groups)], groups)
+```
+
+```{r regions}
+# Cryptic exon panel for the TDP-43 knockdown, hg38. The plot window is the
+# gene body plus a small flank. The cryptic exon coordinates (ce_start,
+# ce_end) come from the knockdown-specific novel splice junctions in the
+# recount3 junction matrix: for HDGFL2 and ELAVL3 the cryptic exon is the gap
+# between a flanking junction pair; for STMN2, CELF5 and KCNQ2 a single
+# knockdown-specific junction was seen, so the box is anchored on it and on
+# the knockdown coverage peak.
+regions <- data.frame(
+  gene = c("STMN2", "HDGFL2", "ELAVL3", "CELF5", "KCNQ2"),
+  chrom = c("chr8", "chr19", "chr19", "chr19", "chr20"),
+  start = c(79606000, 4467000, 11446000, 3219000, 63395000),
+  end = c(79671000, 4507000, 11486000, 3302000, 63478000),
+  ce_start = c(79616821, 4492015, 11463496, 3278200, 63444558),
+  ce_end = c(79617200, 4492152, 11463662, 3278400, 63444758),
+  stringsAsFactors = FALSE
+)
+knitr::kable(regions, caption = "Cryptic exon panel: plot window and expected cryptic exon (hg38)")
+```
+
+## Coverage view at the cryptic exon loci
+
+For each gene the panel shows, from top to bottom: the position axis, the
+Ensembl gene models, one coverage track per sample (knockdown in red, control
+in blue), and the called regions of each tool (fastder, derfinder,
+megadepth_baseline) for each group. The shaded box marks the expected cryptic
+exon. A cryptic exon should appear as a coverage signal inside an intron in
+the knockdown samples that is missing in the control samples, with a matching
+called region in the knockdown group. The cryptic exon is not in the Ensembl
+models, so a called region overlapping the box where Ensembl has no exon is
+the signal to look for.
+
+```{r tool-regions}
+# The Ensembl GTF uses chromosome names without the "chr" prefix; the BigWigs
+# and the tool GTFs use "chr". Rename the annotation to match. The cryptic
+# exons are not in Ensembl, so a tool region where Ensembl has no exon is the
+# cryptic-exon signal.
+gene_models <- NULL
+if (nzchar(params$reference_gtf) && file.exists(params$reference_gtf)) {
+  gene_models <- tryCatch({
+    ann <- import(params$reference_gtf)
+    seqlevels(ann) <- paste0("chr", sub("^chr", "", seqlevels(ann)))
+    ann
+  }, error = function(e) NULL)
+}
+
+# Manifest column and track color for each tool.
+tools <- c(fastder = "fastder_gtf",
+           derfinder = "derfinder_gtf",
+           megadepth_baseline = "megadepth_gtf")
+tool_colors <- c(fastder = "#1b9e77",
+                 derfinder = "#d95f02",
+                 megadepth_baseline = "#7570b3")
+# Short track-title labels; "megadepth_baseline" is too long for the strip.
+tool_labels <- c(fastder = "fastder",
+                 derfinder = "derfinder",
+                 megadepth_baseline = "megadepth")
+
+# Keep only the transcript features, so each called region is one block
+# rather than a gene/transcript/exon triple drawn on top of each other.
+load_regions <- function(gtf) {
+  if (length(gtf) == 0 || !nzchar(gtf) || !file.exists(gtf)) return(GRanges())
+  gr <- tryCatch(import(gtf), error = function(e) GRanges())
+  if (length(gr) > 0 && "type" %in% colnames(mcols(gr))) {
+    tx <- gr[!is.na(gr$type) & gr$type == "transcript"]
+    if (length(tx) > 0) gr <- tx
+  }
+  gr
+}
+
+# regions_by[[tool]][[group]] holds that tool's called regions for the group.
+regions_by <- list()
+for (tool in names(tools)) {
+  regions_by[[tool]] <- list()
+  for (group in groups) {
+    gtf <- unique(manifest[[tools[[tool]]]][manifest$group == group])
+    regions_by[[tool]][[group]] <- load_regions(if (length(gtf)) gtf[1] else "")
+  }
+}
+```
+
+```{r coverage-plots, results="asis", fig.width=13, fig.height=13}
+for (i in seq_len(nrow(regions))) {
+  r <- regions[i, ]
+  cat("\n\n### ", r$gene, " (", r$chrom, ":", r$start, "-", r$end, ")\n\n",
+      sep = "")
+  plotted <- tryCatch({
+    axis_track <- GenomeAxisTrack()
+
+    # Tracks the highlight box is drawn across: gene models, coverage, regions.
+    # body_sizes gives each track an explicit relative height, so the thin
+    # region tracks are not starved of space by the coverage tracks.
+    body <- list()
+    body_sizes <- numeric(0)
+
+    if (!is.null(gene_models)) {
+      in_window <- gene_models[seqnames(gene_models) == r$chrom &
+                               start(gene_models) <= r$end &
+                               end(gene_models) >= r$start &
+                               gene_models$type == "exon"]
+      if (length(in_window) > 0) {
+        body <- c(body, AnnotationTrack(
+          in_window, name = "Ensembl", group = in_window$transcript_id,
+          stacking = "squish", fill = "grey60", col = NA))
+        body_sizes <- c(body_sizes, 1.4)
+      }
+    }
+
+    # Coverage, one track per sample.
+    for (j in seq_len(nrow(manifest))) {
+      m <- manifest[j, ]
+      body <- c(body, DataTrack(
+        range = m$bigwig, genome = "hg38", chromosome = r$chrom,
+        name = paste0(m$group, "\n", m$sample), type = "histogram",
+        col.histogram = group_colors[m$group],
+        fill.histogram = group_colors[m$group]))
+      body_sizes <- c(body_sizes, 1.6)
+    }
+
+    # Called regions, one track per tool and group.
+    for (tool in names(tools)) {
+      for (group in groups) {
+        gr <- regions_by[[tool]][[group]]
+        if (length(gr) > 0) {
+          gr <- gr[seqnames(gr) == r$chrom &
+                   start(gr) <= r$end & end(gr) >= r$start]
+        }
+        body <- c(body, AnnotationTrack(
+          gr, name = paste0(tool_labels[tool], "\n", group),
+          chromosome = r$chrom,
+          fill = tool_colors[tool], col = NA, stacking = "squish",
+          shape = "box"))
+        body_sizes <- c(body_sizes, 1.0)
+      }
+    }
+
+    # Shade the expected cryptic exon across every track below the axis. The
+    # box is widened to four times the exon, so its edges fall in flanking
+    # sequence and stay visible instead of being hidden under the coverage
+    # peak.
+    ce_w <- r$ce_end - r$ce_start
+    highlight <- HighlightTrack(
+      trackList = body, chromosome = r$chrom,
+      start = r$ce_start - 1.5 * ce_w, end = r$ce_end + 1.5 * ce_w,
+      col = "#d73027", fill = "#fde0dd")
+
+    plotTracks(list(axis_track, highlight),
+               from = r$start, to = r$end, chromosome = r$chrom,
+               background.title = "white", col.title = "black",
+               col.axis = "black", cex.title = 0.8, title.width = 2.2,
+               sizes = c(0.6, body_sizes))
+    TRUE
+  }, error = function(e) {
+    cat("Could not draw this region:", conditionMessage(e), "\n")
+    FALSE
+  })
+}
+```
+
+## Sample dissimilarity
+
+To check that the knockdown and control samples differ as expected, coverage
+is averaged in 50 kb bins over the analysed chromosomes, then compared
+between every pair of samples. If the knockdown affects the transcriptome,
+the knockdown samples should be more similar to each other than to the
+control samples.
+
+```{r dissimilarity}
+bin_width <- 50000
+
+dissim <- tryCatch({
+  analysed_chroms <- unique(regions$chrom)
+  # Bin the analysed chromosomes and read each sample's mean coverage per bin
+  # straight from the BigWig. summary() on a BigWigFile does the binning
+  # internally, which avoids building genome-wide coverage vectors by hand.
+  si <- seqinfo(BigWigFile(manifest$bigwig[1]))
+  si <- si[intersect(analysed_chroms, seqnames(si))]
+  bins <- unlist(tile(as(si, "GRanges"), width = bin_width))
+
+  cov_mat <- sapply(manifest$bigwig, function(bw) {
+    per_bin <- summary(BigWigFile(bw), bins, type = "mean",
+                       size = 1L, defaultValue = 0)
+    unlist(per_bin)$score
+  })
+  colnames(cov_mat) <- manifest$sample
+  cov_mat <- cov_mat[stats::complete.cases(cov_mat), , drop = FALSE]
+  list(cor = cor(cov_mat, method = "spearman"), n_bins = nrow(cov_mat))
+}, error = function(e) {
+  message("dissimilarity failed: ", conditionMessage(e))
+  NULL
+})
+```
+
+```{r dissimilarity-plot}
+if (!is.null(dissim)) {
+  cor_mat <- dissim$cor
+  long <- expand.grid(s1 = rownames(cor_mat), s2 = colnames(cor_mat))
+  long$correlation <- as.vector(cor_mat)
+  group_of <- setNames(manifest$group, manifest$sample)
+  long$s1 <- factor(long$s1, levels = manifest$sample)
+  long$s2 <- factor(long$s2, levels = manifest$sample)
+
+  print(
+    ggplot(long, aes(s1, s2, fill = correlation)) +
+      geom_tile() +
+      geom_text(aes(label = sprintf("%.3f", correlation)), size = 3) +
+      scale_fill_gradient(low = "white", high = "#4575b4", limits = c(NA, 1)) +
+      coord_fixed() +
+      labs(x = NULL, y = NULL,
+           title = "Spearman correlation of 50 kb binned coverage",
+           subtitle = paste(dissim$n_bins, "bins")) +
+      theme_minimal() +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1),
+            aspect.ratio = 1)
+  )
+
+  dendro <- hclust(as.dist(1 - cor_mat))
+  plot(dendro, main = "Sample clustering (1 - Spearman correlation)",
+       xlab = "", sub = "")
+} else {
+  cat("The dissimilarity summary could not be computed for this run.\n")
+}
+```
+
+## gffcompare metrics per group
+
+Each group's called regions are compared against the Ensembl annotation with
+gffcompare. The TDP-43 cryptic exons are not in that annotation, so they
+lower precision rather than raise sensitivity. Read these numbers as a
+general agreement check, not as a verdict on the cryptic exons.
+
+```{r summary-table}
+if (nzchar(params$summary_csv) && file.exists(params$summary_csv)) {
+  summ <- read.csv(params$summary_csv, stringsAsFactors = FALSE)
+  cols <- intersect(
+    c("tool", "scenario", "param_id", "transcript_sens", "transcript_prec",
+      "exon_sens", "exon_prec", "base_sens", "base_prec"),
+    colnames(summ))
+  knitr::kable(summ[, cols],
+               caption = "gffcompare metrics (scenario is the sample group)",
+               row.names = FALSE)
+} else {
+  cat("summary.csv was not available.\n")
+}
+```
+
+```{r session}
+sessionInfo()
+```

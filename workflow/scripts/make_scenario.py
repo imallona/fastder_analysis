@@ -93,10 +93,11 @@ def fastq_iter(path):
 
 
 def filter_fastq(fq_in, fq_out, template_ids):
-    """Polyester (used by ASimulatoR) puts the originating transcript id in
-    the read header, prefixed with @ and ending at the first / or :. Drop
-    records whose transcript_id is a template. Output is uncompressed FASTQ
-    to match ASimulatoR's default output format."""
+    """ASimulatoR read headers look like @read<N>/<transcript_id>;mate1:...,
+    so the originating transcript id sits between the first slash and the
+    first semicolon (READ_HEADER_TX_RE captures it). Drop records whose
+    transcript id is a template. Output is uncompressed FASTQ to match
+    ASimulatoR's default output format."""
     written = 0
     skipped = 0
     with open(fq_out, "w") as out:

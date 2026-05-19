@@ -1,0 +1,299 @@
+# GTEx structural-concordance atlas: genome-wide, fastder only.
+#
+# fastder is run once per tissue sub-group over the recount3 gtex data
+# source, genome-wide, with no read alignment. The report clusters the
+# per-sub-group expressed-region catalogs on structure; the sub-groups
+# of a tissue group together, showing that expressed-region shape, not
+# just abundance, carries tissue identity. No baseline tools: this run
+# is the structural atlas, not the tool comparison (see
+# config_gtex_comparison.yaml for that).
+#
+#   FASTDER_EVAL_CONFIG=../config/config_gtex_concordance.yaml \
+#     snakemake --use-conda --cores 12
+
+seed: 10
+cores: 12
+
+# Run fastder only; no derfinder or megadepth baseline. The
+# structural-concordance report uses the fastder catalogs alone.
+tools: [fastder]
+
+monorail:
+  ref_version: hg38
+  project_name: "recount3"
+  project_id: 103
+  backend: recount3
+
+recount3:
+  data_source: gtex
+  base_url: "https://duffel.rail.bio/recount3"
+  metadata_url: "https://duffel.rail.bio/recount3"
+  # Each group is one tissue sub-group: study is the tissue's recount3
+  # project, samples are 5 recount3 external_ids. Sub-groups of a tissue
+  # share its study and partition its samples; the suffix _1.._8 is the
+  # sub-group and the report reads the tissue from the name before it.
+  groups:
+    brain_1:
+      study: BRAIN
+      samples:
+        - GTEX-1117F-3226-SM-5N9CT.1
+        - GTEX-13O3Q-0011-R4a-SM-5P9H2.1
+        - GTEX-16GPK-0011-R11b-SM-7MKFF.1
+        - GTEX-1GZHY-0011-R9a-SM-9WG5R.1
+        - GTEX-NPJ7-0011-R6a-SM-2I3G7.1
+    brain_2:
+      study: BRAIN
+      samples:
+        - GTEX-11GSP-0011-R1a-SM-9QEJ3.1
+        - GTEX-13OW8-0011-R3a-SM-5L3I4.1
+        - GTEX-17F97-0011-R7b-SM-7MGVY.1
+        - GTEX-1H3O1-0011-R6b-SM-CL54U.1
+        - GTEX-P44H-0011-R8A-SM-2XCEL.1
+    brain_3:
+      study: BRAIN
+      samples:
+        - GTEX-11UD1-0011-R2b-SM-5BC6O.1
+        - GTEX-13SLW-0011-R2b-SM-5O9C6.1
+        - GTEX-18A6Q-2926-SM-718AR.1
+        - GTEX-1HCVE-3026-SM-CL54G.1
+        - GTEX-QVUS-0011-R9A-SM-3GIJA.1
+    brain_4:
+      study: BRAIN
+      samples:
+        - GTEX-12WSC-0011-R10a-SM-5GU57.1
+        - GTEX-144GL-0011-R5b-SM-5PNUJ.1
+        - GTEX-1B933-0011-R3b-SM-7P8PL.1
+        - GTEX-1I1CD-2926-SM-A96SJ.1
+        - GTEX-T2IS-0011-R11A-SM-32QPC.1
+    brain_5:
+      study: BRAIN
+      samples:
+        - GTEX-12ZZX-0011-R7b-SM-5DUVV.1
+        - GTEX-147GR-0011-R9a-SM-5S2UY.1
+        - GTEX-1CB4G-0011-R7b-SM-9QEGP.1
+        - GTEX-1IGQW-0011-R9b-SM-D4P25.1
+        - GTEX-WHSE-0011-R4A-SM-3P5ZN.3
+    brain_6:
+      study: BRAIN
+      samples:
+        - GTEX-132Q8-3026-SM-5PNVG.1
+        - GTEX-14DAQ-0011-R11a-SM-664NO.1
+        - GTEX-1EN7A-0011-R6b-SM-9QEHW.1
+        - GTEX-1J8Q2-0011-R1a-SM-D4P2D.1
+        - GTEX-X4EP-0011-R2B-SM-3P625.3
+    brain_7:
+      study: BRAIN
+      samples:
+        - GTEX-13FHP-0011-R5b-SM-5LZY2.1
+        - GTEX-14PJM-0011-R7a-SM-6AJBX.1
+        - GTEX-1F75A-0011-R7b-SM-9QEHE.1
+        - GTEX-1LKK1-3126-SM-EWRNY.1
+        - GTEX-XOTO-0011-R3A-SM-4B64W.1
+    brain_8:
+      study: BRAIN
+      samples:
+        - GTEX-13N1W-0011-R10b-SM-5MR4H.1
+        - GTEX-15DCD-0011-R5a-SM-6EU1F.1
+        - GTEX-1GN1U-0011-R5a-SM-9QEIS.1
+        - GTEX-1RLM8-0011-R2a-SM-EZ6N4.1
+        - GTEX-ZAK1-3026-SM-5S2MJ.1
+    heart_1:
+      study: HEART
+      samples:
+        - GTEX-1117F-0726-SM-5GIEN.1
+        - GTEX-13SLX-0926-SM-5S2NM.1
+        - GTEX-1B8KE-0126-SM-793AM.1
+        - GTEX-1JK1U-0626-SM-CKZOJ.1
+        - GTEX-T6MN-0926-SM-5S2S3.1
+    heart_2:
+      study: HEART
+      samples:
+        - GTEX-11EM3-0626-SM-5H12Z.1
+        - GTEX-146FH-1026-SM-5RQIF.1
+        - GTEX-1C6VQ-1126-SM-7EWET.1
+        - GTEX-1L5NE-0426-SM-E9TIX.1
+        - GTEX-W5X1-0826-SM-3GILN.1
+    heart_3:
+      study: HEART
+      samples:
+        - GTEX-11UD2-0926-SM-5CVL6.1
+        - GTEX-14BIN-2226-SM-5YYA1.1
+        - GTEX-1EU9M-1826-SM-7DUGU.1
+        - GTEX-1MCC2-0326-SM-EV7AK.1
+        - GTEX-WL46-0926-SM-3LK7T.1
+    heart_4:
+      study: HEART
+      samples:
+        - GTEX-12WSD-1226-SM-5HL9Q.1
+        - GTEX-14PHX-2126-SM-6EU2U.1
+        - GTEX-1GMR2-1326-SM-9KNUT.1
+        - GTEX-1QEPI-1126-SM-E8VN7.1
+        - GTEX-X3Y1-0426-SM-3P5Z4.3
+    heart_5:
+      study: HEART
+      samples:
+        - GTEX-131XF-5001-SM-7DHLY.1
+        - GTEX-15CHQ-1526-SM-69LPW.1
+        - GTEX-1H11D-1226-SM-9WPQ2.1
+        - GTEX-1S5VW-1326-SM-E9TKA.1
+        - GTEX-XUJ4-0526-SM-4BOON.1
+    heart_6:
+      study: HEART
+      samples:
+        - GTEX-139UC-0426-SM-5K7UR.1
+        - GTEX-15SKB-0926-SM-7KUFC.1
+        - GTEX-1HCUA-0626-SM-ACKVT.1
+        - GTEX-OXRL-0326-SM-2I3F2.1
+        - GTEX-YEC3-0426-SM-CYPS8.1
+    heart_7:
+      study: HEART
+      samples:
+        - GTEX-13N11-0426-SM-5KM3O.1
+        - GTEX-17GQL-0626-SM-731CN.1
+        - GTEX-1I1GR-1026-SM-A9SLC.1
+        - GTEX-Q2AH-0526-SM-2I3ED.1
+        - GTEX-ZDTS-1326-SM-6LLHE.1
+    heart_8:
+      study: HEART
+      samples:
+        - GTEX-13OVG-0526-SM-5K7YD.1
+        - GTEX-18D9B-1226-SM-72D6V.1
+        - GTEX-1IKOE-0626-SM-A9G31.1
+        - GTEX-RU72-0326-SM-2TF5T.1
+        - GTEX-ZGAY-0226-SM-4WWAL.1
+    muscle_1:
+      study: MUSCLE
+      samples:
+        - GTEX-1117F-0426-SM-5EGHI.1
+        - GTEX-13YAN-0526-SM-5O9BE.1
+        - GTEX-1C6VQ-0326-SM-7DHMS.1
+        - GTEX-1M4P7-0126-SM-DKPQF.1
+        - GTEX-T2IS-2626-SM-32QPP.1
+    muscle_2:
+      study: MUSCLE
+      samples:
+        - GTEX-11GS4-2526-SM-5A5KT.1
+        - GTEX-1477Z-1626-SM-5SIA8.1
+        - GTEX-1EX96-1526-SM-7PBXK.1
+        - GTEX-1PPGY-0426-SM-DTXFE.1
+        - GTEX-U8T8-1426-SM-3DB9H.1
+    muscle_3:
+      study: MUSCLE
+      samples:
+        - GTEX-11VI4-1926-SM-5CVLI.1
+        - GTEX-14DAR-1826-SM-664N1.1
+        - GTEX-1GMRU-0326-SM-9WYT6.1
+        - GTEX-1R9K5-0326-SM-EWRNG.1
+        - GTEX-WHSB-1826-SM-3TW8M.1
+    muscle_4:
+      study: MUSCLE
+      samples:
+        - GTEX-12WSD-0526-SM-5EQ6F.1
+        - GTEX-14PN4-0326-SM-6EU2N.1
+        - GTEX-1H3NZ-0326-SM-9MQL6.1
+        - GTEX-O5YV-2026-SM-2D7VS.1
+        - GTEX-X4XY-0626-SM-4E3IN.1
+    muscle_5:
+      study: MUSCLE
+      samples:
+        - GTEX-131XW-0326-SM-5KM1J.1
+        - GTEX-15RIG-0426-SM-7KUF4.1
+        - GTEX-1HSGN-0326-SM-ACKXQ.1
+        - GTEX-P4QS-1626-SM-2S1NH.1
+        - GTEX-XV7Q-2926-SM-4BRUL.1
+    muscle_6:
+      study: MUSCLE
+      samples:
+        - GTEX-13CF2-2726-SM-5LZWW.1
+        - GTEX-16XZY-2226-SM-7938N.1
+        - GTEX-1IDFM-1526-SM-ARL7U.1
+        - GTEX-Q2AG-0426-SM-2S1PU.1
+        - GTEX-YFC4-1026-SM-5RQJM.1
+    muscle_7:
+      study: MUSCLE
+      samples:
+        - GTEX-13NZ9-0626-SM-5IJCO.1
+        - GTEX-183WM-0426-SM-731B1.1
+        - GTEX-1J8Q3-1426-SM-CKZPU.1
+        - GTEX-R3RS-0526-SM-3GADG.1
+        - GTEX-ZF29-2426-SM-DO92G.1
+    muscle_8:
+      study: MUSCLE
+      samples:
+        - GTEX-13PLJ-0326-SM-5L3I7.1
+        - GTEX-1AX8Z-0326-SM-731BU.1
+        - GTEX-1KANB-0126-SM-E6CJT.1
+        - GTEX-S33H-2226-SM-5S2UF.1
+        - GTEX-ZVE1-0526-SM-5NQ71.1
+    blood_1:
+      study: BLOOD
+      samples:
+        - GTEX-111YS-0006-SM-5NQBE.1
+        - GTEX-14PN3-0006-SM-7SB6O.1
+        - GTEX-1HGF4-0002-SM-EZ6M7.1
+        - GTEX-OIZI-0005-SM-2XCED.1
+        - GTEX-WFG8-0006-SM-3GIKS.1
+    blood_2:
+      study: BLOOD
+      samples:
+        - GTEX-11I78-0001-SM-5Q5BE.1
+        - GTEX-16BQI-0006-SM-7SB6K.1
+        - GTEX-1I4MK-0002-SM-EZ6M9.1
+        - GTEX-POYW-0006-SM-2XCF4.1
+        - GTEX-WRHK-0005-SM-3MJF5.1
+    blood_3:
+      study: BLOOD
+      samples:
+        - GTEX-11XUK-0005-SM-5LU9F.1
+        - GTEX-183WM-0005-SM-9JGFW.1
+        - GTEX-1J8JJ-0001-SM-EAZDE.1
+        - GTEX-QDT8-0006-SM-32PL3.1
+        - GTEX-X4EP-0004-SM-4PQZX.1
+    blood_4:
+      study: BLOOD
+      samples:
+        - GTEX-12WSD-0005-SM-5N9FZ.1
+        - GTEX-1B8KE-0006-SM-7SB6W.1
+        - GTEX-1KANA-0006-SM-9YFLB.1
+        - GTEX-R55G-0006-SM-2TC6O.1
+        - GTEX-XK95-0005-SM-4AT4S.1
+    blood_5:
+      study: BLOOD
+      samples:
+        - GTEX-131YS-0005-SM-5NQAS.1
+        - GTEX-1CB4H-0006-SM-A96RE.1
+        - GTEX-1M4P7-0005-SM-CXZIS.1
+        - GTEX-S4Q7-0006-SM-3K2AT.1
+        - GTEX-XXEK-0004-SM-5S2TO.1
+    blood_6:
+      study: BLOOD
+      samples:
+        - GTEX-13FTX-0005-SM-5N9F6.1
+        - GTEX-1F75I-0001-SM-EVR3C.1
+        - GTEX-1P4AB-0005-SM-CY8GM.1
+        - GTEX-T5JC-0001-SM-3NMAK.1
+        - GTEX-Y9LG-0006-SM-4VBRK.1
+    blood_7:
+      study: BLOOD
+      samples:
+        - GTEX-147F4-0006-SM-5O99T.1
+        - GTEX-1GN2E-0005-SM-ARU6L.1
+        - GTEX-1R7EU-0006-SM-DO93C.1
+        - GTEX-TMZS-0006-SM-3DB8G.1
+        - GTEX-ZE7O-0006-SM-51MTA.1
+    blood_8:
+      study: BLOOD
+      samples:
+        - GTEX-14E7W-0006-SM-5N9GG.1
+        - GTEX-1H3VY-0001-SM-EYYVY.1
+        - GTEX-1S82Z-0006-SM-DLHC5.1
+        - GTEX-V955-0005-SM-3P5ZC.2
+        - GTEX-ZQG8-0005-SM-4YCEH.1
+
+fastder:
+  stranded: false
+  min_coverage: [1.0]
+
+gffcompare:
+  reference_annotation: ""
+

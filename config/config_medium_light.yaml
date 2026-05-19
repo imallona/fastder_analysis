@@ -3,7 +3,7 @@
 # (5 samples, 10M reads). Use:
 #
 #   FASTDER_EVAL_CONFIG=../config/config_medium_light.yaml \
-#     snakemake --use-conda --cores 12
+#     snakemake --use-conda --use-singularity --cores 12
 
 seed: 10
 cores: 12

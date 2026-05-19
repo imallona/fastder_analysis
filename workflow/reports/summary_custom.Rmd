@@ -1,0 +1,263 @@
+---
+title: "fastder-evaluation run summary (no truth set)"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: hide
+params:
+  summary_csv: NULL
+  chain_stats_csv: NULL
+  truth_chain_stats_csv: NULL
+  fuzzy_jaccard_csv: NULL
+  fuzzy_distances_csv: NULL
+  fuzzy_recall_csv: NULL
+  fuzzy_strand_csv: NULL
+  fastder_gtf: NULL
+  derfinder_gtf: NULL
+  megadepth_gtf: NULL
+  truth_gff: NULL
+  track_scenario: NULL
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,
+  message = FALSE,
+  warning = FALSE,
+  fig.width = 8,
+  fig.height = 5,
+  fig.align = "center"
+)
+library(readr)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(stringr)
+suppressPackageStartupMessages({
+  library(rtracklayer)
+  library(GenomicRanges)
+})
+
+tool_levels <- c("megadepth_baseline", "derfinder", "fastder")
+tool_palette <- c(megadepth_baseline = "#66c2a5",
+                  derfinder = "#fc8d62",
+                  fastder = "#8da0cb")
+
+# Read a CSV if it exists and is non-empty, otherwise return NULL so each
+# section can skip cleanly.
+read_opt <- function(path) {
+  if (is.null(path) || !file.exists(path)) return(NULL)
+  out <- suppressWarnings(readr::read_csv(path, show_col_types = FALSE))
+  if (nrow(out) == 0) NULL else out
+}
+
+summary_df <- read_opt(params$summary_csv)
+chain_df <- read_opt(params$chain_stats_csv)
+if (!is.null(chain_df)) {
+  chain_df <- chain_df %>%
+    mutate(n_exons = as.integer(n_exons),
+           total_exon_length = as.numeric(total_exon_length),
+           score = as.numeric(score))
+}
+```
+
+This is the summary report for a run without a simulated truth set: real
+data from recount3, SRA, or local FASTQ files. There is no known set of true
+transcripts to grade precision and recall against, so this report describes
+what each tool called and how the tool calls relate to each other, rather than
+how correct they are. The biological coverage view for recount3 runs is in the
+separate `recount3.html` report.
+
+# Run overview
+
+```{r overview}
+if (!is.null(summary_df)) {
+  ov <- tibble::tibble(
+    field = c("tools", "scenario groups", "samples", "parameter ids"),
+    value = c(
+      paste(sort(unique(summary_df$tool)), collapse = ", "),
+      paste(sort(unique(summary_df$scenario)), collapse = ", "),
+      paste(sort(unique(summary_df$sample)), collapse = ", "),
+      paste(sort(unique(summary_df$param_id)), collapse = ", ")))
+  knitr::kable(ov)
+} else {
+  cat("no summary.csv data")
+}
+```
+
+# Called-region counts per tool
+
+`query_loci`, `query_mrnas`, and `query_multi_exon` come from gffcompare's
+description of each tool's own output GTF, so they need no truth set.
+`query_multi_exon` is the count of transcripts with more than one exon: the
+coverage-only baselines (derfinder, megadepth_baseline) emit single-exon
+regions, while fastder stitches across splice junctions, so this column is
+where the splice-aware caller separates from the baselines.
+
+```{r region_counts}
+if (!is.null(summary_df)) {
+  cnt <- summary_df %>%
+    group_by(tool, scenario, param_id) %>%
+    summarise(query_loci = dplyr::first(query_loci),
+              query_mrnas = dplyr::first(query_mrnas),
+              query_multi_exon = dplyr::first(query_multi_exon),
+              .groups = "drop") %>%
+    mutate(tool = factor(tool, levels = tool_levels))
+  knitr::kable(cnt %>% arrange(scenario, tool, param_id))
+
+  cnt_long <- cnt %>%
+    pivot_longer(c(query_loci, query_mrnas, query_multi_exon),
+                 names_to = "metric", values_to = "n") %>%
+    mutate(n = tidyr::replace_na(n, 0))
+  ggplot(cnt_long, aes(tool, n, fill = tool)) +
+    geom_col() +
+    facet_grid(metric ~ scenario, scales = "free_y") +
+    scale_fill_manual(values = tool_palette) +
+    labs(x = NULL, y = "count") +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 30, hjust = 1),
+          legend.position = "none")
+} else {
+  cat("no summary.csv data")
+}
+```
+
+# fastder region structure
+
+`chain_stats.csv` holds one row per region called by fastder, so the next
+three sections describe the fastder output directly. The baselines are not
+covered here because they do not produce splice chains.
+
+Exons per region: how often fastder stitches more than one exon together.
+
+```{r fastder_exons}
+if (!is.null(chain_df)) {
+  chain_df %>%
+    mutate(exon_bin = factor(pmin(n_exons, 6L),
+                             levels = 1:6,
+                             labels = c("1", "2", "3", "4", "5", "6+"))) %>%
+    ggplot(aes(exon_bin)) +
+    geom_bar(fill = tool_palette[["fastder"]]) +
+    facet_wrap(~ scenario) +
+    labs(x = "exons per region (6 or more collapsed)",
+         y = "fastder regions") +
+    theme_bw()
+} else {
+  cat("no chain_stats.csv data")
+}
+```
+
+Exonic length per region.
+
+```{r fastder_length}
+if (!is.null(chain_df)) {
+  ggplot(chain_df, aes(total_exon_length)) +
+    geom_histogram(bins = 50, fill = tool_palette[["fastder"]]) +
+    scale_x_log10() +
+    facet_wrap(~ scenario) +
+    labs(x = "total exonic length (bp, log10 scale)",
+         y = "fastder regions") +
+    theme_bw()
+} else {
+  cat("no chain_stats.csv data")
+}
+```
+
+Per-scenario summary: region count, multi-exon share, and the median region
+size and exon count.
+
+```{r fastder_structure_table}
+if (!is.null(chain_df)) {
+  chain_df %>%
+    group_by(scenario, param_id) %>%
+    summarise(n_regions = n(),
+              multi_exon = sum(n_exons > 1L),
+              multi_exon_pct = round(100 * sum(n_exons > 1L) / n(), 1),
+              median_exons = median(n_exons),
+              median_length = median(total_exon_length),
+              .groups = "drop") %>%
+    arrange(scenario, param_id) %>%
+    knitr::kable()
+} else {
+  cat("no chain_stats.csv data")
+}
+```
+
+# Genomic distribution of fastder regions
+
+Region counts per chromosome, split by strand. Unstranded calls show as `.`;
+recount3 hosts unstranded coverage, so recount3 runs are expected to be
+unstranded.
+
+```{r fastder_genomic}
+if (!is.null(chain_df)) {
+  ggplot(chain_df, aes(chrom, fill = strand)) +
+    geom_bar() +
+    facet_wrap(~ scenario) +
+    labs(x = NULL, y = "fastder regions", fill = "strand") +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+} else {
+  cat("no chain_stats.csv data")
+}
+```
+
+# fastder score distribution
+
+The StitchedER score that fastder assigns each region.
+
+```{r fastder_score}
+if (!is.null(chain_df)) {
+  ggplot(chain_df, aes(score)) +
+    geom_histogram(bins = 50, fill = tool_palette[["fastder"]]) +
+    facet_wrap(~ scenario, scales = "free_y") +
+    labs(x = "fastder StitchedER score", y = "fastder regions") +
+    theme_bw()
+} else {
+  cat("no chain_stats.csv data")
+}
+```
+
+# Cross-tool agreement
+
+Without a truth set, the comparison between tools is agreement, not accuracy:
+how much of the genome each pair of tools calls in common. `jaccard` is the
+shared exonic base pairs divided by the union; `frac_a_in_b` is the fraction of
+tool A's exonic base pairs that tool B also calls. This is computed on the
+representative scenario and first parameter combination per tool (the GTFs
+passed to the report), so it is a snapshot, not the full grid.
+
+```{r cross_tool}
+import_exons <- function(path) {
+  if (is.null(path) || !file.exists(path)) return(NULL)
+  gr <- tryCatch(rtracklayer::import(path), error = function(e) NULL)
+  if (is.null(gr) || length(gr) == 0) return(NULL)
+  ex <- gr[!is.na(gr$type) & gr$type == "exon"]
+  if (length(ex) == 0) ex <- gr
+  GenomicRanges::reduce(GenomicRanges::granges(ex), ignore.strand = TRUE)
+}
+
+gtfs <- list(fastder = import_exons(params$fastder_gtf),
+             derfinder = import_exons(params$derfinder_gtf),
+             megadepth_baseline = import_exons(params$megadepth_gtf))
+gtfs <- gtfs[!vapply(gtfs, is.null, logical(1))]
+
+if (length(gtfs) >= 2) {
+  pairs <- utils::combn(names(gtfs), 2, simplify = FALSE)
+  ov <- do.call(rbind, lapply(pairs, function(p) {
+    a <- gtfs[[p[1]]]
+    b <- gtfs[[p[2]]]
+    inter <- sum(width(GenomicRanges::intersect(a, b, ignore.strand = TRUE)))
+    uni <- sum(width(GenomicRanges::union(a, b, ignore.strand = TRUE)))
+    data.frame(tool_a = p[1],
+               tool_b = p[2],
+               jaccard = round(inter / uni, 3),
+               frac_a_in_b = round(inter / sum(width(a)), 3),
+               frac_b_in_a = round(inter / sum(width(b)), 3))
+  }))
+  knitr::kable(ov)
+} else {
+  cat("fewer than two tool GTFs available, nothing to compare")
+}
+```

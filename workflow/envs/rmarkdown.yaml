@@ -15,4 +15,7 @@ dependencies:
   - r-circlize
   - r-ggrepel
   - bioconductor-complexheatmap
+  - bioconductor-rtracklayer
+  - bioconductor-gviz
+  - bioconductor-genomicranges
   - pandoc

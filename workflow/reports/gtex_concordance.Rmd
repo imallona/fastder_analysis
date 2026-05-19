@@ -1,0 +1,259 @@
+---
+title: "GTEx structural concordance: tissue identity in expressed-region shape"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    df_print: paged
+params:
+  fastder_gtfs: ""
+  subgroups: ""
+  reference_gtf: ""
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE,
+                      fig.width = 8, fig.height = 6)
+suppressPackageStartupMessages({
+  library(rtracklayer)
+  library(GenomicRanges)
+  library(ggplot2)
+  library(ComplexHeatmap)
+  library(circlize)
+})
+```
+
+Each GTEx tissue (brain, heart, skeletal muscle, whole blood) was split into disjoint sample sub-groups. fastder was run once per sub-group, straight on the recount3 coverage and splice junctions with no read alignment. Every run yields a catalog of expressed regions (ERs): where transcription starts and ends, how many ERs sit at a locus, which ERs are present at all. This report asks whether that shape, not the abundance of a transcript, carries tissue identity. If it does, the sub-group catalogs should cluster by tissue when compared on ER structure alone. The comparison is annotation-agnostic: it works from the called ER segmentations.
+
+```{r load}
+# params arrive as comma-separated strings, one fastder GTF per sub-group.
+gtf_paths <- strsplit(params$fastder_gtfs, ",", fixed = TRUE)[[1]]
+subgroups <- strsplit(params$subgroups, ",", fixed = TRUE)[[1]]
+names(gtf_paths) <- subgroups
+# A sub-group name is <tissue>_<n>; the tissue is the part before the suffix.
+tissue_of <- sub("_[0-9]+$", "", subgroups)
+tissue_levels <- unique(tissue_of)
+
+# Exon segmentation: the called ER exons reduced to disjoint genomic
+# intervals, strand ignored (recount3 coverage is unstranded).
+load_exons <- function(path) {
+  if (!nzchar(path) || !file.exists(path)) return(GRanges())
+  gr <- tryCatch(import(path), error = function(e) GRanges())
+  if (length(gr) == 0) return(GRanges())
+  if ("type" %in% colnames(mcols(gr))) {
+    ex <- gr[!is.na(gr$type) & gr$type == "exon"]
+    if (length(ex) > 0) gr <- ex
+  }
+  reduce(granges(gr), ignore.strand = TRUE)
+}
+
+exons_by_subgroup <- lapply(gtf_paths, load_exons)
+names(exons_by_subgroup) <- subgroups
+
+# Tissue-level catalog: the union of that tissue's sub-group segmentations.
+exons_by_tissue <- lapply(tissue_levels, function(t) {
+  parts <- exons_by_subgroup[subgroups[tissue_of == t]]
+  parts <- parts[vapply(parts, length, integer(1)) > 0]
+  if (length(parts) == 0) return(GRanges())
+  reduce(do.call(c, unname(parts)), ignore.strand = TRUE)
+})
+names(exons_by_tissue) <- tissue_levels
+
+# Reference Ensembl exons, used by Figure 3. The Ensembl GTF carries
+# chromosome names with no "chr" prefix; the fastder GTFs use "chr".
+ref_exons <- GRanges()
+if (nzchar(params$reference_gtf) && file.exists(params$reference_gtf)) {
+  ref_exons <- tryCatch({
+    ann <- import(params$reference_gtf)
+    ann <- ann[!is.na(ann$type) & ann$type == "exon"]
+    seqlevels(ann) <- paste0("chr", sub("^chr", "", seqlevels(ann)))
+    reduce(granges(ann), ignore.strand = TRUE)
+  }, error = function(e) GRanges())
+}
+
+knitr::kable(
+  data.frame(
+    tissue = tissue_levels,
+    sub_groups = as.integer(table(tissue_of)[tissue_levels]),
+    er_exons = vapply(exons_by_tissue, length, integer(1)),
+    exonic_bp = vapply(exons_by_tissue,
+                       function(g) sum(as.numeric(width(g))), numeric(1))),
+  caption = "Per-tissue expressed-region catalog (union of its sub-groups)",
+  row.names = FALSE)
+```
+
+## Figure 1: structural clustering of the tissue sub-groups
+
+For each pair of sub-groups the similarity is the Jaccard index of their ER exon segmentations: the genomic base pairs where both call an exon, divided by the base pairs where either does. It scores overlap of shape, not of coverage level. The sub-groups are clustered on that similarity; the colour bars on the top and left mark each sub-group's tissue of origin.
+
+```{r fig1, fig.width=9, fig.height=8}
+jaccard_bp <- function(a, b) {
+  uni <- sum(as.numeric(width(union(a, b, ignore.strand = TRUE))))
+  if (uni == 0) return(NA_real_)
+  sum(as.numeric(width(intersect(a, b, ignore.strand = TRUE)))) / uni
+}
+
+n <- length(subgroups)
+sim <- matrix(NA_real_, n, n, dimnames = list(subgroups, subgroups))
+for (i in seq_len(n)) {
+  for (j in i:n) {
+    s <- jaccard_bp(exons_by_subgroup[[i]], exons_by_subgroup[[j]])
+    sim[i, j] <- s
+    sim[j, i] <- s
+  }
+}
+
+tissue_cols <- setNames(
+  c("#d73027", "#fc8d59", "#91bfdb", "#4575b4")[seq_along(tissue_levels)],
+  tissue_levels)
+ann_df <- data.frame(tissue = tissue_of)
+top_ann <- HeatmapAnnotation(df = ann_df, col = list(tissue = tissue_cols),
+                             show_annotation_name = FALSE)
+left_ann <- rowAnnotation(df = ann_df, col = list(tissue = tissue_cols),
+                          show_annotation_name = FALSE, show_legend = FALSE)
+
+# Cluster on distance = 1 - Jaccard so structurally similar sub-groups join.
+clust <- hclust(as.dist(1 - sim))
+cell <- unit(0.28, "cm")  # equal width and height keeps the cells square
+Heatmap(sim, name = "Jaccard",
+        col = colorRamp2(c(0, 0.5, 1), c("white", "#9ecae1", "#08306b")),
+        cluster_rows = clust, cluster_columns = clust,
+        top_annotation = top_ann, left_annotation = left_ann,
+        row_names_gp = gpar(fontsize = 6),
+        column_names_gp = gpar(fontsize = 6),
+        width = cell * n, height = cell * n,
+        column_title = "Expressed-region structural similarity, GTEx sub-groups")
+```
+
+The sub-groups of each tissue fall into one block: independent samples of the same tissue produce the same expressed-region shape, and that reproducibility is the structural concordance. Heart and skeletal muscle, both striated contractile tissues, sit next to each other because they share contractile-gene exon structure; brain is the structural outlier. The clustering uses the ER segmentations alone, with no annotation and no abundance model.
+
+## Figure 2: marker loci as per-tissue expressed-region tracks
+
+Each marker locus is drawn as one horizontal row per tissue, with the called ER exons (pooled across the tissue's sub-groups) shown as boxes. The troponins are tissue-restricted contractile genes: TNNT2 is the cardiac troponin T, TNNT3 the fast skeletal troponin T, and TNNI3 the cardiac troponin I. A tissue that does not express a marker should have an empty or sparse row.
+
+```{r fig2-coords}
+# Marker genes on the analysed chromosomes. Coordinates are looked up from the
+# reference GTF rather than hardcoded, so they track the annotation version.
+marker_genes <- c("TNNT2", "TNNT3", "TNNI3")
+
+marker_loci <- NULL
+if (nzchar(params$reference_gtf) && file.exists(params$reference_gtf)) {
+  marker_loci <- tryCatch({
+    ann <- import(params$reference_gtf)
+    seqlevels(ann) <- paste0("chr", sub("^chr", "", seqlevels(ann)))
+    genes <- ann[!is.na(ann$type) & ann$type == "gene" &
+                 !is.na(ann$gene_name) & ann$gene_name %in% marker_genes]
+    if (length(genes) == 0) return(NULL)
+    do.call(rbind, lapply(marker_genes, function(g) {
+      hit <- genes[genes$gene_name == g]
+      if (length(hit) == 0) return(NULL)
+      hit <- hit[1]
+      flank <- round(0.1 * width(hit))
+      data.frame(gene = g,
+                 chrom = as.character(seqnames(hit)),
+                 start = start(hit) - flank,
+                 end = end(hit) + flank,
+                 stringsAsFactors = FALSE)
+    }))
+  }, error = function(e) NULL)
+}
+
+if (!is.null(marker_loci)) {
+  knitr::kable(marker_loci,
+               caption = "Marker loci (plot window, hg38)", row.names = FALSE)
+}
+```
+
+```{r fig2, fig.width=9, fig.height=8, results="asis"}
+if (is.null(marker_loci)) {
+  cat("\nThe reference GTF was not available, so the marker loci could not",
+      "be resolved.\n")
+} else {
+  for (i in seq_len(nrow(marker_loci))) {
+    r <- marker_loci[i, ]
+    cat("\n\n### ", r$gene, " (", r$chrom, ":", r$start, "-", r$end, ")\n\n",
+        sep = "")
+
+    # One row per tissue; the called ER exons inside the window are boxes.
+    rows <- do.call(rbind, lapply(seq_along(tissue_levels), function(k) {
+      tissue <- tissue_levels[k]
+      ex <- exons_by_tissue[[tissue]]
+      if (length(ex) == 0) return(NULL)
+      ex <- ex[seqnames(ex) == r$chrom &
+               start(ex) <= r$end & end(ex) >= r$start]
+      if (length(ex) == 0) return(NULL)
+      data.frame(tissue = tissue,
+                 y = k,
+                 start = pmax(start(ex), r$start),
+                 end = pmin(end(ex), r$end),
+                 stringsAsFactors = FALSE)
+    }))
+
+    if (is.null(rows)) {
+      cat("No expressed regions were called at this locus in any tissue.\n")
+      next
+    }
+    rows$tissue <- factor(rows$tissue, levels = tissue_levels)
+
+    print(
+      ggplot(rows) +
+        geom_rect(aes(xmin = start, xmax = end,
+                      ymin = y - 0.3, ymax = y + 0.3, fill = tissue)) +
+        scale_y_continuous(breaks = seq_along(tissue_levels),
+                           labels = tissue_levels,
+                           limits = c(0.5, length(tissue_levels) + 0.5)) +
+        scale_fill_manual(values = tissue_cols, guide = "none") +
+        labs(x = paste0(r$chrom, " position (bp)"), y = NULL,
+             title = paste(r$gene, "expressed regions per tissue")) +
+        theme_bw())
+  }
+}
+```
+
+The marker tracks make the structural differences visible at single loci. The cardiac troponins TNNT2 and TNNI3 carry dense ER tracks in heart, and the skeletal troponin TNNT3 in muscle, while brain and blood are sparse or empty at these contractile loci. The same ER catalogs that drive Figure 1 sit behind each track here.
+
+## Figure 3: annotation-agnostic novel expressed regions
+
+fastder calls expressed regions without an annotation. An ER exon that does not overlap any Ensembl exon is a region transcribed in that tissue and not described by the reference. The bars below count those novel ER exons per tissue, and the fraction they make of the tissue's catalog.
+
+```{r fig3, fig.width=7, fig.height=5}
+if (length(ref_exons) == 0) {
+  cat("\nThe reference GTF was not available, so novel ERs could not be",
+      "scored.\n")
+} else {
+  novel <- do.call(rbind, lapply(tissue_levels, function(tissue) {
+    ex <- exons_by_tissue[[tissue]]
+    if (length(ex) == 0) {
+      return(data.frame(tissue = tissue, total = 0L, novel = 0L,
+                        fraction = NA_real_, stringsAsFactors = FALSE))
+    }
+    hits <- overlapsAny(ex, ref_exons, ignore.strand = TRUE)
+    data.frame(tissue = tissue,
+               total = length(ex),
+               novel = sum(!hits),
+               fraction = sum(!hits) / length(ex),
+               stringsAsFactors = FALSE)
+  }))
+  novel$tissue <- factor(novel$tissue, levels = tissue_levels)
+
+  knitr::kable(novel, caption = "Novel ER exons (no Ensembl exon overlap)",
+               row.names = FALSE, digits = 3)
+
+  print(
+    ggplot(novel, aes(tissue, novel, fill = tissue)) +
+      geom_col() +
+      geom_text(aes(label = sprintf("%d\n(%.0f%%)", novel, 100 * fraction)),
+                vjust = -0.2, size = 3.5) +
+      scale_fill_manual(values = tissue_cols, guide = "none") +
+      labs(x = NULL, y = "novel ER exons",
+           title = "Expressed regions with no overlapping Ensembl exon") +
+      theme_bw() +
+      expand_limits(y = max(novel$novel) * 1.15))
+}
+```
+
+Every tissue contributes ER exons that fall outside the Ensembl annotation. These are the annotation-agnostic calls: transcription that the reference does not list, recovered by fastder from coverage and junctions alone. Their count and fraction differ by tissue, so the novel signal is itself part of the per-tissue ER catalog.
+
+```{r session}
+sessionInfo()
+```

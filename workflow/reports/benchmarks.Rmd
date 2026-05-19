@@ -104,7 +104,7 @@ df$sample <- str_extract(df$wildcards,
 
 `r bench_dir` (`r length(files)` files).
 
-`max_rss` from snakemake's benchmark TSVs. It is the per-process peak resident set size in MiB sampled by snakemake every 10 s; multi-process rules report the parent only, so high-fan-out runs (derfinder loading per-sample BigWigs simultaneously) may under-report.
+`max_rss` comes from snakemake's benchmark TSVs. It is the per-process peak resident set size in MiB, sampled by snakemake every 10 s. Multi-process rules report the parent only, so high-fan-out runs (derfinder loading per-sample BigWigs at once) may under-report.
 
 ```{r table, results = "asis"}
 cat('<details><summary>Click to expand the full per-invocation table</summary>\n\n')
@@ -117,7 +117,7 @@ cat('\n\n</details>\n\n')
 
 ## Wall time per rule
 
-Each point is one rule invocation. Shape encodes which tool drove it (circle = fastder, triangle = derfinder, square = megadepth_baseline, x = none of these); panels split by scenario; the hollow black point marks each rule's median across invocations.
+Each point is one rule invocation. Shape encodes which tool drove it (circle = fastder, triangle = derfinder, square = megadepth_baseline, x = none of these). Panels split by scenario. The hollow black point marks each rule's median across invocations.
 
 ```{r time, fig.width = 9, fig.height = 7}
 df_pl <- df %>%
@@ -195,7 +195,7 @@ if (nrow(df_runners) > 0) {
 
 # Per-tool footprint
 
-The three tools (`fastder`, `derfinder`, `megadepth_baseline`) each run in a dedicated rule (`run_<tool>`) and feed two shared per-tool stages (`run_gffcompare`, `eval_fuzzy_metrics`). The plots below isolate the rules that carry a `tool` label so the comparison stays apples-to-apples.
+The three tools (`fastder`, `derfinder`, `megadepth_baseline`) each run in a dedicated rule (`run_<tool>`) and feed two shared per-tool stages (`run_gffcompare`, `eval_fuzzy_metrics`). The plots below keep only the rules that carry a `tool` label, so the comparison stays like-for-like.
 
 ```{r tool_subset}
 df_tool <- df %>% filter(!is.na(tool))
@@ -226,7 +226,7 @@ if (have_tool_data) {
 
 ## Tool runner: max resident memory
 
-This is the most direct way to spot which tool is memory-hungry. Derfinder loads per-sample coverage Rles for every chromosome it processes and converts them to dense numeric vectors before thresholding, so its peak grows roughly linearly in (number of samples) x (chromosome length).
+This is the most direct way to spot which tool is memory-hungry. Derfinder loads per-sample coverage Rles for every chromosome it processes and converts them to dense numeric vectors before thresholding. Its peak therefore grows roughly linearly in (number of samples) x (chromosome length).
 
 ```{r tool_runner_mem, fig.width = 8, fig.height = 4.5}
 if (have_tool_data) {

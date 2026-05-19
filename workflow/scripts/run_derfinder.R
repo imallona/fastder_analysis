@@ -70,11 +70,17 @@ bw_files <- list.files(opt$`bigwig-dir`, pattern = "\\.(all|plus|minus)\\.bw$",
 if (length(bw_files) == 0) {
   stop("[run_derfinder] No .bw files in ", opt$`bigwig-dir`)
 }
-sample_names <- sub("\\.(all|plus|minus)\\.bw$", "", basename(bw_files))
-names(bw_files) <- sample_names
+# A stranded sample has a .plus.bw and a .minus.bw; both strand tracks
+# belong to one sample. Group them so the two strands count as one sample,
+# not two, in the library-size and averaging steps below.
+sample_of <- sub("\\.(all|plus|minus)\\.bw$", "", basename(bw_files))
+samples <- split(unname(bw_files), sample_of)
+sample_ids <- names(samples)
+flat_files <- unlist(samples, use.names = FALSE)
+file_sample_idx <- rep(seq_along(samples), lengths(samples))
 
 if (length(chroms) == 0) {
-  chroms <- seqlevels(rtracklayer::BigWigFile(bw_files[1]))
+  chroms <- seqlevels(rtracklayer::BigWigFile(flat_files[1]))
 }
 
 # library_size per sample, scoped to the user's chromosomes. Matches
@@ -91,13 +97,15 @@ compute_library_size <- function(bw_path, target_chroms) {
   sum(as.numeric(width(gr)) * as.numeric(gr$score))
 }
 
-message("[run_derfinder] computing library sizes for ", length(bw_files), " samples")
-lib_sizes <- vapply(bw_files, compute_library_size, FUN.VALUE = numeric(1),
-                    target_chroms = chroms)
+message("[run_derfinder] ", length(flat_files), " BigWig files grouped into ",
+        length(samples), " samples; computing library sizes")
+lib_sizes <- vapply(samples, function(files)
+  sum(vapply(files, compute_library_size, numeric(1), target_chroms = chroms)),
+  FUN.VALUE = numeric(1))
 cpm_factors <- lib_sizes / 1e6
-for (i in seq_along(bw_files)) {
+for (i in seq_along(samples)) {
   if (cpm_factors[i] <= 0) {
-    message("[run_derfinder] WARN: ", basename(bw_files[i]),
+    message("[run_derfinder] WARN: sample ", sample_ids[i],
             " has empty library_size on chromosomes ",
             paste(chroms, collapse = ","), "; sample will be skipped.")
   }
@@ -107,7 +115,7 @@ regions_per_chrom <- list()
 for (chrom in chroms) {
   message("[run_derfinder] processing ", chrom)
   fullCov <- tryCatch(
-    fullCoverage(files = bw_files, chrs = chrom, verbose = FALSE),
+    fullCoverage(files = flat_files, chrs = chrom, verbose = FALSE),
     error = function(e) {
       message("[run_derfinder]   skip ", chrom, ": ", conditionMessage(e))
       NULL
@@ -115,25 +123,26 @@ for (chrom in chroms) {
   )
   if (is.null(fullCov) || length(fullCov[[chrom]]) == 0) next
 
-  # Mean per-sample CPM across samples. Bases unobserved by all BigWigs
-  # come back as NA from fullCoverage; treat them as zero (and any sample
-  # with empty library_size is skipped). NA in the threshold mask would
-  # propagate into IRanges construction.
-  per_sample_rles <- as.list(fullCov[[chrom]])
+  # Mean per-sample CPM across samples. fullCoverage returns one Rle per
+  # BigWig file; a stranded sample's plus and minus tracks are summed back
+  # together here so each sample counts once. Bases unobserved by all
+  # BigWigs come back as NA; treat them as zero (NA in the threshold mask
+  # would propagate into IRanges construction).
+  per_file_rles <- as.list(fullCov[[chrom]])
   acc <- numeric(0)
-  for (i in seq_along(per_sample_rles)) {
-    if (cpm_factors[i] <= 0) next
-    vec <- as.numeric(per_sample_rles[[i]])
-    vec[is.na(vec)] <- 0
-    vec <- vec / cpm_factors[i]
-    if (length(acc) == 0) {
-      acc <- vec
-    } else {
-      acc <- acc + vec
+  for (si in seq_along(samples)) {
+    if (cpm_factors[si] <= 0) next
+    sample_vec <- NULL
+    for (fi in which(file_sample_idx == si)) {
+      vec <- as.numeric(per_file_rles[[fi]])
+      vec[is.na(vec)] <- 0
+      sample_vec <- if (is.null(sample_vec)) vec else sample_vec + vec
     }
+    sample_vec <- sample_vec / cpm_factors[si]
+    acc <- if (length(acc) == 0) sample_vec else acc + sample_vec
   }
   if (length(acc) == 0) next
-  cov_vec <- acc / length(per_sample_rles)
+  cov_vec <- acc / length(samples)
   meanCov <- Rle(cov_vec)
   above <- meanCov >= opt$cutoff
   if (sum(runValue(above)) == 0) next
@@ -154,6 +163,8 @@ for (chrom in chroms) {
   gr$value <- scores
   regions_per_chrom[[chrom]] <- gr
 }
+
+dir.create(dirname(opt$`out-gtf`), recursive = TRUE, showWarnings = FALSE)
 
 if (length(regions_per_chrom) == 0) {
   warning("[run_derfinder] no expressed regions found; writing empty GTF")

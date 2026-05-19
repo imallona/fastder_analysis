@@ -1,6 +1,13 @@
 """Fuzzy fastder vs reference comparison without gffcompare's exact-boundary requirement. Produces four CSVs: reciprocal-best Jaccard per ref transcript, per-fastder-exon distance to the nearest ref exon, locus-recall at coverage thresholds from 0.05 to 1.0, and strand concordance per fastder transcript.
 
-Strand handling: if the input fastder GTF carries strand info on every exon, the Jaccard/distance/locus-recall passes use bedtools -s for same-strand matching; if every exon is unstranded ('.'), -s is dropped so the comparison falls back to position-only overlap. Coverage-based baselines (derfinder, megadepth_baseline) emit strand '.', so this auto-detection keeps the comparison meaningful for them. The strand-concordance pass always drops -s to detect discordant strand assignments.
+Strand handling: the Jaccard, distance and locus-recall passes always match on
+position only, without bedtools -s. The tools compared here are not strand
+consistent with each other: the coverage baselines emit strand '.' everywhere,
+while fastder emits a strand only for exons next to a splice junction and '.'
+for monoexonic regions. Requiring same-strand matching would silently drop
+every '.' exon, so the tools would be scored under different rules. Strand
+correctness is measured separately, and the same way for every tool, by the
+strand-concordance pass.
 
 bedtools output is streamed line-by-line so the script stays memory-bounded on full-genome RR."""
 import argparse
@@ -8,7 +15,6 @@ import csv
 import os.path as op
 import re
 import subprocess
-import sys
 import tempfile
 from collections import defaultdict
 
@@ -55,21 +61,6 @@ def gtf_or_gff_to_bed(in_path, out_path, attribute_parser):
             dst.write(f"{chrom}\t{start}\t{end}\t{tx}\t{gene}\t{strand}\n")
 
 
-def is_unstranded(bed_path):
-    """Return True if every BED-6 row has strand '.'. Coverage-based baselines
-    (derfinder, megadepth_baseline) emit strand '.' on every transcript; in
-    that case bedtools -s would drop every match and produce all-zero metrics.
-    """
-    with open(bed_path) as f:
-        for line in f:
-            if not line.strip():
-                continue
-            cols = line.rstrip("\n").split("\t")
-            if len(cols) >= 6 and cols[5] in ("+", "-"):
-                return False
-    return True
-
-
 def total_bp_per_key(bed_path, key_col):
     """Sum (end - start) grouped by the column at key_col (0-indexed)."""
     totals = defaultdict(int)
@@ -80,8 +71,7 @@ def total_bp_per_key(bed_path, key_col):
     return totals
 
 
-def reciprocal_best_jaccard(ref_bed, fastder_bed, sample, param_id, scenario, out_path,
-                            unstranded=False):
+def reciprocal_best_jaccard(ref_bed, fastder_bed, sample, param_id, scenario, out_path):
     ref_total = total_bp_per_key(ref_bed, 3)
     fastder_total = total_bp_per_key(fastder_bed, 3)
     if not ref_total:
@@ -94,8 +84,7 @@ def reciprocal_best_jaccard(ref_bed, fastder_bed, sample, param_id, scenario, ou
 
     pair_overlap = defaultdict(int)
     pair_meta = {}
-    strand_args = [] if unstranded else ["-s"]
-    cmd = ["bedtools", "intersect", *strand_args, "-wo", "-a", ref_bed, "-b", fastder_bed]
+    cmd = ["bedtools", "intersect", "-wo", "-a", ref_bed, "-b", fastder_bed]
     for line in stream_lines(cmd):
         cols = line.split("\t")
         ref_tx = cols[3]
@@ -139,15 +128,12 @@ def reciprocal_best_jaccard(ref_bed, fastder_bed, sample, param_id, scenario, ou
                 ])
 
 
-def boundary_distances(ref_bed, fastder_bed, sample, param_id, scenario, out_path,
-                       unstranded=False):
+def boundary_distances(ref_bed, fastder_bed, sample, param_id, scenario, out_path):
     """For each fastder exon, signed distance from its start to nearest ref
     exon start and from its end to nearest ref exon end. The closest call is
     run twice on single-position BEDs so each end is matched independently.
-    Negative distance = fastder boundary is upstream of the nearest ref
-    boundary on the feature's own strand. With unstranded=True the
-    same-strand requirement is dropped and bedtools picks the nearest ref
-    boundary on either strand (signed distance is then in genomic order).
+    Matching is position only; bedtools picks the nearest ref boundary on
+    either strand and the signed distance is in genomic order.
     """
     def project(bed_in, bed_out, which):
         with open(bed_in) as src, open(bed_out, "w") as dst:
@@ -159,7 +145,6 @@ def boundary_distances(ref_bed, fastder_bed, sample, param_id, scenario, out_pat
                 dst.write(f"{cols[0]}\t{pos}\t{pos + 1}\t{cols[3]}\t{cols[4]}\t{cols[5]}\n")
 
     rows = []
-    strand_args = [] if unstranded else ["-s"]
     with tempfile.TemporaryDirectory() as td:
         for which in ("start", "end"):
             ref_one = op.join(td, f"ref_{which}.bed")
@@ -168,7 +153,7 @@ def boundary_distances(ref_bed, fastder_bed, sample, param_id, scenario, out_pat
             project(fastder_bed, fast_one, which)
             for path in (ref_one, fast_one):
                 subprocess.run(["sort", "-k1,1", "-k2,2n", path, "-o", path], check=True)
-            cmd = ["bedtools", "closest", *strand_args, "-D", "ref", "-t", "first",
+            cmd = ["bedtools", "closest", "-D", "ref", "-t", "first",
                    "-a", fast_one, "-b", ref_one]
             for line in stream_lines(cmd):
                 cols = line.split("\t")
@@ -205,10 +190,9 @@ def boundary_distances(ref_bed, fastder_bed, sample, param_id, scenario, out_pat
 
 
 def locus_recall(ref_bed, fastder_bed, sample, param_id, scenario, out_path,
-                 thresholds=tuple(round(0.05 * i, 2) for i in range(1, 21)),
-                 unstranded=False):
+                 thresholds=tuple(round(0.05 * i, 2) for i in range(1, 21))):
     """Per ref locus, what fraction of its exonic bp is covered by any
-    fastder exon on the same strand (or any strand when unstranded=True).
+    fastder exon, matching on position regardless of strand.
     Recall at threshold f = fraction of loci with covered/total >= f.
     """
     locus_total = total_bp_per_key(ref_bed, 4)
@@ -218,8 +202,7 @@ def locus_recall(ref_bed, fastder_bed, sample, param_id, scenario, out_path,
                 ["scenario", "sample", "param_id", "threshold", "n_loci_recovered", "n_loci_total", "recall"])
         return
 
-    strand_args = [] if unstranded else ["-s"]
-    cmd = ["bedtools", "intersect", *strand_args, "-wo", "-a", ref_bed, "-b", fastder_bed]
+    cmd = ["bedtools", "intersect", "-wo", "-a", ref_bed, "-b", fastder_bed]
     locus_covered_intervals = defaultdict(list)
     for line in stream_lines(cmd):
         cols = line.split("\t")
@@ -333,15 +316,9 @@ def main():
         for path in (ref_bed, fastder_bed):
             subprocess.run(["sort", "-k1,1", "-k2,2n", path, "-o", path], check=True)
 
-        unstranded = is_unstranded(fastder_bed)
-        if unstranded:
-            print("[eval_fuzzy] tool GTF has no per-exon strand; "
-                  "running Jaccard / distances / locus_recall without -s.",
-                  file=sys.stderr)
-
-        reciprocal_best_jaccard(ref_bed, fastder_bed, args.sample, args.param_id, args.scenario, args.out_jaccard, unstranded=unstranded)
-        boundary_distances(ref_bed, fastder_bed, args.sample, args.param_id, args.scenario, args.out_distances, unstranded=unstranded)
-        locus_recall(ref_bed, fastder_bed, args.sample, args.param_id, args.scenario, args.out_recall, unstranded=unstranded)
+        reciprocal_best_jaccard(ref_bed, fastder_bed, args.sample, args.param_id, args.scenario, args.out_jaccard)
+        boundary_distances(ref_bed, fastder_bed, args.sample, args.param_id, args.scenario, args.out_distances)
+        locus_recall(ref_bed, fastder_bed, args.sample, args.param_id, args.scenario, args.out_recall)
         strand_concordance(ref_bed, fastder_bed, args.sample, args.param_id, args.scenario, args.out_strand)
 
 

@@ -1,0 +1,56 @@
+# Smoke test for the GTEx structural-concordance example. A reduced run
+# that exercises the whole path (recount3 gtex fetch, per-tissue-study
+# backend, fastder, the structural-concordance report) cheaply: 2 tissues,
+# 2 sub-groups each, 3 samples each (12 BigWigs), one chromosome. Use it to
+# validate before the full config_gtex_concordance.yaml run.
+#
+#   FASTDER_EVAL_CONFIG=../config/config_gtex_smoke.yaml \
+#     snakemake --use-conda --cores 12
+
+seed: 10
+cores: 12
+
+monorail:
+  ref_version: hg38
+  project_name: "recount3"
+  project_id: 104
+  backend: recount3
+
+recount3:
+  data_source: gtex
+  base_url: "https://duffel.rail.bio/recount3"
+  metadata_url: "https://duffel.rail.bio/recount3"
+  groups:
+    brain_1:
+      study: BRAIN
+      samples:
+        - GTEX-1117F-3226-SM-5N9CT.1
+        - GTEX-13O3Q-0011-R4a-SM-5P9H2.1
+        - GTEX-16GPK-0011-R11b-SM-7MKFF.1
+    brain_2:
+      study: BRAIN
+      samples:
+        - GTEX-11GSP-0011-R1a-SM-9QEJ3.1
+        - GTEX-13OW8-0011-R3a-SM-5L3I4.1
+        - GTEX-17F97-0011-R7b-SM-7MGVY.1
+    heart_1:
+      study: HEART
+      samples:
+        - GTEX-1117F-0726-SM-5GIEN.1
+        - GTEX-13SLX-0926-SM-5S2NM.1
+        - GTEX-1B8KE-0126-SM-793AM.1
+    heart_2:
+      study: HEART
+      samples:
+        - GTEX-11EM3-0626-SM-5H12Z.1
+        - GTEX-146FH-1026-SM-5RQIF.1
+        - GTEX-1C6VQ-1126-SM-7EWET.1
+
+fastder:
+  stranded: false
+  min_coverage: [1.0]
+  chromosomes: ["chr19"]
+
+gffcompare:
+  reference_annotation: ""
+

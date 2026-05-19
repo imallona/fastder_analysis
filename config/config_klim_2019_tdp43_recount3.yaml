@@ -1,0 +1,78 @@
+# Real-data config: TDP-43 knockdown vs control, using recount3 data.
+#
+# Dataset: Klim et al. 2019, Nat Neurosci, "ALS-implicated protein TDP-43
+# sustains levels of STMN2, a mediator of motor neuron growth and repair".
+# GEO GSE121569, SRA study SRP166282. HUES3-derived motor neurons, siRNA
+# knockdown of TDP-43 vs scramble control.
+#
+# This config uses the recount3 backend: per-sample coverage BigWigs and the
+# study junction matrix are downloaded from the recount3 resource, which
+# already holds the Monorail-processed outputs. The reads themselves are not
+# downloaded or aligned.
+#
+# The knockdown and control samples are kept as two separate groups. Each
+# group is processed independently (its own averaged coverage, its own
+# junction MM/RR, its own called regions), so the knockdown and control call
+# sets can be compared. The expected contrast is a TDP-43-repressed cryptic
+# exon appearing in the knockdown group and absent in the control group.
+#
+# This is the showcase config: a single clean threshold that isolates the
+# STMN2 cryptic exon, which is well above the intronic noise floor. The
+# companion config_klim_2019_tdp43_recount3_panel.yaml is the low-threshold
+# run for the wider, junction-derived cryptic exon panel.
+#
+# Run with:
+#   FASTDER_EVAL_CONFIG=../config/config_klim_2019_tdp43_recount3.yaml \
+#     snakemake --use-conda --cores 8
+# --use-singularity is not needed: the recount3 backend has no container step.
+
+seed: 10
+cores: 8
+
+monorail:
+  ref_version: hg38
+  project_name: "recount3"
+  project_id: 102
+  backend: recount3
+
+# recount3 backend settings.
+recount3:
+  # SRA study accession; all samples below must belong to it.
+  study_acc: SRP166282
+  # Host serving recount3 BigWig and junction files.
+  base_url: "http://duffel.rail.bio/recount3"
+  # Host serving recount3 metadata files.
+  metadata_url: "http://idies.jhu.edu/recount3/data"
+  # Sample groups. Key is the group name (becomes the scenario label in the
+  # results); value is the list of SRA run accessions in that group. Each
+  # group is processed separately. rail_id mapping is resolved from the
+  # downloaded study metadata.
+  groups:
+    knockdown:
+      - SRR8083867   # GSM3439292, TDP43 siRNA rep1
+      - SRR8083868   # GSM3439293, TDP43 siRNA rep2
+    control:
+      - SRR8083865   # GSM3439290, scramble siRNA rep1
+      - SRR8083866   # GSM3439291, scramble siRNA rep2
+
+fastder:
+  stranded: false
+  # Showcase run: a single clean threshold, no sweep. min_coverage is in CPM.
+  # STMN2's cryptic exon sits near 2 CPM, well above the intronic noise floor
+  # (~0.1), so 1.0 isolates it as a discrete called region. The weaker panel
+  # cryptic exons fall below this; the panel config recovers them at a low
+  # threshold using the junctions.
+  min_coverage: [1.0]
+  # chr8 carries STMN2. chr19 and chr20 are kept so this run shares the
+  # reference download with the panel run and the report renders every panel.
+  chromosomes: ["chr8", "chr19", "chr20"]
+
+gffcompare:
+  # The truth set for the recount3 backend is the downloaded Ensembl
+  # annotation, copied per sample by extract_fastder_inputs. Leave
+  # reference_annotation empty to use that download (the scope-keyed reference
+  # path is resolved by the workflow). The TDP-43 cryptic exons are not in the
+  # annotation, so they are reported as novel rather than as true positives;
+  # the cryptic-exon result is read from the report, not from the gffcompare
+  # precision numbers.
+  reference_annotation: ""

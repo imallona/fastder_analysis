@@ -121,7 +121,7 @@ class TestMeanCpmCoverage:
         _write_bw(bw_b, chrom, length, [(10, 20, 2.0)])
         cpm_a = (10 * 4.0) / 1e6
         cpm_b = (10 * 2.0) / 1e6
-        cov = rmb.mean_cpm_coverage([bw_a, bw_b], chrom, length,
+        cov = rmb.mean_cpm_coverage([[bw_a], [bw_b]], chrom, length,
                                     [cpm_a, cpm_b])
         assert cov[10] == pytest.approx(1e5)
         assert cov[15] == pytest.approx(1e5)
@@ -134,7 +134,7 @@ class TestMeanCpmCoverage:
         bw_b = str(tmp_path / "b.all.bw")
         _write_bw(bw_a, chrom, length, [(10, 20, 5.0)])
         _write_bw(bw_b, chrom, length, [])
-        cov = rmb.mean_cpm_coverage([bw_a, bw_b], chrom, length,
+        cov = rmb.mean_cpm_coverage([[bw_a], [bw_b]], chrom, length,
                                     [50.0 * 1e-6, 0.0])
         # Sample b is skipped, sample a contributes 5.0 / cpm_factor over 10
         # bases. Then we still divide by len(bw_paths) = 2.
@@ -144,28 +144,31 @@ class TestMeanCpmCoverage:
         chrom, length = "chr1", 50
         bw_a = str(tmp_path / "a.all.bw")
         _write_bw(bw_a, chrom, length, [(10, 20, 5.0)])
-        cov = rmb.mean_cpm_coverage([bw_a], chrom, length, [50.0 * 1e-6])
+        cov = rmb.mean_cpm_coverage([[bw_a]], chrom, length, [50.0 * 1e-6])
         # All positions outside the interval are 0
         assert cov[0] == pytest.approx(0.0)
         assert cov[40] == pytest.approx(0.0)
 
 
-class TestLoadBigwigs:
+class TestLoadBigwigSamples:
     def test_finds_all_bw_first(self, tmp_path):
         (tmp_path / "s1.all.bw").touch()
         (tmp_path / "s1.plus.bw").touch()
-        paths = rmb.load_bigwigs(str(tmp_path))
-        assert paths == [str(tmp_path / "s1.all.bw")]
+        samples = rmb.load_bigwig_samples(str(tmp_path))
+        assert samples == [[str(tmp_path / "s1.all.bw")]]
 
-    def test_falls_back_to_strand_specific(self, tmp_path):
+    def test_strand_tracks_group_into_one_sample(self, tmp_path):
+        # A plus and a minus track are two strands of the same sample, so
+        # they must come back as one sample, not two.
         (tmp_path / "s1.plus.bw").touch()
         (tmp_path / "s1.minus.bw").touch()
-        paths = sorted(rmb.load_bigwigs(str(tmp_path)))
-        assert [op.basename(p) for p in paths] == ["s1.minus.bw", "s1.plus.bw"]
+        samples = rmb.load_bigwig_samples(str(tmp_path))
+        assert len(samples) == 1
+        assert [op.basename(p) for p in samples[0]] == ["s1.minus.bw", "s1.plus.bw"]
 
     def test_no_bw_files_raises(self, tmp_path):
         with pytest.raises(FileNotFoundError):
-            rmb.load_bigwigs(str(tmp_path))
+            rmb.load_bigwig_samples(str(tmp_path))
 
 
 class TestCommonChroms:
