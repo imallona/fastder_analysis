@@ -37,13 +37,13 @@ study's knockdown-specific novel splice junctions. If the recount3 backend is
 run on a different study, the cryptic exon panels still render but are not
 meaningful for it.
 
-Loss of TDP-43 lets cryptic exons appear in a number of genes. The panel here
+Loss of TDP-43 lets cryptic exons appear in many genes. The panel here
 covers STMN2 on chr8, HDGFL2, ELAVL3 and CELF5 on chr19, and KCNQ2 on chr20.
 These cryptic exons are not part of the Ensembl annotation, so they cannot be
 scored as true positives. The aim is a visual check: a cryptic exon should
 show up as a called region, and usually as coverage, in the knockdown group,
 and should be weak or absent in the control group. STMN2 is the strongest
-case; the others are weaker and are clearest as a called region rather than
+case. The others are weaker and are clearest as a called region rather than
 as a coverage peak.
 
 This dataset is analysed by two runs that differ only in the `min_coverage`

@@ -621,7 +621,7 @@ The sections below sweep fastder's parameter grid and facet by AS event class. T
 
 Each ASimulatoR sample carries one alternative-splicing event class: exon skipping (ES), mutually exclusive exons (MES), alternative first exon (AFE), alternative last exon (ALE), or a four-way mix.
 
-Each event class is run through two scenarios that differ in which transcripts contribute reads to the coverage track that fastder sees. In *template + variant* (ASimulatoR default) both the canonical transcript and the alternative form are simulated, so an exon that the variant skips still receives reads from the template and shows up as a coverage dip rather than a hard zero. In *variant only* the FASTQ is post-filtered to keep reads sourced from the alternative transcript and the truth GFF is rewritten to remove templates, so the alternative-splicing signal is unambiguous: the skipped exon has zero coverage and the truth contains only the alternative isoform.
+Each event class is run through two scenarios that differ in which transcripts contribute reads to the coverage track that fastder sees. In *template + variant* (ASimulatoR default) both the canonical transcript and the alternative form are simulated. An exon that the variant skips then still receives reads from the template and shows up as a coverage dip rather than a hard zero. In *variant only* the FASTQ is post-filtered to keep reads sourced from the alternative transcript, and the truth GFF is rewritten to remove templates. The alternative-splicing signal is then unambiguous: the skipped exon has zero coverage and the truth contains only the alternative isoform.
 
 ## Per-event Jaccard against best reference partner
 
@@ -939,7 +939,7 @@ collapsible_kable(df, "Show full gffcompare summary table", digits = 2)
 
 ## Sensitivity and precision across all levels
 
-Every row in `summary.csv` carries sensitivity and precision at the six gffcompare levels. The plot below shows them on the same axes per scenario. Each coloured point is one (sample, parameter combination) at one gffcompare level. For every (scenario, level) cell the best-performing (sample, parameter) combination, defined as the one with the highest mean of sensitivity and precision, is circled in black and labelled with its AS event sample and parameter id, so the parameter combination that maximises each level is visible at a glance.
+Every row in `summary.csv` carries sensitivity and precision at the six gffcompare levels. The plot below shows them on the same axes per scenario. Each coloured point is one (sample, parameter combination) at one gffcompare level. For every (scenario, level) cell the best-performing (sample, parameter) combination is circled in black and labelled with its AS event sample and parameter id. Best here means the highest mean of sensitivity and precision, so the parameter combination that maximises each level is visible at a glance.
 
 ```{r levels_scatter, fig.width = 6, fig.height = 4}
 levels_long <- df %>%
@@ -1254,7 +1254,7 @@ if (length(scope_cols) > 0) {
 
 From `r basename(chain_path)`: `r nrow(cs)` transcripts across `r length(unique(cs$param_id))` parameter combinations.
 
-The score column reflects the per-exon mean coverage written by fastder into GTF column 6, which is what drives the "mean coverage" axis below. The truth set (the simulated splicing_variants.gff3) is overlaid in red where available, so the rendered output can be compared directly with what was simulated. The Parameters column lists each fastder parameter combination, abbreviated; mc0.01 stands for min_coverage = 0.01. The summary table below keeps every fastder parameter combination as a separate row, while the per-transcript distribution plots that follow are shown at a single representative parameter combination (the best one when the tool comparison ran, otherwise the first in sort order) so the facet grids stay readable.
+The score column reflects the per-exon mean coverage written by fastder into GTF column 6, which is what drives the "mean coverage" axis below. The truth set (the simulated splicing_variants.gff3) is overlaid in red where available, so the rendered output can be compared directly with what was simulated. The Parameters column lists each fastder parameter combination, abbreviated; mc0.01 stands for min_coverage = 0.01. The summary table below keeps every fastder parameter combination as a separate row. The per-transcript distribution plots that follow are shown at a single representative parameter combination, so the facet grids stay readable. That combination is the best one when the tool comparison ran, otherwise the first in sort order.
 
 ```{r chain_summary_table, results = "asis"}
 chain_summary <- cs %>%

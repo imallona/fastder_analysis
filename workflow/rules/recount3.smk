@@ -23,9 +23,9 @@ rule recount3_fetch_metadata:
         op.join(BENCH_DIR, "recount3", "fetch_metadata_{study}.tsv")
     params:
         url=lambda wc: (
-            f"{R3_METADATA_URL}/human/data_sources/sra/metadata/"
+            f"{R3_METADATA_URL}/human/data_sources/{R3_DATA_SOURCE}/metadata/"
             f"{_r3_shard(wc.study)}/{wc.study}/"
-            f"sra.recount_project.{wc.study}.MD.gz"
+            f"{R3_DATA_SOURCE}.recount_project.{wc.study}.MD.gz"
         ),
     conda:
         "../envs/base.yaml"
@@ -50,8 +50,8 @@ rule recount3_fetch_junctions:
         op.join(BENCH_DIR, "recount3", "fetch_junctions_{study}.tsv")
     params:
         base=lambda wc: (
-            f"{R3_BASE_URL}/human/data_sources/sra/junctions/"
-            f"{_r3_shard(wc.study)}/{wc.study}/sra.junctions.{wc.study}.ALL"
+            f"{R3_BASE_URL}/human/data_sources/{R3_DATA_SOURCE}/junctions/"
+            f"{_r3_shard(wc.study)}/{wc.study}/{R3_DATA_SOURCE}.junctions.{wc.study}.ALL"
         ),
     conda:
         "../envs/base.yaml"
@@ -78,9 +78,10 @@ rule recount3_fetch_bigwig:
         op.join(BENCH_DIR, "recount3", "fetch_bigwig_{sample}.tsv")
     params:
         url=lambda wc: (
-            f"{R3_BASE_URL}/human/data_sources/sra/base_sums/"
-            f"{_r3_shard(R3_STUDY)}/{R3_STUDY}/{_r3_shard(wc.sample)}/"
-            f"sra.base_sums.{R3_STUDY}_{wc.sample}.ALL.bw"
+            f"{R3_BASE_URL}/human/data_sources/{R3_DATA_SOURCE}/base_sums/"
+            f"{_r3_shard(R3_SAMPLE_STUDY[wc.sample])}/{R3_SAMPLE_STUDY[wc.sample]}/"
+            f"{_r3_sample_shard(wc.sample)}/"
+            f"{R3_DATA_SOURCE}.base_sums.{R3_SAMPLE_STUDY[wc.sample]}_{wc.sample}.ALL.bw"
         ),
     conda:
         "../envs/base.yaml"
@@ -96,10 +97,10 @@ rule recount3_fetch_bigwig:
 # The {scenario} wildcard is a group name (see SCENARIOS in the Snakefile).
 rule recount3_group_junctions:
     input:
-        rr=op.join(R3_DIR, "junctions", f"{R3_STUDY}.ALL.RR"),
-        mm=op.join(R3_DIR, "junctions", f"{R3_STUDY}.ALL.MM"),
-        idf=op.join(R3_DIR, "junctions", f"{R3_STUDY}.ALL.ID"),
-        metadata=op.join(R3_DIR, f"{R3_STUDY}.recount_project.tsv"),
+        rr=lambda wc: op.join(R3_DIR, "junctions", f"{R3_GROUP_STUDY[wc.scenario]}.ALL.RR"),
+        mm=lambda wc: op.join(R3_DIR, "junctions", f"{R3_GROUP_STUDY[wc.scenario]}.ALL.MM"),
+        idf=lambda wc: op.join(R3_DIR, "junctions", f"{R3_GROUP_STUDY[wc.scenario]}.ALL.ID"),
+        metadata=lambda wc: op.join(R3_DIR, f"{R3_GROUP_STUDY[wc.scenario]}.recount_project.tsv"),
     output:
         rr=op.join(R3_DIR, "{scenario}", "junctions.ALL.RR"),
         mm=op.join(R3_DIR, "{scenario}", "junctions.ALL.MM"),
@@ -110,7 +111,7 @@ rule recount3_group_junctions:
         op.join(BENCH_DIR, "recount3", "group_junctions_{scenario}.tsv")
     params:
         out_prefix=lambda wc: op.join(R3_DIR, wc.scenario, "junctions.ALL"),
-        study=R3_STUDY,
+        study=lambda wc: R3_GROUP_STUDY[wc.scenario],
         sample_args=lambda wc: " ".join(
             f"--sample {s}" for s in R3_GROUPS[wc.scenario]
         ),

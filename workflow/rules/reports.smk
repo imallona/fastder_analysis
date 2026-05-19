@@ -195,3 +195,41 @@ rule render_recount3_report:
                           study = '{params.study}'),
             quiet = TRUE)" > {log} 2>&1
         """
+
+
+# Render the GTEx structural-concordance report. Only requested by rule all
+# when the recount3 data source is gtex. Compares the per-tissue fastder
+# expressed-region catalogs structurally: a similarity heatmap, marker-locus
+# ER tracks, and the count of novel ERs absent from the Ensembl annotation.
+rule render_gtex_report:
+    input:
+        fastder_gtfs=expand(
+            op.join(DATA_DIR, "tools", "fastder", "{scenario}",
+                    PARAM_IDS_BY_TOOL["fastder"][0], "output.gtf"),
+            scenario=SCENARIOS),
+        reference_gtf=(REF_GTF if BACKEND == "recount3" else []),
+        rmd=op.join(WORKFLOW_DIR, "reports", "gtex_concordance.Rmd"),
+    output:
+        op.join(RESULTS_DIR, "gtex_concordance.html"),
+    log:
+        op.join(LOG_DIR, "render_gtex_report.log"),
+    params:
+        reference_gtf=REF_ANNOTATION,
+        # Sub-group name per fastder GTF, in input order. The GTF path
+        # component data/tools/fastder/{scenario}/... is the sub-group; the
+        # report reads the tissue from the part before the _<n> suffix.
+        subgroups=lambda wc, input: ",".join(
+            Path(g).parts[-3] for g in input.fastder_gtfs),
+    conda:
+        "../envs/rmarkdown.yaml"
+    shell:
+        """
+        gtfs=$(for g in {input.fastder_gtfs}; do realpath $g; done | paste -sd,)
+        Rscript -e "rmarkdown::render(
+            input = '{input.rmd}',
+            output_file = '$(realpath -m {output})',
+            params = list(fastder_gtfs = '$gtfs',
+                          subgroups = '{params.subgroups}',
+                          reference_gtf = '{params.reference_gtf}'),
+            quiet = TRUE)" > {log} 2>&1
+        """

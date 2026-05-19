@@ -68,16 +68,41 @@ R3_BASE_URL = RECOUNT3_CFG.get("base_url", "http://duffel.rail.bio/recount3")
 R3_METADATA_URL = RECOUNT3_CFG.get("metadata_url", "http://idies.jhu.edu/recount3/data")
 R3_DIR = op.join(DATA_DIR, "recount3")
 
-# {group_name: [run_accession, ...]}
-R3_GROUPS = RECOUNT3_CFG.get("groups", {})
-# Flat list of every run accession across all groups.
+# recount3 data source: "sra" (default) or "gtex". It selects the
+# data_sources/<source> path component and the "<source>." file-name prefix.
+R3_DATA_SOURCE = RECOUNT3_CFG.get("data_source", "sra")
+
+# groups maps a sample group to its samples. Two forms are accepted:
+#   flat   {group: [sample, ...]}                one shared study_acc
+#   nested {group: {study: <acc>, samples: [...]}}  a per-group study, for
+#       multi-study collections such as per-tissue GTEx
+# Both are normalised into a samples map (R3_GROUPS) and a per-group study map.
+R3_GROUPS = {}
+R3_GROUP_STUDY = {}
+for _grp, _spec in (RECOUNT3_CFG.get("groups") or {}).items():
+    if isinstance(_spec, dict):
+        R3_GROUPS[_grp] = list(_spec["samples"])
+        R3_GROUP_STUDY[_grp] = _spec["study"]
+    else:
+        R3_GROUPS[_grp] = list(_spec)
+        R3_GROUP_STUDY[_grp] = R3_STUDY
+# Flat list of every sample across all groups.
 R3_ALL_SAMPLES = [s for runs in R3_GROUPS.values() for s in runs]
+# sample -> study, so the per-sample BigWig URL can resolve its study.
+R3_SAMPLE_STUDY = {s: R3_GROUP_STUDY[g] for g, ss in R3_GROUPS.items() for s in ss}
 
 
 def _r3_shard(accession):
     """recount3 stores files in a directory named after the last two
-    characters of the study or run accession."""
+    characters of the study accession."""
     return accession[-2:]
+
+
+def _r3_sample_shard(sample):
+    """Directory shard for a per-sample base_sums file: the last two
+    characters of the sample id, after dropping a recount3 run suffix such
+    as the '.1' that gtex external ids carry."""
+    return sample.rsplit(".", 1)[0][-2:]
 
 
 # fastder
@@ -241,15 +266,12 @@ LIGHT_STAR_IDX = op.join(LIGHT_DIR, "star_idx_" + REF_SCOPE)
 STAR_IDX_FILES = ["SA", "SAindex", "Genome", "chrNameLength.txt",
                   "genomeParameters.txt"]
 
-# Maps each parameter name to (id_abbreviation, CLI flag, is_boolean_flag).
-# A boolean-flag param contributes the bare flag when true and nothing when
-# false; its config value list holds booleans rather than numbers.
+# Maps each parameter name to its (id_abbreviation, CLI flag).
 _PARAM_SPEC = {
-    "min_coverage":        ("mc",  "--min-coverage",        False),
-    "min_length":          ("ml",  "--min-length",          False),
-    "position_tolerance":  ("pt",  "--position-tolerance",  False),
-    "coverage_tolerance":  ("ct",  "--coverage-tolerance",  False),
-    "split_leaky_introns": ("sli", "--split-leaky-introns", True),
+    "min_coverage":       ("mc", "--min-coverage"),
+    "min_length":         ("ml", "--min-length"),
+    "position_tolerance": ("pt", "--position-tolerance"),
+    "coverage_tolerance": ("ct", "--coverage-tolerance"),
 }
 
 # Cross-product of all configured value lists; {} means "run once with all defaults".
@@ -263,25 +285,15 @@ _PARAM_COMBOS = [dict(items) for items in itertools.product(*_grid_axes)] if _gr
 
 def _param_id(combo):
     """Short, directory-safe identifier for a parameter combination."""
-    parts = []
-    for k, v in combo.items():
-        abbr, _flag, is_flag = _PARAM_SPEC[k]
-        token = int(bool(v)) if is_flag else v
-        parts.append(f"{abbr}{token}")
+    abbr = {k: spec[0] for k, spec in _PARAM_SPEC.items()}
+    parts = [f"{abbr[k]}{v}" for k, v in combo.items()]
     return "_".join(parts) if parts else "default"
 
 
 def _fastder_cli_args(combo):
     """CLI flags to pass to fastder for this combination (only explicitly-set params)."""
-    args = []
-    for k, v in combo.items():
-        _abbr, flag, is_flag = _PARAM_SPEC[k]
-        if is_flag:
-            if v:
-                args.append(flag)
-        else:
-            args.append(f"{flag} {v}")
-    return " ".join(args)
+    flag = {k: spec[1] for k, spec in _PARAM_SPEC.items()}
+    return " ".join(f"{flag[k]} {v}" for k, v in combo.items())
 
 
 PARAM_IDS = [_param_id(c) for c in _PARAM_COMBOS]
@@ -368,6 +380,11 @@ rule all:
         op.join(RESULTS_DIR, "fuzzy_strand.csv"),
         op.join(RESULTS_DIR, "truth_chain_stats.csv"),
         # The recount3 backend adds a report comparing the sample groups.
-        *([op.join(RESULTS_DIR, "recount3.html")] if BACKEND == "recount3" else []),
+        # The gtex data source gets the structural-concordance report
+        # instead, which compares the per-tissue expressed-region catalogs.
+        *([op.join(RESULTS_DIR, "gtex_concordance.html")]
+          if BACKEND == "recount3" and R3_DATA_SOURCE == "gtex"
+          else [op.join(RESULTS_DIR, "recount3.html")]
+          if BACKEND == "recount3" else []),
         op.join(RESULTS_DIR, "archive.DONE"),
     default_target: True

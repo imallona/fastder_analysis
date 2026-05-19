@@ -17,7 +17,7 @@ flowchart TD
     SIM[ASimulatoR simulated reads]
     LOCAL[local FASTQ files]
     SRA[SRA reads]
-    R3[recount3 hosted data]
+    R3[recount3 hosted data: SRA or GTEx]
 
     SIM --> PUMP[recount-pump and recount-unify]
     LOCAL --> PUMP
@@ -70,8 +70,9 @@ The `Makefile` at the repository root is the entry point. Each target runs one a
 - `make simulations` runs the full depth sweep: 5M, 10M, 30M, 40M reads.
 - `make tdp43` runs the TDP-43 recount3 showcase (the STMN2 cryptic exon, clean threshold).
 - `make tdp43-panel` runs the TDP-43 recount3 panel (five cryptic exons, low threshold).
+- `make gtex` runs the GTEx four-tissue structural-concordance showcase.
 - `make meta` knits the cross-depth report once the simulation runs are done.
-- `make all` runs the simulations, the meta report, then both tdp43 runs.
+- `make all` runs the simulations, the meta report, both tdp43 runs, then gtex.
 - `make smoke` runs a quick 2-sample smoke test.
 - `make dryrun` does a `snakemake -n`; `make unlock` releases a stale lock.
 
@@ -100,7 +101,7 @@ Backends (`monorail.backend`):
 
 - `monorail` (default): the full Monorail stack. Runs `recount-pump` and `recount-unify` in Singularity containers: STAR alignment, BigWig coverage, junction extraction, then aggregation across samples. Downloads the multi-GB Monorail reference indexes the first time it runs.
 - `monorail_light`: a lighter alternative. Runs a chromosome-restricted STAR alignment directly, then a small Python script builds the lean MM and RR files from the STAR `SJ.out.tab` outputs. No Singularity and no whole-genome reference download.
-- `recount3`: no read processing. Downloads coverage and junctions that the recount3 resource already holds, Monorail-processed, for a published SRA study, and reshapes them per sample group. No alignment and no containers. See `workflow/rules/recount3.smk`.
+- `recount3`: no read processing. Downloads coverage and junctions that the recount3 resource already holds, Monorail-processed, for a published study, and reshapes them per sample group. The `recount3.data_source` setting picks the collection: `sra` (an SRA study) or `gtex` (a GTEx tissue, where each group carries its own study). No alignment and no containers. See `workflow/rules/recount3.smk`.
 
 Read sources for the `monorail` and `monorail_light` backends (`monorail.pump_source`):
 
@@ -116,6 +117,7 @@ The configs:
 - `config/config_full_simulation_5M.yaml`, `_30M.yaml`, `_40M.yaml`: the other depths of the sweep, generated from `config_full_simulation.yaml` by `workflow/scripts/make_sim_configs.py`.
 - `config/config_klim_2019_tdp43_recount3.yaml`: real data, recount3 backend. TDP-43 knockdown versus scramble control in motor-neuron RNA-seq (recount3 study SRP166282, GEO GSE121569), split into a knockdown group and a control group, on chr8, chr19 and chr20. This is the showcase run: a single clean `min_coverage` threshold (1.0 CPM) that isolates the STMN2 cryptic exon, which is well above the intronic noise floor. `--use-singularity` is not needed for this config.
 - `config/config_klim_2019_tdp43_recount3_panel.yaml`: the panel companion of the run above. Same dataset, but a single low `min_coverage` threshold (0.02 CPM) so the wider cryptic exon panel (STMN2, HDGFL2, ELAVL3, CELF5, KCNQ2) is emitted. Only STMN2 clears the coverage noise floor; the other four are recovered through their knockdown-specific splice junctions. See "TDP-43 cryptic exons: showcase and panel" below.
+- `config/config_gtex_concordance.yaml`: real data, recount3 backend, gtex data source. fastder is run on four GTEx tissues (brain, heart, skeletal muscle, whole blood), each split into eight sample sub-groups, on chr1, chr11, chr17 and chr19. The structural-concordance report clusters the 32 per-sub-group expressed-region catalogs: the sub-groups of a tissue group together, which shows that expressed-region shape, not just abundance, carries tissue identity. `--use-singularity` is not needed for this config.
 - `config/config_local.yaml`: local FASTQ files, monorail_light backend. Edit `monorail.local_samples` to point at your own paired FASTQ files.
 - `config/config_quick_light.yaml`: 2 samples, 100k reads, chr21, monorail_light. Smoke test.
 - `config/config_quick.yaml`: 2 samples, 100k reads, chr21, monorail backend.
@@ -165,7 +167,8 @@ After a successful run, `results/<config>/` contains:
 - `fuzzy_strand.csv`: each called StitchedER classified as concordant, discordant, unstranded, or unmatched against the best-overlapping reference transcript.
 - `summary.html`: the summary report. For simulated input it grades the tools against the known truth set with the CSVs above, faceted by scenario. For runs without a simulated truth set (recount3, sra, local) it is instead a descriptive report of what each tool called and how the tool calls agree, with no precision or recall.
 - `benchmarks.html`: runtime and memory report parsed from the per-rule benchmark TSVs under `logs/benchmarks/`.
-- `recount3.html`: written only by the recount3 backend. Shows the coverage view at the TDP-43 cryptic exon loci, the knockdown and control groups side by side, and a sample dissimilarity summary.
+- `recount3.html`: written by the recount3 backend with the `sra` data source. Shows the coverage view at the TDP-43 cryptic exon loci, the knockdown and control groups side by side, and a sample dissimilarity summary.
+- `gtex_concordance.html`: written by the recount3 backend with the `gtex` data source. Clusters the per-sub-group expressed-region catalogs structurally, with marker-locus ER tracks and a count of novel ERs.
 
 ### Tool comparison
 
@@ -205,7 +208,7 @@ Adding a third tool: write `run_<tool>` that emits the standardised GTF, add a `
 
 ### Reports
 
-The rules `render_summary_report` and `render_benchmarks_report` produce `summary.html` and `benchmarks.html` at the end of a pipeline run. `render_summary_report` renders `workflow/reports/summary.Rmd` for simulated runs, which have a truth set, and `workflow/reports/summary_custom.Rmd` for runs without one (recount3, sra, local). The recount3 backend additionally runs `render_recount3_report`, which produces `recount3.html`. To rebuild only the reports without re-running upstream rules, add `--forcerun` with the report rule names to the snakemake invocation. The report rules share the conda env at `workflow/envs/rmarkdown.yaml`, which pulls R, rmarkdown and the tidyverse, ComplexHeatmap and circlize for the heatmaps, and rtracklayer and Gviz for the recount3 coverage view.
+The rules `render_summary_report` and `render_benchmarks_report` produce `summary.html` and `benchmarks.html` at the end of a pipeline run. `render_summary_report` renders `workflow/reports/summary.Rmd` for simulated runs, which have a truth set, and `workflow/reports/summary_custom.Rmd` for runs without one (recount3, sra, local). The recount3 backend additionally runs `render_recount3_report` (`recount3.html`) for the `sra` data source, or `render_gtex_report` (`gtex_concordance.html`) for the `gtex` data source. To rebuild only the reports without re-running upstream rules, add `--forcerun` with the report rule names to the snakemake invocation. The report rules share the conda env at `workflow/envs/rmarkdown.yaml`, which pulls R, rmarkdown and the tidyverse, ComplexHeatmap and circlize for the heatmaps, and rtracklayer and Gviz for the recount3 coverage view.
 
 ### Repository layout
 
@@ -251,7 +254,7 @@ Real-data settings:
 
 - `monorail.local_samples`: for `pump_source: local`. A map from sample name to its paired FASTQ paths (`fq1`, `fq2`).
 - `monorail.sra_samples`: for `pump_source: sra`. A map from run accession to its `study_acc`.
-- `recount3.study_acc` and `recount3.groups`: for the recount3 backend. The SRA study to pull, and the sample groups, where each group becomes one scenario. See `config/config_klim_2019_tdp43_recount3.yaml`.
+- `recount3.data_source`, `recount3.study_acc` and `recount3.groups`: for the recount3 backend. `data_source` is `sra` (default) or `gtex`. The sample groups each become one scenario; a group is either a plain sample list under one shared `study_acc`, or a `{study, samples}` map carrying its own study, as the per-tissue GTEx groups do. See `config/config_klim_2019_tdp43_recount3.yaml` and `config/config_gtex_concordance.yaml`.
 - `gffcompare.reference_annotation`: the annotation used as the truth set for real data (recount3, sra, local). Leave it empty to use the reference the workflow downloads; set it only to override with a different annotation. Not used for ASimulatoR input, which has its own simulated truth.
 
 ## Known issues
