@@ -117,6 +117,10 @@ rule ml_star_align:
 # BigWig generation from STAR's BAM. Stranded/unstranded mirrors the heavy
 # backend: stranded -> plus.bw + minus.bw, unstranded -> a single all.bw.
 # -split / -F 256 match the megadepth coverage semantics used by recount-pump.
+#
+# TODO(deprecate): the stranded branch below (plus.bw + minus.bw) is a
+# hack not used by the paper. Remove if the path stays unused, subject
+# to the original contributor's agreement.
 rule ml_bam_to_bigwig:
     input:
         bam=op.join(LIGHT_DIR, "{scenario}", "{sample}", "Aligned.sortedByCoord.out.bam"),

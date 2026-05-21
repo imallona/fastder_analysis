@@ -185,6 +185,11 @@ rule unify:
 # then converts to BigWig.  The -split flag ensures only aligned bases (not
 # intron spans) are counted, matching megadepth's coverage semantics.
 # -F 256 excludes secondary alignments (same as megadepth).
+#
+# TODO(deprecate): this rule only fires when fastder.stranded=true, a hack
+# not used by the paper. Remove together with the STRANDED branches in
+# fastder.smk if the path stays unused, subject to the original
+# contributor's agreement.
 rule generate_stranded_bigwigs:
     input:
         pump_dir=op.join(DATA_DIR, "pump", "{sample}"),

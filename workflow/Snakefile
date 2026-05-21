@@ -166,7 +166,7 @@ else:
 # everywhere. fastder's --position-tolerance allows a few bp of slack at
 # SJ-anchored boundaries; derfinder's --maxregiongap bridges a few bp of
 # below-threshold gap inside a region. The two are not identical, but
-# both are tolerance knobs in the bp dimension; sweeping both surfaces
+# both are tolerance settings in the bp dimension; sweeping both surfaces
 # where they end up roughly comparable.
 #
 # Possible next additions: stringtie (no-reference assembler, BAM in
@@ -241,6 +241,10 @@ HAS_SIM_TRUTH = (BACKEND != "recount3" and PUMP_SOURCE == "asimulator")
 # Each combo is a plain dict of {param_name: value} for explicitly-set params only.
 # Omitted params are not passed to fastder, which uses its own internal defaults.
 FASTDER_CFG = config.get("fastder") or {}
+# TODO(deprecate): STRANDED=True is a hack not used by the paper. Every
+# config in config/ sets stranded: false, and the three baseline runners
+# collapse any stranded input into one unstranded vector per sample.
+# Removing the stranded branches needs the original contributor's agreement.
 STRANDED = FASTDER_CFG.get("stranded", False)
 
 # Human reference download, keyed by chromosome scope. Configs that analyse
@@ -342,7 +346,7 @@ def _parse_mc_pt(param_id):
     return mc, pt
 
 
-# groHMM has its own knobs, not shared with the fastder grid. LtProbB is the
+# groHMM has its own parameters, not shared with the fastder grid. LtProbB is the
 # log-prob of remaining in the transcribed state (more negative = stricter
 # calling; default -200). UTS is the variance of the untranscribed state
 # (default 5). Set via a top-level `grohmm:` block in the config, with these

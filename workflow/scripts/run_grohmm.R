@@ -8,10 +8,11 @@
 # chromosomes), then summarises mean per 50 bp window with the kent
 # bigWigAverageOverBed utility. Per-window CPMs are averaged across samples
 # into one vector per chromosome, integer-scaled, and fed to groHMM's HMM
-# via detectTranscripts(Fp = ..., LtProbB, UTS) on the plus strand only.
-# The output transcripts are written as unstranded GTF, since recount3
-# coverage carries no strand and the derfinder / megadepth-baseline outputs
-# we are comparing against are also unstranded.
+# via detectTranscripts. groHMM requires both Fp and Fm; since recount3
+# coverage is unstranded we feed the same vector as both and deduplicate
+# the per-strand calls after unstranding. The output transcripts are
+# written as unstranded GTF, matching the derfinder / megadepth-baseline
+# outputs we are comparing against.
 #
 # Uses kent's bigWigAverageOverBed for the per-window summarisation rather
 # than rtracklayer::import.bw: the binary avoids R object materialisation and
@@ -66,6 +67,10 @@ if (length(chroms) == 0 && !is.null(opt$chromosomes)) {
   chroms <- strsplit(opt$chromosomes, "[ ,]+")[[1]]
 }
 
+# TODO(deprecate): the .plus.bw / .minus.bw branch supports the workflow's
+# stranded=true hack (see config.yaml). No paper figure uses it, but
+# removing it needs the original stranded-path contributor's agreement.
+# Until then we keep the branch and collapse both strands per sample below.
 bw_files <- list.files(opt$`bigwig-dir`, pattern = "\\.(all|plus|minus)\\.bw$",
                        full.names = TRUE)
 if (length(bw_files) == 0) {
@@ -208,7 +213,7 @@ if (n_contributing == 0L) {
 mean_cpm <- mean_cpm_sum / n_contributing
 
 # Integer-scale the float CPMs so groHMM's HMM has a count-shaped input. The
-# LtProbB / UTS knobs absorb the scale, so this constant only sets dynamic
+# LtProbB / UTS parameters absorb the scale, so this constant only sets dynamic
 # range. 100 gives roughly 1 unit per 0.01 CPM, which keeps a CPM=0.05 floor
 # at 5 units; that is enough granularity for the HMM to separate from zero.
 scaled <- as.integer(round(mean_cpm * opt$`count-scale`))
@@ -224,7 +229,11 @@ for (chrom in chroms) {
 
 message("[run_grohmm] fitting HMM (LtProbB = ", opt$ltprobb,
         ", UTS = ", opt$uts, ", windows = ", total_windows, ")")
-res <- detectTranscripts(Fp = Fp_list, LtProbB = opt$ltprobb,
+# detectTranscripts requires both Fp and Fm; recount3 coverage is unstranded
+# so we feed the same per-window vector as both. The HMM is deterministic on
+# identical input, so + and - produce identical intervals; we deduplicate
+# them below after unstranding.
+res <- detectTranscripts(Fp = Fp_list, Fm = Fp_list, LtProbB = opt$ltprobb,
                          UTS = opt$uts, threshold = 1)
 calls <- res$transcripts
 if (is.null(calls) || length(calls) == 0L) {
@@ -236,8 +245,10 @@ if (is.null(calls) || length(calls) == 0L) {
 
 # detectTranscripts returns transcripts in window units. Convert back to bp
 # and unstrand (recount3 coverage is unstranded; the other two tools also
-# output unstranded calls on the same input).
+# output unstranded calls on the same input). Because we fed identical Fp
+# and Fm above, each region is returned twice; unique() collapses the pair.
 strand(calls) <- "*"
+calls <- unique(calls)
 calls <- calls[as.character(seqnames(calls)) %in% chroms]
 if (opt$`min-length` > 1L) {
   calls <- calls[width(calls) >= opt$`min-length`]

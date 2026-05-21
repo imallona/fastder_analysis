@@ -2,6 +2,14 @@
 #
 # Included by the main Snakefile after the path constants and the parameter
 # grid block are defined.
+#
+# TODO(deprecate): every STRANDED branch in this file feeds the
+# fastder.stranded=true path, a hack not used by the paper (all configs
+# in config/ set stranded: false). The three baseline runners
+# (run_derfinder.R, run_grohmm.R, run_megadepth_baseline.py) collapse
+# any stranded input back to one unstranded vector per sample, so the
+# branches produce only fastder-relevant output. Remove if the path
+# stays unused, subject to the original contributor's agreement.
 
 
 # 7b. Extract and organise all inputs that fastder needs into a flat directory.

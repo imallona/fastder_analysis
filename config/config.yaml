@@ -52,6 +52,12 @@ monorail:
 # Omit a parameter entirely to use fastder's internal default.
 # Defaults: min_coverage=0.05, min_length=10, position_tolerance=5, coverage_tolerance=0.8
 fastder:
+  # TODO(deprecate): the stranded=true path is a hack. No paper figure uses
+  # it, and the three baseline runners (run_derfinder.R, run_grohmm.R,
+  # run_megadepth_baseline.py) collapse any .plus.bw / .minus.bw input back
+  # to one unstranded vector per sample, so stranded=true buys nothing here.
+  # Leave at false. Removal of the stranded paths from the workflow needs
+  # the original contributor's agreement.
   stranded: false  # true: strand-specific BigWigs (plus/minus), false: unstranded (all.bw from pump)
   min_coverage: [0.01]
   # min_length: [5, 10]

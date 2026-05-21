@@ -32,7 +32,13 @@ def load_bigwig_samples(bw_dir):
     files. An unstranded sample has a single .all.bw. A stranded sample has
     a .plus.bw and a .minus.bw; those are two strand tracks of the same
     sample and must be treated as one sample, not two, or the CPM library
-    sizes and the averaging run over twice as many pseudo-samples."""
+    sizes and the averaging run over twice as many pseudo-samples.
+
+    TODO(deprecate): the stranded branch supports the workflow's
+    stranded=true hack (see config.yaml). No paper figure uses it, but
+    removing it needs the original stranded-path contributor's
+    agreement. Until then we keep both branches.
+    """
     all_bw = sorted(glob.glob(op.join(bw_dir, "*.all.bw")))
     if all_bw:
         return [[p] for p in all_bw]
