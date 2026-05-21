@@ -123,6 +123,15 @@ LIGHT_DIR = op.join(DATA_DIR, "monorail_light")
 # recount3, sra or local input do not need it.
 ASIM_SAMPLES = list((config.get("asimulator") or {}).get("samples", {}).keys())
 
+# Asimulator outputs are keyed on seq_depth so the depth-sweep configs do not
+# overwrite each other and snakemake does not see a params change between
+# consecutive runs of the same `make all`. Configs without an asimulator block
+# still need ASIM_DIR defined so the rule files parse; the rule never fires
+# there. The tag uses int() so a YAML float (1e7) and an int (10000000) map to
+# the same directory.
+_ASIM_SEQ_DEPTH = (config.get("asimulator") or {}).get("seq_depth", 0)
+ASIM_DIR = op.join(DATA_DIR, "asim", f"depth_{int(_ASIM_SEQ_DEPTH)}")
+
 # Per the IMPORTANT note above, every downstream stage runs once per scenario.
 # The scenario axis depends on the input:
 #   ASimulatoR input has the two template/variant scenarios.

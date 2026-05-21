@@ -75,8 +75,8 @@ def ml_star_fastq_input(wc):
         sample_cfg = config["monorail"]["local_samples"][wc.sample]
         return {"fq1": sample_cfg["fq1"], "fq2": sample_cfg["fq2"]}
     return {
-        "fq1": op.join(DATA_DIR, "asim", wc.sample, wc.scenario, "sample_01_1.fastq"),
-        "fq2": op.join(DATA_DIR, "asim", wc.sample, wc.scenario, "sample_01_2.fastq"),
+        "fq1": op.join(ASIM_DIR, wc.sample, wc.scenario, "sample_01_1.fastq"),
+        "fq2": op.join(ASIM_DIR, wc.sample, wc.scenario, "sample_01_2.fastq"),
     }
 
 
