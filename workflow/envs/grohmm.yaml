@@ -1,0 +1,13 @@
+name: grohmm
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - r-base=4.3
+  - r-optparse
+  - bioconductor-grohmm
+  - bioconductor-genomicranges
+  - bioconductor-iranges
+  - bioconductor-s4vectors
+  - ucsc-bigwigaverageoverbed
+  - ucsc-bigwiginfo

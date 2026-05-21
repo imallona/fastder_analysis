@@ -17,8 +17,10 @@ configfile: _CFG_PATH
 WORKFLOW_DIR = workflow.basedir
 DATA_DIR = op.join(WORKFLOW_DIR, "data")
 LOG_DIR = op.join(WORKFLOW_DIR, "logs")
-# Snakemake benchmark TSVs land under logs/benchmarks/.
-BENCH_DIR = op.join(LOG_DIR, "benchmarks")
+# Snakemake benchmark TSVs land under logs/benchmarks/<config>/. The config
+# basename keeps per-config runtime numbers separated so that running a
+# second config does not overwrite the first config's benchmark TSVs.
+BENCH_DIR = op.join(LOG_DIR, "benchmarks", CONFIG_BASENAME)
 
 # Monorail
 MONORAIL_EXTERNAL = op.join(WORKFLOW_DIR, "external", "monorail-external")
@@ -172,9 +174,15 @@ else:
 # from BAM, conda env: scallop). They consume BAM rather than coverage
 # tracks, so they don't share the --min-coverage axis with the three
 # above; they would get their own grid.
-# Defaults to all three. A config may set `tools:` to a subset, for example
+# Defaults to all four. A config may set `tools:` to a subset, for example
 # [fastder] for a fastder-only run with no baseline comparison.
-_ALL_TOOLS = ["fastder", "derfinder", "megadepth_baseline"]
+#
+# grohmm is an HMM segmenter (Chae et al. 2015), originally for GRO-seq but
+# adopted on RNA-seq coverage by the TAR-scRNA-seq pipeline (Wang et al. 2021).
+# Here we run it on the same unstranded coverage bigWigs as derfinder and the
+# megadepth baseline, so the three tools share input shape and output
+# stranding (all three emit unstranded calls on recount3 input).
+_ALL_TOOLS = ["fastder", "derfinder", "megadepth_baseline", "grohmm"]
 TOOLS = config.get("tools") or _ALL_TOOLS
 for _t in TOOLS:
     if _t not in _ALL_TOOLS:
@@ -334,10 +342,33 @@ def _parse_mc_pt(param_id):
     return mc, pt
 
 
+# groHMM has its own knobs, not shared with the fastder grid. LtProbB is the
+# log-prob of remaining in the transcribed state (more negative = stricter
+# calling; default -200). UTS is the variance of the untranscribed state
+# (default 5). Set via a top-level `grohmm:` block in the config, with these
+# defaults if absent.
+def _baseline_lp_uts_param_ids():
+    grohmm_cfg = config.get("grohmm") or {}
+    lps = grohmm_cfg.get("ltprobb") or [-200]
+    utss = grohmm_cfg.get("uts") or [5]
+    return [f"lp{lp}_uts{uts}" for lp in lps for uts in utss]
+
+
+def _parse_lp_uts(param_id):
+    """Pull (LtProbB, UTS) numerics out of a lp<v>_uts<v> param_id."""
+    import re
+    lp_match = re.search(r"lp(-?[0-9.]+)", param_id)
+    uts_match = re.search(r"uts([0-9.]+)", param_id)
+    lp = float(lp_match.group(1)) if lp_match else -200.0
+    uts = float(uts_match.group(1)) if uts_match else 5.0
+    return lp, uts
+
+
 _PARAM_IDS_ALL_TOOLS = {
     "fastder": PARAM_IDS,
     "derfinder": _baseline_mc_pt_param_ids(),
     "megadepth_baseline": _baseline_mc_param_ids(),
+    "grohmm": _baseline_lp_uts_param_ids(),
 }
 # Restrict to the tools actually selected (see TOOLS above).
 PARAM_IDS_BY_TOOL = {t: _PARAM_IDS_ALL_TOOLS[t] for t in TOOLS}
