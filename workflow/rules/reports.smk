@@ -120,6 +120,7 @@ rule render_benchmarks_report:
         op.join(LOG_DIR, "render_benchmarks_report.log"),
     params:
         bench_dir=BENCH_DIR,
+        scenarios=",".join(SCENARIOS),
     conda:
         "../envs/rmarkdown.yaml"
     shell:
@@ -127,7 +128,8 @@ rule render_benchmarks_report:
         Rscript -e "rmarkdown::render(
             input = '{input.rmd}',
             output_file = '$(realpath -m {output})',
-            params = list(bench_dir = '$(realpath {params.bench_dir})'),
+            params = list(bench_dir = '$(realpath {params.bench_dir})',
+                          scenarios = '{params.scenarios}'),
             quiet = TRUE)" > {log} 2>&1
         """
 
