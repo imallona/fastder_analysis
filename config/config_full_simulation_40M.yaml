@@ -59,5 +59,14 @@ fastder:
   position_tolerance: [0, 5, 10, 20]
   chromosomes: ["chr21"]
 
+grohmm:
+  # 4 x 2 = 8 combos, matching derfinder's 8-combo grid for a fair
+  # comparison. LtProbB sweeps HMM strictness (groHMM default -200;
+  # TAR-scRNA-seq used the [-100, -300] range on RNA-seq). UTS varies
+  # the untranscribed-state variance (default 5; TAR-scRNA-seq used up
+  # to 25 on noisier data, so [5, 10] covers the default and 2x default).
+  ltprobb: [-100, -200, -300, -500]
+  uts: [5, 10]
+
 gffcompare:
   reference_annotation: ""

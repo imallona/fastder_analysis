@@ -62,6 +62,7 @@ rule render_summary_report:
         fastder_gtf=_report_tool_gtf("fastder"),
         derfinder_gtf=_report_tool_gtf("derfinder"),
         megadepth_gtf=_report_tool_gtf("megadepth_baseline"),
+        grohmm_gtf=_report_tool_gtf("grohmm"),
         # The truth label GFF is a side effect of extract_fastder_inputs;
         # depend on match_chr_prefix.DONE so it is in place before rendering.
         chr_prefix=op.join(FASTDER_DIR, _REPORT_SCENARIO, "match_chr_prefix.DONE"),
@@ -87,6 +88,7 @@ rule render_summary_report:
         fastder_gtf=$( [ -n "{input.fastder_gtf}" ] && realpath {input.fastder_gtf} || true )
         derfinder_gtf=$( [ -n "{input.derfinder_gtf}" ] && realpath {input.derfinder_gtf} || true )
         megadepth_gtf=$( [ -n "{input.megadepth_gtf}" ] && realpath {input.megadepth_gtf} || true )
+        grohmm_gtf=$( [ -n "{input.grohmm_gtf}" ] && realpath {input.grohmm_gtf} || true )
         Rscript -e "rmarkdown::render(
             input = '{input.rmd}',
             output_file = '$(realpath -m {output})',
@@ -100,6 +102,7 @@ rule render_summary_report:
                           fastder_gtf = '$fastder_gtf',
                           derfinder_gtf = '$derfinder_gtf',
                           megadepth_gtf = '$megadepth_gtf',
+                          grohmm_gtf = '$grohmm_gtf',
                           truth_gff = '$(realpath -m {params.truth_gff})',
                           track_scenario = '{params.track_scenario}'),
             quiet = TRUE)" > {log} 2>&1
@@ -131,7 +134,7 @@ rule render_benchmarks_report:
 
 # Build the manifest the recount3 report reads: one row per sample, with the
 # group it belongs to, its coverage BigWig, and its group's called-region GTF
-# for each tool (fastder, derfinder, megadepth_baseline).
+# for each tool (fastder, derfinder, megadepth_baseline, grohmm).
 def _manifest_tool_gtfs(tool):
     """Per-scenario GTFs of a tool for the recount3 manifest, or empty when
     the tool is not in the selected set."""
@@ -149,6 +152,7 @@ rule recount3_report_manifest:
         fastder_gtfs=_manifest_tool_gtfs("fastder"),
         derfinder_gtfs=_manifest_tool_gtfs("derfinder"),
         megadepth_gtfs=_manifest_tool_gtfs("megadepth_baseline"),
+        grohmm_gtfs=_manifest_tool_gtfs("grohmm"),
         bigwigs=expand(op.join(R3_DIR, "bw", "{sample}.all.bw"),
                        sample=R3_ALL_SAMPLES),
     output:
@@ -164,6 +168,7 @@ rule recount3_report_manifest:
         fastder_by_group = by_group(input.fastder_gtfs)
         derfinder_by_group = by_group(input.derfinder_gtfs)
         megadepth_by_group = by_group(input.megadepth_gtfs)
+        grohmm_by_group = by_group(input.grohmm_gtfs)
         bw_by_sample = {}
         for bw in input.bigwigs:
             name = Path(bw).name
@@ -172,7 +177,8 @@ rule recount3_report_manifest:
         with open(output.manifest, "w", newline="") as fh:
             writer = _csv.writer(fh)
             writer.writerow(["group", "sample", "bigwig",
-                             "fastder_gtf", "derfinder_gtf", "megadepth_gtf"])
+                             "fastder_gtf", "derfinder_gtf", "megadepth_gtf",
+                             "grohmm_gtf"])
             for group, samples in params.groups.items():
                 for sample in samples:
                     writer.writerow([
@@ -180,6 +186,7 @@ rule recount3_report_manifest:
                         fastder_by_group.get(group, ""),
                         derfinder_by_group.get(group, ""),
                         megadepth_by_group.get(group, ""),
+                        grohmm_by_group.get(group, ""),
                     ])
 
 

@@ -35,7 +35,7 @@ pub_theme <- theme_bw(base_size = 12) +
     legend.position = "none"
   )
 
-TOOLS <- c("fastder", "derfinder", "megadepth_baseline")
+TOOLS <- c("fastder", "derfinder", "megadepth_baseline", "grohmm")
 ```
 
 ```{r load}
@@ -67,7 +67,8 @@ df$wall_s    <- as.numeric(df$s)
 df$max_rss_mb <- as.numeric(df$max_rss)
 
 # Derive a `tool` column for rules whose benchmark files encode the tool.
-# - run_fastder, run_derfinder, run_megadepth_baseline: tool = rule suffix.
+# - run_fastder, run_derfinder, run_megadepth_baseline, run_grohmm: tool =
+#   rule suffix.
 # - run_gffcompare, eval_fuzzy_metrics, link_fastder_gtf: wildcards begin
 #   with the tool name, so we extract the leading token.
 tool_from_rule <- function(rule) {
@@ -75,6 +76,7 @@ tool_from_rule <- function(rule) {
   out[rule == "run_fastder"] <- "fastder"
   out[rule == "run_derfinder"] <- "derfinder"
   out[rule == "run_megadepth_baseline"] <- "megadepth_baseline"
+  out[rule == "run_grohmm"] <- "grohmm"
   out
 }
 tool_from_wildcards <- function(wc) {
@@ -117,7 +119,7 @@ cat('\n\n</details>\n\n')
 
 ## Wall time per rule
 
-Each point is one rule invocation. Shape encodes which tool drove it (circle = fastder, triangle = derfinder, square = megadepth_baseline, x = none of these). Panels split by scenario. The hollow black point marks each rule's median across invocations.
+Each point is one rule invocation. Shape encodes which tool drove it (circle = fastder, triangle = derfinder, square = megadepth_baseline, diamond = grohmm, x = none of these). Panels split by scenario. The hollow black point marks each rule's median across invocations.
 
 ```{r time, fig.width = 9, fig.height = 7}
 df_pl <- df %>%
@@ -133,7 +135,7 @@ ggplot(df_pl, aes(x = rule, y = wall_s, shape = tool)) +
   coord_flip() +
   scale_y_continuous(trans = "log10") +
   scale_shape_manual(values = c(fastder = 16, derfinder = 17,
-                                megadepth_baseline = 15),
+                                megadepth_baseline = 15, grohmm = 18),
                      na.value = 4) +
   facet_wrap(~ scenario_lbl, ncol = 2) +
   labs(x = NULL, y = "Wall time (s, log scale)") +
@@ -157,7 +159,7 @@ ggplot(df_pl, aes(x = rule, y = max_rss_mb, shape = tool)) +
   coord_flip() +
   scale_y_continuous(trans = "log10") +
   scale_shape_manual(values = c(fastder = 16, derfinder = 17,
-                                megadepth_baseline = 15),
+                                megadepth_baseline = 15, grohmm = 18),
                      na.value = 4) +
   facet_wrap(~ scenario_lbl, ncol = 2) +
   labs(x = NULL, y = "Max resident set size (MiB, log scale)") +
@@ -167,11 +169,11 @@ ggplot(df_pl, aes(x = rule, y = max_rss_mb, shape = tool)) +
 
 ## Wall time vs max memory (tool runners only)
 
-Each invocation of a tool runner (`run_fastder`, `run_derfinder`, `run_megadepth_baseline`) as a single point; the centroid is the median across that runner's invocations.
+Each invocation of a tool runner (`run_fastder`, `run_derfinder`, `run_megadepth_baseline`, `run_grohmm`) as a single point; the centroid is the median across that runner's invocations.
 
 ```{r scatter, fig.width = 7, fig.height = 7}
 df_runners <- df %>% filter(rule %in% c("run_fastder", "run_derfinder",
-                                        "run_megadepth_baseline"))
+                                        "run_megadepth_baseline", "run_grohmm"))
 if (nrow(df_runners) > 0) {
   df_centroids <- df_runners %>%
     group_by(rule) %>%
@@ -195,7 +197,7 @@ if (nrow(df_runners) > 0) {
 
 # Per-tool footprint
 
-The three tools (`fastder`, `derfinder`, `megadepth_baseline`) each run in a dedicated rule (`run_<tool>`) and feed two shared per-tool stages (`run_gffcompare`, `eval_fuzzy_metrics`). The plots below keep only the rules that carry a `tool` label, so the comparison stays like-for-like.
+The four tools (`fastder`, `derfinder`, `megadepth_baseline`, `grohmm`) each run in a dedicated rule (`run_<tool>`) and feed two shared per-tool stages (`run_gffcompare`, `eval_fuzzy_metrics`). The plots below keep only the rules that carry a `tool` label, so the comparison stays like-for-like.
 
 ```{r tool_subset}
 df_tool <- df %>% filter(!is.na(tool))
@@ -207,7 +209,7 @@ have_tool_data <- nrow(df_tool) > 0
 ```{r tool_runner_time, fig.width = 8, fig.height = 4.5}
 if (have_tool_data) {
   d_run <- df_tool %>% filter(rule %in% c("run_fastder", "run_derfinder",
-                                          "run_megadepth_baseline"))
+                                          "run_megadepth_baseline", "run_grohmm"))
   if (nrow(d_run) > 0) {
     ggplot(d_run, aes(x = tool, y = wall_s, fill = tool)) +
       geom_violin(alpha = 0.5, scale = "width", trim = TRUE, colour = "grey40") +
@@ -231,7 +233,7 @@ This is the most direct way to spot which tool is memory-hungry. Derfinder loads
 ```{r tool_runner_mem, fig.width = 8, fig.height = 4.5}
 if (have_tool_data) {
   d_run <- df_tool %>% filter(rule %in% c("run_fastder", "run_derfinder",
-                                          "run_megadepth_baseline"))
+                                          "run_megadepth_baseline", "run_grohmm"))
   if (nrow(d_run) > 0) {
     ggplot(d_run, aes(x = tool, y = max_rss_mb, fill = tool)) +
       geom_violin(alpha = 0.5, scale = "width", trim = TRUE, colour = "grey40") +
@@ -251,7 +253,7 @@ if (have_tool_data) {
 ```{r tool_runner_scatter, fig.width = 9, fig.height = 4}
 if (have_tool_data) {
   d_run <- df_tool %>% filter(rule %in% c("run_fastder", "run_derfinder",
-                                          "run_megadepth_baseline"))
+                                          "run_megadepth_baseline", "run_grohmm"))
   if (nrow(d_run) > 0) {
     ggplot(d_run, aes(x = wall_s, y = max_rss_mb)) +
       geom_point(size = 2.5, alpha = 0.8, colour = "grey20") +
@@ -269,7 +271,7 @@ Median, max, and total wall time and max-RSS for the per-tool rules.
 ```{r tool_summary_table, results = "asis"}
 if (have_tool_data) {
   d_run <- df_tool %>% filter(rule %in% c("run_fastder", "run_derfinder",
-                                          "run_megadepth_baseline"))
+                                          "run_megadepth_baseline", "run_grohmm"))
   if (nrow(d_run) > 0) {
     summary_tbl <- d_run %>%
       group_by(tool) %>%
