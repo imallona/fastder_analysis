@@ -147,13 +147,14 @@ gtex-pick:
 	    curl -fSL "$$url" | gunzip -c > "$$out" || { echo "fetch failed for $$t" >&2; exit 1; }; \
 	  fi; \
 	done
-	python3 $(WORKFLOW_DIR)/scripts/pick_gtex_samples.py \
+	bash -c '$(ACTIVATE) && \
+	  python3 $(WORKFLOW_DIR)/scripts/pick_gtex_samples.py \
 	  --tissues $(GTEX_PICK_TISSUES) \
 	  --metadata-dir $(GTEX_METADATA_DIR) \
 	  --seed $(GTEX_PICK_SEED) \
 	  --n-per-tissue $(GTEX_PICK_N) \
 	  --subgroups $(GTEX_PICK_GROUPS) \
-	  --apply $(GTEX_CONFIGS)
+	  --apply $(GTEX_CONFIGS)'
 
 smoke:
 	cd $(WORKFLOW_DIR) && bash -c '$(ACTIVATE) && \
