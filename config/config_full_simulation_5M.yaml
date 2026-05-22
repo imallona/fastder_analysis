@@ -61,12 +61,17 @@ fastder:
 
 grohmm:
   # 4 x 2 = 8 combos, matching derfinder's 8-combo grid for a fair
-  # comparison. LtProbB sweeps HMM strictness (groHMM default -200;
-  # TAR-scRNA-seq used the [-100, -300] range on RNA-seq). UTS varies
-  # the untranscribed-state variance (default 5; TAR-scRNA-seq used up
-  # to 25 on noisier data, so [5, 10] covers the default and 2x default).
-  ltprobb: [-100, -200, -300, -500]
-  uts: [5, 10]
+  # comparison. LtProbB is the log-prob of staying in the transcribed
+  # state; values closer to zero make the HMM leave it more readily,
+  # breaking the gene-span blocks that merge exons and introns. Those
+  # merges are the dominant base-precision loss (far larger than the
+  # 50 bp window boundary quantization), so the sweep is shifted toward
+  # zero from the earlier [-100, -500] range, where base precision and
+  # sensitivity both peaked at the least-negative end. UTS is the
+  # untranscribed-state variance (default 5); higher values raised
+  # sensitivity, so the grid uses [10, 15].
+  ltprobb: [-25, -50, -100, -200]
+  uts: [10, 15]
 
 gffcompare:
   reference_annotation: ""
