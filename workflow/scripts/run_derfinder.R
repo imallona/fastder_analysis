@@ -8,10 +8,10 @@
 # CPM is at or above --cutoff.
 #
 # The semantics match what `derfinder::findRegions` does on a single
-# coverage track, but we extract IRanges from the Rle directly so the
-# script is robust to derfinder API changes (older versions of findRegions
-# choke on logical Rles built from coverage that contains NA bases, even
-# after scrubbing).
+# coverage track, but we extract IRanges from the Rle directly to avoid
+# relying on findRegions, whose API has shifted between derfinder versions
+# (older versions choke on logical Rles built from coverage that contains
+# NA bases, even after scrubbing).
 #
 # Output schema (per region): one gene + one transcript + one exon line,
 # each scored by the mean CPM in that region.
@@ -25,7 +25,7 @@
 # The --maxregiongap mapping is a behavioural analogue rather than an
 # exact equivalent: derfinder bridges below-threshold gaps inside a
 # region, while fastder allows a few bp of slack at SJ-anchored
-# boundaries. Both are tolerance knobs in the bp dimension; the report
+# boundaries. Both are tolerance settings in the bp dimension; the report
 # sweeps both to surface where they end up roughly comparable.
 suppressPackageStartupMessages({
   library(optparse)
@@ -65,6 +65,10 @@ if (length(chroms) == 0 && !is.null(opt$chromosomes)) {
   chroms <- strsplit(opt$chromosomes, "[ ,]+")[[1]]
 }
 
+# TODO(deprecate): the .plus.bw / .minus.bw branch supports the workflow's
+# stranded=true hack (see config.yaml). No paper figure uses it, but
+# removing it needs the original stranded-path contributor's agreement.
+# Until then we keep the branch and collapse both strands per sample below.
 bw_files <- list.files(opt$`bigwig-dir`, pattern = "\\.(all|plus|minus)\\.bw$",
                        full.names = TRUE)
 if (length(bw_files) == 0) {

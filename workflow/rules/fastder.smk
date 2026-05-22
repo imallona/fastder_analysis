@@ -2,6 +2,14 @@
 #
 # Included by the main Snakefile after the path constants and the parameter
 # grid block are defined.
+#
+# TODO(deprecate): every STRANDED branch in this file feeds the
+# fastder.stranded=true path, a hack not used by the paper (all configs
+# in config/ set stranded: false). The three baseline runners
+# (run_derfinder.R, run_grohmm.R, run_megadepth_baseline.py) collapse
+# any stranded input back to one unstranded vector per sample, so the
+# branches produce only fastder-relevant output. Remove if the path
+# stays unused, subject to the original contributor's agreement.
 
 
 # 7b. Extract and organise all inputs that fastder needs into a flat directory.
@@ -47,7 +55,7 @@ def _extract_inputs(wc):
         # FASTQ input on this backend has no simulated truth.
         if PUMP_SOURCE == "asimulator":
             result["sample_gffs"] = expand(
-                op.join(DATA_DIR, "asim", "{sample}", "{scenario}", "splicing_variants.gff3"),
+                op.join(ASIM_DIR, "{sample}", "{scenario}", "splicing_variants.gff3"),
                 sample=PUMP_SAMPLES, scenario=[wc.scenario],
             )
         return result
@@ -85,7 +93,7 @@ rule extract_fastder_inputs:
         light_dir=lambda wc: op.join(LIGHT_DIR, wc.scenario),
         scenario=lambda wc: wc.scenario,
         scenario_samples=lambda wc: SAMPLES_BY_SCENARIO[wc.scenario],
-        asim_dir=op.join(DATA_DIR, "asim"),
+        asim_dir=ASIM_DIR,
         project_name=config["monorail"]["project_name"],
         ref_version=config["monorail"]["ref_version"],
         stranded=STRANDED,

@@ -72,6 +72,7 @@ The `Makefile` at the repository root is the entry point. Each target runs one a
 - `make tdp43-panel` runs the TDP-43 recount3 panel (five cryptic exons, low threshold).
 - `make gtex` runs the GTEx structural-concordance atlas (genome-wide, fastder only).
 - `make gtex-comparison` runs the GTEx tool comparison (chr19, all three tools).
+- `make gtex-pick` rewrites the two GTEx configs to cover a configurable tissue set. Samples are picked deterministically from recount3's GTEx metadata. See "Extending the GTEx tissue set" below.
 - `make meta` knits the cross-depth report once the simulation runs are done.
 - `make all` runs the simulations, the meta report, the tdp43 runs, then the gtex runs.
 - `make smoke` runs a quick 2-sample smoke test.
@@ -143,6 +144,26 @@ Loss of TDP-43 produces cryptic exons. The recount3 example is run twice, with t
 No single threshold serves both: a threshold high enough to keep STMN2 clean discards the weak cryptic exons, and a threshold low enough to emit them admits noise. The two runs make that explicit rather than hiding it in a parameter sweep. Each writes to its own `results/<config>/` directory, and both share one reference download because they use the same chromosome set (chr8, chr19, chr20).
 
 The cryptic exon panel and its coordinates are defined in `workflow/reports/recount3.Rmd`; the report draws each gene with a highlight box at the expected cryptic exon.
+
+### Setting the GTEx tissue set
+
+The two GTEx configs (`config_gtex_concordance.yaml`, `config_gtex_comparison.yaml`) carry eight sub-groups per tissue, five samples per sub-group. To (re)build the tissue list, run:
+
+```
+make gtex-pick
+```
+
+The default tissue list is `BLOOD BRAIN HEART MUSCLE LIVER LUNG TESTIS ADIPOSE_TISSUE`. The target downloads the recount3 GTEx project metadata for each tissue (into `workflow/data/recount3/`), picks samples deterministically, and rewrites the `recount3.groups` block of both configs.
+
+Override the tissue set on the command line, for example:
+
+```
+make gtex-pick GTEX_PICK_TISSUES="BLOOD BRAIN HEART MUSCLE PANCREAS THYROID KIDNEY"
+```
+
+Other variables: `GTEX_PICK_SEED` (default 10), `GTEX_PICK_N` (samples per tissue, default 40), `GTEX_PICK_GROUPS` (sub-groups per tissue, default 8). Tissue names follow recount3's GTEx project naming (uppercase, underscores).
+
+The helper script `workflow/scripts/pick_gtex_samples.py` can also run standalone. Without `--apply` it prints stanzas to standard output; with `--apply <config>...` it rewrites the listed configs in place. `make gtex-pick` is the `--apply` form against both GTEx configs.
 
 ### Scenarios and sample groups
 

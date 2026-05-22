@@ -14,6 +14,7 @@
 ##   make gtex               # GTEx structural-concordance atlas (genome-wide, fastder only)
 ##   make gtex-comparison    # GTEx tool comparison (chr19, all three tools)
 ##   make gtex-smoke         # reduced GTEx run, 12 BigWigs, to validate the path
+##   make gtex-pick          # rewrite the gtex configs to cover the configured tissue set (BLOOD BRAIN HEART MUSCLE LIVER LUNG TESTIS ADIPOSE_TISSUE by default)
 ##   make meta               # render the depth-sweep report (after the runs)
 ##   make smoke              # quick 2-sample smoke test
 ##   make all                # simulations, meta, both tdp43 runs, then gtex
@@ -43,10 +44,10 @@ SNAKEMAKE := snakemake --cores $(CORES) -p
 
 .DEFAULT_GOAL := help
 .PHONY: help all submodules sim simulations sim-5m sim-30m sim-40m tdp43 \
-        tdp43-panel gtex gtex-comparison gtex-smoke meta smoke dryrun unlock
+        tdp43-panel gtex gtex-comparison gtex-smoke gtex-pick meta smoke dryrun unlock
 
 help:
-	@echo "Targets: submodules sim simulations sim-5m sim-30m sim-40m tdp43 tdp43-panel gtex gtex-comparison gtex-smoke meta smoke all dryrun unlock"
+	@echo "Targets: submodules sim simulations sim-5m sim-30m sim-40m tdp43 tdp43-panel gtex gtex-comparison gtex-smoke gtex-pick meta smoke all dryrun unlock"
 	@echo "Variables: CORES=$(CORES) ULIMIT_KB=$(ULIMIT_KB) CONDA_ENV=$(CONDA_ENV)"
 
 ## meta only needs the simulation results, so it runs before the tdp43 runs:
@@ -113,12 +114,47 @@ gtex-comparison:
 	  FASTDER_EVAL_CONFIG=../config/config_gtex_comparison.yaml \
 	  $(SNAKEMAKE) --use-conda'
 
-## Reduced GTEx run: 2 tissues, 12 BigWigs, one chromosome. Exercises the
+## Reduced GTEx run: 2 tissues, 12 BigWigs, one chromosome. Walks the
 ## whole gtex path cheaply; run it before make gtex to validate.
 gtex-smoke:
 	cd $(WORKFLOW_DIR) && bash -c '$(ACTIVATE) && \
 	  FASTDER_EVAL_CONFIG=../config/config_gtex_smoke.yaml \
 	  $(SNAKEMAKE) --use-conda'
+
+## Rewrite the recount3.groups block of both GTEx configs to cover the
+## listed tissues. Existing tissues keep their sample IDs exactly (so
+## already-downloaded BigWigs stay valid); missing tissues are added
+## with a deterministic, seeded pick from recount3's GTEx metadata.
+## Re-running is idempotent. Override TISSUES, SEED, N_PER_TISSUE or
+## SUBGROUPS on the command line if needed.
+GTEX_PICK_TISSUES ?= BLOOD BRAIN HEART MUSCLE LIVER LUNG TESTIS ADIPOSE_TISSUE
+GTEX_PICK_SEED    ?= 10
+GTEX_PICK_N       ?= 40
+GTEX_PICK_GROUPS  ?= 8
+GTEX_METADATA_DIR := $(WORKFLOW_DIR)/data/recount3
+GTEX_RECOUNT3_URL := https://duffel.rail.bio/recount3/human/data_sources/gtex/metadata
+GTEX_CONFIGS      := config/config_gtex_comparison.yaml \
+                     config/config_gtex_concordance.yaml
+
+gtex-pick:
+	mkdir -p $(GTEX_METADATA_DIR)
+	@for t in $(GTEX_PICK_TISSUES); do \
+	  out="$(GTEX_METADATA_DIR)/$$t.recount_project.tsv"; \
+	  if [ ! -f "$$out" ]; then \
+	    shard=$$(printf '%s' "$$t" | tail -c 2); \
+	    url="$(GTEX_RECOUNT3_URL)/$$shard/$$t/gtex.recount_project.$$t.MD.gz"; \
+	    echo "fetching $$t metadata from $$url" >&2; \
+	    curl -fSL "$$url" | gunzip -c > "$$out" || { echo "fetch failed for $$t" >&2; exit 1; }; \
+	  fi; \
+	done
+	bash -c '$(ACTIVATE) && \
+	  python3 $(WORKFLOW_DIR)/scripts/pick_gtex_samples.py \
+	  --tissues $(GTEX_PICK_TISSUES) \
+	  --metadata-dir $(GTEX_METADATA_DIR) \
+	  --seed $(GTEX_PICK_SEED) \
+	  --n-per-tissue $(GTEX_PICK_N) \
+	  --subgroups $(GTEX_PICK_GROUPS) \
+	  --apply $(GTEX_CONFIGS)'
 
 smoke:
 	cd $(WORKFLOW_DIR) && bash -c '$(ACTIVATE) && \

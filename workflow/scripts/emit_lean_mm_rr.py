@@ -139,7 +139,7 @@ def main():
             if reads < args.min_reads:
                 continue
             sj_id = key_to_sjid[key]
-            # fastder ignores the count value — write 1 to keep MM compact
+            # fastder ignores the count value, so write 1 to keep MM compact
             triples.append((sj_id, sample_idx, 1))
 
     # MatrixMarket header: n_rows n_cols n_nonzero

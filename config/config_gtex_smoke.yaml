@@ -1,5 +1,5 @@
 # Smoke test for the GTEx structural-concordance example. A reduced run
-# that exercises the whole path (recount3 gtex fetch, per-tissue-study
+# that walks the whole path (recount3 gtex fetch, per-tissue-study
 # backend, fastder, the structural-concordance report) cheaply: 2 tissues,
 # 2 sub-groups each, 3 samples each (12 BigWigs), one chromosome. Use it to
 # validate before the full config_gtex_concordance.yaml run.

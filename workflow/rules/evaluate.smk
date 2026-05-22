@@ -201,7 +201,7 @@ rule collect_truth_stats:
         # local input have nothing to aggregate; the rule then writes a
         # header-only CSV.
         gffs=lambda wc: (expand(
-            op.join(DATA_DIR, "asim", "{sample}", "{scenario}", "splicing_variants.gff3"),
+            op.join(ASIM_DIR, "{sample}", "{scenario}", "splicing_variants.gff3"),
             sample=PUMP_SAMPLES, scenario=SCENARIOS) if HAS_SIM_TRUTH else []),
     output:
         op.join(RESULTS_DIR, "truth_chain_stats.csv"),

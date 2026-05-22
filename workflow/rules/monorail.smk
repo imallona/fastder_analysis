@@ -12,8 +12,8 @@ def pump_input(wildcards):
     """
     if PUMP_SOURCE == "asimulator":
         return {
-            "fq1": op.join(DATA_DIR, "asim", wildcards.sample, "sample_01_1.fastq"),
-            "fq2": op.join(DATA_DIR, "asim", wildcards.sample, "sample_01_2.fastq"),
+            "fq1": op.join(ASIM_DIR, wildcards.sample, "sample_01_1.fastq"),
+            "fq2": op.join(ASIM_DIR, wildcards.sample, "sample_01_2.fastq"),
         }
     if PUMP_SOURCE == "local":
         sample_cfg = config["monorail"]["local_samples"][wildcards.sample]
@@ -89,8 +89,8 @@ rule pump:
         # they differ only in where the files are. sra downloads at run time.
         if PUMP_SOURCE in ("asimulator", "local"):
             if PUMP_SOURCE == "asimulator":
-                fp1 = op.join(DATA_DIR, "asim", wildcards.sample, "sample_01_1.fastq")
-                fp2 = op.join(DATA_DIR, "asim", wildcards.sample, "sample_01_2.fastq")
+                fp1 = op.join(ASIM_DIR, wildcards.sample, "sample_01_1.fastq")
+                fp2 = op.join(ASIM_DIR, wildcards.sample, "sample_01_2.fastq")
             else:
                 sample_cfg = config["monorail"]["local_samples"][wildcards.sample]
                 fp1 = sample_cfg["fq1"]
@@ -185,6 +185,11 @@ rule unify:
 # then converts to BigWig.  The -split flag ensures only aligned bases (not
 # intron spans) are counted, matching megadepth's coverage semantics.
 # -F 256 excludes secondary alignments (same as megadepth).
+#
+# TODO(deprecate): this rule only fires when fastder.stranded=true, a hack
+# not used by the paper. Remove together with the STRANDED branches in
+# fastder.smk if the path stays unused, subject to the original
+# contributor's agreement.
 rule generate_stranded_bigwigs:
     input:
         pump_dir=op.join(DATA_DIR, "pump", "{sample}"),

@@ -16,6 +16,7 @@ params:
   fastder_gtf: NULL
   derfinder_gtf: NULL
   megadepth_gtf: NULL
+  grohmm_gtf: NULL
   truth_gff: NULL
   track_scenario: NULL
 ---
@@ -39,9 +40,10 @@ suppressPackageStartupMessages({
   library(GenomicRanges)
 })
 
-tool_levels <- c("megadepth_baseline", "derfinder", "fastder")
+tool_levels <- c("megadepth_baseline", "derfinder", "grohmm", "fastder")
 tool_palette <- c(megadepth_baseline = "#66c2a5",
                   derfinder = "#fc8d62",
+                  grohmm = "#e78ac3",
                   fastder = "#8da0cb")
 
 # Read a CSV if it exists and is non-empty, otherwise return NULL so each
@@ -240,7 +242,8 @@ import_exons <- function(path) {
 
 gtfs <- list(fastder = import_exons(params$fastder_gtf),
              derfinder = import_exons(params$derfinder_gtf),
-             megadepth_baseline = import_exons(params$megadepth_gtf))
+             megadepth_baseline = import_exons(params$megadepth_gtf),
+             grohmm = import_exons(params$grohmm_gtf))
 gtfs <- gtfs[!vapply(gtfs, is.null, logical(1))]
 
 if (length(gtfs) >= 2) {

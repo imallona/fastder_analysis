@@ -91,7 +91,7 @@ knitr::kable(regions, caption = "Cryptic exon panel: plot window and expected cr
 For each gene the panel shows, from top to bottom: the position axis, the
 Ensembl gene models, one coverage track per sample (knockdown in red, control
 in blue), and the called regions of each tool (fastder, derfinder,
-megadepth_baseline) for each group. The shaded box marks the expected cryptic
+megadepth_baseline, grohmm) for each group. The shaded box marks the expected cryptic
 exon. A cryptic exon should appear as a coverage signal inside an intron in
 the knockdown samples that is missing in the control samples, with a matching
 called region in the knockdown group. The cryptic exon is not in the Ensembl
@@ -115,14 +115,17 @@ if (nzchar(params$reference_gtf) && file.exists(params$reference_gtf)) {
 # Manifest column and track color for each tool.
 tools <- c(fastder = "fastder_gtf",
            derfinder = "derfinder_gtf",
-           megadepth_baseline = "megadepth_gtf")
+           megadepth_baseline = "megadepth_gtf",
+           grohmm = "grohmm_gtf")
 tool_colors <- c(fastder = "#1b9e77",
                  derfinder = "#d95f02",
-                 megadepth_baseline = "#7570b3")
+                 megadepth_baseline = "#7570b3",
+                 grohmm = "#e7298a")
 # Short track-title labels; "megadepth_baseline" is too long for the strip.
 tool_labels <- c(fastder = "fastder",
                  derfinder = "derfinder",
-                 megadepth_baseline = "megadepth")
+                 megadepth_baseline = "megadepth",
+                 grohmm = "grohmm")
 
 # Keep only the transcript features, so each called region is one block
 # rather than a gene/transcript/exon triple drawn on top of each other.

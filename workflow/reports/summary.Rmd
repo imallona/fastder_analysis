@@ -16,6 +16,7 @@ params:
   fastder_gtf: NULL
   derfinder_gtf: NULL
   megadepth_gtf: NULL
+  grohmm_gtf: NULL
   truth_gff: NULL
   track_scenario: NULL
 ---
@@ -149,7 +150,7 @@ fuzzy <- lapply(fuzzy_all, function(d) {
 
 # Tool comparison
 
-fastder vs the coverage baselines on the same simulated truth. Shared axes: `mc` (all three tools), `pt` (fastder + derfinder). Each panel below picks the best fastder param combo and matches the baselines at the same `mc` (and `pt` for derfinder).
+fastder vs the baseline tools on the same simulated truth. Shared axes: `mc` (fastder, derfinder, megadepth_baseline), `pt` (fastder + derfinder). Each panel below picks the best fastder param combo and matches derfinder and megadepth_baseline at the same `mc` (and `pt` for derfinder). grohmm shares no axis with the fastder grid, so it is shown at its own best param combo by median Jaccard.
 
 Note on metric choice. Jaccard, locus recall and base sensitivity reward tools that emit a few large transcripts spanning entire loci, which is what the coverage baselines do by construction. fastder splits each locus into many isoform-like calls, so its best-1 Jaccard against a multi-exon reference is small. The metrics that reflect what fastder actually does live under "Splice-junction-aware metrics" below: boundary precision at small bp tolerances and the count of multi-exon transcripts produced.
 
@@ -178,10 +179,22 @@ if (have_tool_data) {
   best_megadepth_pid <- sprintf("mc%s", format(best_mc, trim = TRUE))
   best_derfinder_pid <- sprintf("mc%s_pt%s", format(best_mc, trim = TRUE),
                                 format(best_pt, trim = TRUE))
+  # grohmm has no axis shared with the fastder mc/pt grid, so it cannot be
+  # matched to the fastder pick. Take grohmm's own best param by median
+  # Jaccard. NA when grohmm is absent, which keeps the filter empty.
+  best_grohmm_pid <- fuzzy_all$jaccard %>%
+    filter(tool == "grohmm") %>%
+    mutate(jaccard = as.numeric(jaccard)) %>%
+    group_by(param_id) %>%
+    summarise(median_jaccard = median(jaccard), .groups = "drop") %>%
+    slice_max(median_jaccard, n = 1, with_ties = FALSE) %>%
+    pull(param_id)
+  if (length(best_grohmm_pid) == 0) best_grohmm_pid <- NA_character_
   pick_tool_param <- function(d) {
     d %>% filter((tool == "fastder" & param_id == best_fastder_pid) |
                  (tool == "megadepth_baseline" & param_id == best_megadepth_pid) |
-                 (tool == "derfinder" & param_id == best_derfinder_pid))
+                 (tool == "derfinder" & param_id == best_derfinder_pid) |
+                 (tool == "grohmm" & param_id == best_grohmm_pid))
   }
 }
 ```
@@ -189,8 +202,8 @@ if (have_tool_data) {
 ```{r tool_picked, results = "asis"}
 if (have_tool_data) {
   cat(sprintf(
-    "Selected: fastder `%s`, derfinder `%s`, megadepth_baseline `%s` (shared mc = %s, pt = %s).\n\n",
-    best_fastder_pid, best_derfinder_pid, best_megadepth_pid,
+    "Selected: fastder `%s`, derfinder `%s`, megadepth_baseline `%s`, grohmm `%s` (shared mc = %s, pt = %s; grohmm picked at its own best Jaccard).\n\n",
+    best_fastder_pid, best_derfinder_pid, best_megadepth_pid, best_grohmm_pid,
     format(best_mc), format(best_pt)
   ))
 }
@@ -310,7 +323,8 @@ if (have_tool_data && !is.null(fuzzy_all$distances) && nrow(fuzzy_all$distances)
     geom_point(size = 3, alpha = 0.9) +
     scale_colour_brewer(palette = "Set2", name = NULL) +
     scale_shape_manual(values = c(fastder = 16, derfinder = 17,
-                                  megadepth_baseline = 15), name = NULL) +
+                                  megadepth_baseline = 15, grohmm = 18),
+                       name = NULL) +
     scale_x_continuous(breaks = thresholds_bp, trans = "log1p",
                        labels = ifelse(thresholds_bp == 0,
                                        "0 bp",
@@ -343,12 +357,13 @@ if (have_tool_data && !is.null(fuzzy_all$distances) && nrow(fuzzy_all$distances)
            abs_distance = abs(distance),
            scenario = relabel_scenario(scenario),
            tool = factor(tool, levels = c("megadepth_baseline",
-                                          "derfinder", "fastder")))
+                                          "derfinder", "grohmm", "fastder")))
   ggplot(fd, aes(x = abs_distance, colour = tool, linetype = tool)) +
     stat_ecdf(geom = "step", linewidth = 0.8, alpha = 0.8) +
     scale_colour_brewer(palette = "Set2", name = NULL) +
     scale_linetype_manual(values = c(megadepth_baseline = "11",
                                      derfinder = "32",
+                                     grohmm = "44",
                                      fastder = "solid"),
                           name = NULL) +
     scale_x_continuous(trans = "log1p",
@@ -389,7 +404,8 @@ if (have_tool_data && !is.null(fuzzy_all$jaccard) && nrow(fuzzy_all$jaccard) > 0
                              box.padding = 0.5, max.overlaps = Inf) +
     scale_colour_brewer(palette = "Set2", name = NULL) +
     scale_shape_manual(values = c(fastder = 16, derfinder = 17,
-                                  megadepth_baseline = 15), name = NULL) +
+                                  megadepth_baseline = 15, grohmm = 18),
+                       name = NULL) +
     scale_x_log10() +
     scale_y_log10() +
     facet_wrap(~ scenario, ncol = 2) +
@@ -409,7 +425,8 @@ if ("tool" %in% names(df_all) && nrow(df_all) > 0) {
   d <- df_all %>%
     filter((tool == "fastder" & param_id == best_fastder_pid) |
            (tool == "megadepth_baseline" & param_id == best_megadepth_pid) |
-           (tool == "derfinder" & param_id == best_derfinder_pid)) %>%
+           (tool == "derfinder" & param_id == best_derfinder_pid) |
+           (tool == "grohmm" & param_id == best_grohmm_pid)) %>%
     distinct(tool, scenario, param_id, query_mrnas, query_multi_exon) %>%
     mutate(query_mrnas = as.integer(query_mrnas),
            query_multi_exon = as.integer(query_multi_exon),
@@ -429,7 +446,8 @@ if ("tool" %in% names(df_all) && nrow(df_all) > 0) {
                              box.padding = 0.5, max.overlaps = Inf) +
     scale_colour_brewer(palette = "Set2", name = NULL) +
     scale_shape_manual(values = c(fastder = 16, derfinder = 17,
-                                  megadepth_baseline = 15), name = NULL) +
+                                  megadepth_baseline = 15, grohmm = 18),
+                       name = NULL) +
     scale_x_log10() +
     scale_y_log10() +
     facet_wrap(~ scenario, ncol = 2) +
@@ -480,7 +498,8 @@ if ("tool" %in% names(df_all) && nrow(df_all) > 0) {
   d <- df_all %>%
     filter((tool == "fastder" & param_id == best_fastder_pid) |
            (tool == "megadepth_baseline" & param_id == best_megadepth_pid) |
-           (tool == "derfinder" & param_id == best_derfinder_pid)) %>%
+           (tool == "derfinder" & param_id == best_derfinder_pid) |
+           (tool == "grohmm" & param_id == best_grohmm_pid)) %>%
     mutate(scenario = relabel_scenario(scenario))
   sp <- bind_rows(
     d %>% transmute(tool, scenario, level = "Transcript",
@@ -521,7 +540,8 @@ if (track_ok) {
     truth <- imp(params$truth_gff)
     tool_paths <- list(fastder = params$fastder_gtf,
                        derfinder = params$derfinder_gtf,
-                       megadepth_baseline = params$megadepth_gtf)
+                       megadepth_baseline = params$megadepth_gtf,
+                       grohmm = params$grohmm_gtf)
     tool_gr <- lapply(tool_paths, function(p) {
       if (!is.null(p) && file.exists(p)) imp(p) else GenomicRanges::GRanges()
     })
@@ -547,7 +567,8 @@ if (track_ok) {
            atrack(truth, "truth", "grey40"),
            atrack(tool_gr$fastder, "fastder", "#1b9e77"),
            atrack(tool_gr$derfinder, "derfinder", "#d95f02"),
-           atrack(tool_gr$megadepth_baseline, "megadepth", "#7570b3")),
+           atrack(tool_gr$megadepth_baseline, "megadepth", "#7570b3"),
+           atrack(tool_gr$grohmm, "grohmm", "#e7298a")),
       from = from, to = to, chromosome = chrom,
       background.title = "white", col.title = "black", col.axis = "black",
       main = sprintf("%s  %s:%d-%d", top, chrom, from, to), cex.main = 0.9)
@@ -606,7 +627,8 @@ if (have_tool_data && nrow(df_all) > 0 && "tool" %in% names(df_all)) {
   d <- df_all %>%
     filter((tool == "fastder" & param_id == best_fastder_pid) |
            (tool == "megadepth_baseline" & param_id == best_megadepth_pid) |
-           (tool == "derfinder" & param_id == best_derfinder_pid)) %>%
+           (tool == "derfinder" & param_id == best_derfinder_pid) |
+           (tool == "grohmm" & param_id == best_grohmm_pid)) %>%
     select(tool, scenario, sample, param_id,
            matches("_(sens|prec)$"), matches("matching"))
   collapsible_kable(d, "Show per-tool gffcompare table", digits = 2)
@@ -992,7 +1014,7 @@ ggplot(levels_long, aes(x = sens, y = prec, colour = level, shape = level)) +
 
 ### All tools, stratified by level and scenario
 
-Same six gffcompare levels but with all three tools overlaid. One sub-panel per (level, scenario), tool on the x-axis. Both sensitivity and precision are shown.
+Same six gffcompare levels but with all four tools overlaid. One sub-panel per (level, scenario), tool on the x-axis. Both sensitivity and precision are shown.
 
 ```{r levels_scatter_per_tool, fig.width = 12, fig.height = 7}
 if ("tool" %in% names(df_all) && nrow(df_all) > 0) {
@@ -1013,7 +1035,8 @@ if ("tool" %in% names(df_all) && nrow(df_all) > 0) {
                  colour = "black", fill = "white", stroke = 0.7) +
     scale_colour_brewer(palette = "Set2", name = NULL) +
     scale_shape_manual(values = c(fastder = 16, derfinder = 17,
-                                  megadepth_baseline = 15), name = NULL) +
+                                  megadepth_baseline = 15, grohmm = 18),
+                       name = NULL) +
     coord_cartesian(ylim = c(0, 100)) +
     facet_grid(metric ~ level + scenario,
                labeller = labeller(.cols = label_value)) +
