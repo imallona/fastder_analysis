@@ -37,6 +37,15 @@ pub_theme <- theme_bw(base_size = 12) +
   )
 
 TOOLS <- c("fastder", "derfinder", "megadepth_baseline", "grohmm")
+
+# Tool palette. Same hex values as summary.Rmd so the two reports stay
+# consistent. Keys are the tool names as they appear in the benchmark TSVs.
+tool_palette <- c(
+  derfinder          = "#66C2A5",
+  fastder            = "#FC8D62",
+  grohmm             = "#8DA0CB",
+  megadepth_baseline = "#E78AC3"
+)
 ```
 
 ```{r load}
@@ -190,27 +199,29 @@ ggplot(df_pl, aes(x = rule, y = max_rss_mb, shape = tool)) +
 
 ## Wall time vs max memory (tool runners only)
 
-Each invocation of a tool runner (`run_fastder`, `run_derfinder`, `run_megadepth_baseline`, `run_grohmm`) as a single point; the centroid is the median across that runner's invocations.
+Each invocation of a tool runner (`run_fastder`, `run_derfinder`, `run_megadepth_baseline`, `run_grohmm`) as a single point coloured by tool. The larger solid point is the median across that tool's invocations.
 
 ```{r scatter, fig.width = 7, fig.height = 7}
 df_runners <- df %>% filter(rule %in% c("run_fastder", "run_derfinder",
                                         "run_megadepth_baseline", "run_grohmm"))
 if (nrow(df_runners) > 0) {
   df_centroids <- df_runners %>%
-    group_by(rule) %>%
+    group_by(tool) %>%
     summarise(wall_s = median(wall_s, na.rm = TRUE),
               max_rss_mb = median(max_rss_mb, na.rm = TRUE),
               .groups = "drop")
-  ggplot(df_runners, aes(x = wall_s, y = max_rss_mb)) +
-    geom_point(size = 2, alpha = 0.4, colour = "grey40") +
-    ggrepel::geom_text_repel(data = df_centroids, aes(label = rule),
-                             size = 3, max.overlaps = Inf,
-                             segment.color = "grey60", segment.size = 0.3) +
-    geom_point(data = df_centroids, size = 2.4, colour = "grey15") +
+  ggplot(df_runners, aes(x = wall_s, y = max_rss_mb, colour = tool)) +
+    geom_point(size = 2, alpha = 0.35) +
+    geom_point(data = df_centroids, size = 4, stroke = 0.6,
+               colour = "black", aes(fill = tool), shape = 21,
+               show.legend = FALSE) +
+    scale_colour_manual(values = tool_palette, name = NULL) +
+    scale_fill_manual(values = tool_palette, guide = "none") +
     scale_x_continuous(trans = "log10") +
     scale_y_continuous(trans = "log10") +
     labs(x = "Wall time (s, log scale)", y = "Max RSS (MiB, log scale)") +
-    pub_theme
+    pub_theme +
+    theme(legend.position = "right")
 } else {
   cat("no tool runner benchmarks yet")
 }
@@ -237,7 +248,7 @@ if (have_tool_data) {
       geom_jitter(width = 0.15, size = 1.4, alpha = 0.6) +
       stat_summary(fun = median, geom = "point", shape = 21, size = 3,
                    colour = "black", fill = "white", stroke = 0.7) +
-      scale_fill_brewer(palette = "Set2", guide = "none") +
+      scale_fill_manual(values = tool_palette, guide = "none") +
       labs(x = NULL, y = "Wall time (s)") +
       pub_theme +
       theme(axis.text.x = element_text(angle = 30, hjust = 1))
@@ -261,7 +272,7 @@ if (have_tool_data) {
       geom_jitter(width = 0.15, size = 1.4, alpha = 0.6) +
       stat_summary(fun = median, geom = "point", shape = 21, size = 3,
                    colour = "black", fill = "white", stroke = 0.7) +
-      scale_fill_brewer(palette = "Set2", guide = "none") +
+      scale_fill_manual(values = tool_palette, guide = "none") +
       labs(x = NULL, y = "Max RSS (MiB)") +
       pub_theme +
       theme(axis.text.x = element_text(angle = 30, hjust = 1))

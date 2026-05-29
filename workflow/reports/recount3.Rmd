@@ -117,10 +117,15 @@ tools <- c(fastder = "fastder_gtf",
            derfinder = "derfinder_gtf",
            megadepth_baseline = "megadepth_gtf",
            grohmm = "grohmm_gtf")
-tool_colors <- c(fastder = "#1b9e77",
-                 derfinder = "#d95f02",
-                 megadepth_baseline = "#7570b3",
-                 grohmm = "#e7298a")
+# Tool palette. Same hex values as summary.Rmd, benchmarks.Rmd and
+# summary_custom.Rmd so the TDP-43 panels carry the same tool colours as
+# the rest of the reports.
+tool_colors <- c(
+  derfinder          = "#66C2A5",
+  fastder            = "#FC8D62",
+  grohmm             = "#8DA0CB",
+  megadepth_baseline = "#E78AC3"
+)
 # Short track-title labels; "megadepth_baseline" is too long for the strip.
 tool_labels <- c(fastder = "fastder",
                  derfinder = "derfinder",
