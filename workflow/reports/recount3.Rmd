@@ -132,14 +132,20 @@ tool_labels <- c(fastder = "fastder",
                  megadepth_baseline = "megadepth",
                  grohmm = "grohmm")
 
-# Keep only the transcript features, so each called region is one block
-# rather than a gene/transcript/exon triple drawn on top of each other.
+# Keep the exon features rather than the transcript features. fastder
+# emits one transcript per stitched ER, spanning from the first exon's start
+# to the last exon's end (intron included). Plotting transcripts collapses
+# every multi-exon stitched ER into one wide bar covering its introns, which
+# hides whether the cryptic exon was called as its own ER. Plotting exons
+# instead shows each ER component as a separate bar, so the cryptic exon
+# block is visible. The other tools emit single-exon transcripts, so their
+# tracks look the same under either filter.
 load_regions <- function(gtf) {
   if (length(gtf) == 0 || !nzchar(gtf) || !file.exists(gtf)) return(GRanges())
   gr <- tryCatch(import(gtf), error = function(e) GRanges())
   if (length(gr) > 0 && "type" %in% colnames(mcols(gr))) {
-    tx <- gr[!is.na(gr$type) & gr$type == "transcript"]
-    if (length(tx) > 0) gr <- tx
+    ex <- gr[!is.na(gr$type) & gr$type == "exon"]
+    if (length(ex) > 0) gr <- ex
   }
   gr
 }
@@ -153,6 +159,40 @@ for (tool in names(tools)) {
     regions_by[[tool]][[group]] <- load_regions(if (length(gtf)) gtf[1] else "")
   }
 }
+
+# Per-sample CPM scaling. fastder's library_size is the area under the
+# coverage curve, sum(width * coverage), and CPM is raw_coverage * 1e6 /
+# library_size. Recomputing the same factor from the BigWig keeps the Y
+# axis of the coverage tracks in the same units as the --min-coverage
+# threshold, so the threshold horizontal line is meaningful.
+cpm_scale <- function(bigwig) {
+  if (!nzchar(bigwig) || !file.exists(bigwig)) return(1.0)
+  gr <- tryCatch(rtracklayer::import(bigwig, as = "GRanges"),
+                 error = function(e) NULL)
+  if (is.null(gr) || length(gr) == 0) return(1.0)
+  lib <- sum(as.numeric(width(gr)) * as.numeric(score(gr)))
+  if (!is.finite(lib) || lib <= 0) 1.0 else 1e6 / lib
+}
+manifest$cpm_factor <- vapply(manifest$bigwig, cpm_scale, numeric(1))
+
+# Coverage threshold used by fastder for this run. Pulled from the GTF
+# transcript IDs by parsing the parameter id (e.g. mc0.02_ct1.0_ml10_pt5).
+# Falls back to 0.05 (the fastder default) when no GTF is available.
+extract_min_cov <- function() {
+  for (tool in c("fastder")) {
+    for (group in groups) {
+      gtf <- unique(manifest[[tools[[tool]]]][manifest$group == group])
+      if (length(gtf) && nzchar(gtf[1]) && file.exists(gtf[1])) {
+        m <- regmatches(gtf[1], regexpr("mc[0-9.]+", gtf[1]))
+        if (length(m) && nchar(m)) {
+          return(as.numeric(sub("mc", "", m)))
+        }
+      }
+    }
+  }
+  0.05
+}
+min_cov_cpm <- extract_min_cov()
 ```
 
 ```{r coverage-plots, results="asis", fig.width=13, fig.height=13}
@@ -182,12 +222,23 @@ for (i in seq_len(nrow(regions))) {
       }
     }
 
-    # Coverage, one track per sample.
+    # Coverage, one track per sample. Y axis is CPM, computed using the
+    # same library size formula as fastder. A dashed horizontal line marks
+    # the min_coverage threshold so the reader can see where the called
+    # regions cut off.
     for (j in seq_len(nrow(manifest))) {
       m <- manifest[j, ]
+      f <- m$cpm_factor
       body <- c(body, DataTrack(
         range = m$bigwig, genome = "hg38", chromosome = r$chrom,
-        name = paste0(m$group, "\n", m$sample), type = "histogram",
+        name = paste0(m$group, "\n", m$sample, "\nCPM"),
+        type = c("histogram", "h"),
+        transformation = local({
+          factor <- f
+          function(x) x * factor
+        }),
+        baseline = min_cov_cpm,
+        col.baseline = "#d73027", lty.baseline = 2, lwd.baseline = 0.7,
         col.histogram = group_colors[m$group],
         fill.histogram = group_colors[m$group]))
       body_sizes <- c(body_sizes, 1.6)
