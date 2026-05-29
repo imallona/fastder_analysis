@@ -23,7 +23,7 @@ for (fa in fastas) {
 
 # Simulation parameters (from config.yaml via Snakefile params)
 seed <- snakemake@params[["seed"]]
-ncores <- snakemake@params[["ncores"]]
+ncores <- snakemake@threads
 seq_depth <- snakemake@params[["seq_depth"]]
 multi_events_per_exon <- snakemake@params[["multi_events_per_exon"]]
 strand_specific <- snakemake@params[["strand_specific"]]

@@ -30,7 +30,7 @@ rule run_asimulator:
         strand_specific=lambda wc: config["asimulator"]["strand_specific"],
         probs_as_freq=lambda wc: config["asimulator"]["probs_as_freq"],
         seed=config["seed"],
-        ncores=config["cores"],
+    threads: config["cores"]
     container:
         "docker://biomedbigdata/asimulator"
     script:

@@ -80,9 +80,9 @@ rule pump:
     params:
         ref_version=config["monorail"]["ref_version"],
         ref_path=str(MONORAIL_REF_DIR),
-        ncores=config["cores"],
         pump_script=op.join(MONORAIL_EXTERNAL, "singularity", "run_recount_pump.sh"),
         project_name=config["monorail"]["project_name"],
+    threads: config["cores"]
     run:
         os.makedirs(output[0], exist_ok=True)
         # asimulator and local both feed local FASTQ files to recount-pump;
@@ -102,7 +102,7 @@ rule pump:
                 " {wildcards.sample}"
                 " local"
                 " {params.ref_version}"
-                " {params.ncores}"
+                " {threads}"
                 " {params.ref_path}"
                 f" {fp1}"
                 f" {fp2}"
@@ -120,7 +120,7 @@ rule pump:
                 " {wildcards.sample}"
                 f" {study_acc}"
                 " {params.ref_version}"
-                " {params.ncores}"
+                " {threads}"
                 " {params.ref_path}"
                 " > {log} 2>&1"
             )
@@ -146,9 +146,9 @@ rule unify:
             short=config["monorail"]["project_name"],
             pid=config["monorail"]["project_id"],
         ),
-        ncores=config["cores"],
         unify_script=op.join(MONORAIL_EXTERNAL, "singularity", "run_recount_unify.sh"),
         pump_parent=op.join(DATA_DIR, "pump"),
+    threads: config["cores"]
     run:
         os.makedirs(output[0], exist_ok=True)
 
@@ -174,7 +174,7 @@ rule unify:
             " {output[0]}"
             " {params.pump_parent}"
             " {output[1]}"
-            " {params.ncores}"
+            " {threads}"
             " {params.project}"
             " > {log} 2>&1"
         )
