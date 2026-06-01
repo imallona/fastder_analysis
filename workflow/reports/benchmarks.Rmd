@@ -53,6 +53,26 @@ bench_dir <- params$bench_dir
 if (is.null(bench_dir) || !dir.exists(bench_dir)) {
   stop("bench_dir parameter must point to an existing benchmarks directory")
 }
+
+# Friendly dataset label for plot subtitles. One report renders per config, so
+# the benchmark dir basename identifies the data source; this puts it on every
+# figure, so a reader knows whether a plot is simulation, GTEx, or TDP-43.
+config_name <- basename(normalizePath(bench_dir, mustWork = FALSE))
+dataset_labels <- c(
+  config_full_simulation                 = "Simulation (ASimulatoR chr21, 10M reads/sample)",
+  config_full_simulation_5M              = "Simulation (chr21, 5M reads/sample)",
+  config_full_simulation_30M             = "Simulation (chr21, 30M reads/sample)",
+  config_full_simulation_40M             = "Simulation (chr21, 40M reads/sample)",
+  config_gtex_comparison                 = "GTEx chr19 (4 tissues, 32 sub-groups)",
+  config_gtex_concordance                = "GTEx genome-wide (4 tissues, 32 sub-groups)",
+  config_klim_2019_tdp43_recount3        = "TDP-43 STMN2 showcase (recount3 SRP166282, 1 CPM)",
+  config_klim_2019_tdp43_recount3_panel  = "TDP-43 cryptic-exon panel (recount3 SRP166282, 0.02 CPM)"
+)
+dataset_label <- if (config_name %in% names(dataset_labels)) {
+  unname(dataset_labels[config_name])
+} else {
+  config_name
+}
 files <- list.files(bench_dir, pattern = "\\.tsv$", recursive = TRUE, full.names = TRUE)
 if (length(files) == 0) {
   stop("no .tsv benchmark files found under ", bench_dir)
@@ -149,10 +169,12 @@ cat('\n\n</details>\n\n')
 
 ## Wall time per rule
 
-Each point is one rule invocation. Shape encodes which tool drove it (circle = fastder, triangle = derfinder, square = megadepth_baseline, diamond = grohmm, x = none of these). Panels split by scenario. The hollow black point marks each rule's median across invocations.
+Each point is one tool-runner invocation (`run_fastder`, `run_derfinder`, `run_megadepth_baseline`, `run_grohmm`); the pipeline scaffolding rules are left out. Shape encodes the tool (circle = fastder, triangle = derfinder, square = megadepth_baseline, diamond = grohmm). Panels split by scenario. The hollow black point marks each rule's median across invocations.
 
 ```{r time, fig.width = 9, fig.height = 7}
+RUN_RULES <- c("run_fastder", "run_derfinder", "run_megadepth_baseline", "run_grohmm")
 df_pl <- df %>%
+  filter(rule %in% RUN_RULES) %>%
   mutate(scenario_lbl = ifelse(is.na(scenario), "n/a", scenario))
 medians_time <- df_pl %>%
   group_by(rule, scenario_lbl) %>%
@@ -168,7 +190,7 @@ ggplot(df_pl, aes(x = rule, y = wall_s, shape = tool)) +
                                 megadepth_baseline = 15, grohmm = 18),
                      na.value = 4) +
   facet_wrap(~ scenario_lbl, ncol = 2) +
-  labs(x = NULL, y = "Wall time (s, log scale)") +
+  labs(x = NULL, y = "Wall time (s, log scale)", subtitle = dataset_label) +
   pub_theme +
   theme(aspect.ratio = NULL)
 ```
@@ -192,7 +214,7 @@ ggplot(df_pl, aes(x = rule, y = max_rss_mb, shape = tool)) +
                                 megadepth_baseline = 15, grohmm = 18),
                      na.value = 4) +
   facet_wrap(~ scenario_lbl, ncol = 2) +
-  labs(x = NULL, y = "Max resident set size (MiB, log scale)") +
+  labs(x = NULL, y = "Max resident set size (MiB, log scale)", subtitle = dataset_label) +
   pub_theme +
   theme(aspect.ratio = NULL)
 ```
@@ -219,7 +241,7 @@ if (nrow(df_runners) > 0) {
     scale_fill_manual(values = tool_palette, guide = "none") +
     scale_x_continuous(trans = "log10") +
     scale_y_continuous(trans = "log10") +
-    labs(x = "Wall time (s, log scale)", y = "Max RSS (MiB, log scale)") +
+    labs(x = "Wall time (s, log scale)", y = "Max RSS (MiB, log scale)", subtitle = dataset_label) +
     pub_theme +
     theme(legend.position = "right")
 } else {
@@ -249,7 +271,7 @@ if (have_tool_data) {
       stat_summary(fun = median, geom = "point", shape = 21, size = 3,
                    colour = "black", fill = "white", stroke = 0.7) +
       scale_fill_manual(values = tool_palette, guide = "none") +
-      labs(x = NULL, y = "Wall time (s)") +
+      labs(x = NULL, y = "Wall time (s)", subtitle = dataset_label) +
       pub_theme +
       theme(axis.text.x = element_text(angle = 30, hjust = 1))
   } else {
@@ -273,7 +295,7 @@ if (have_tool_data) {
       stat_summary(fun = median, geom = "point", shape = 21, size = 3,
                    colour = "black", fill = "white", stroke = 0.7) +
       scale_fill_manual(values = tool_palette, guide = "none") +
-      labs(x = NULL, y = "Max RSS (MiB)") +
+      labs(x = NULL, y = "Max RSS (MiB)", subtitle = dataset_label) +
       pub_theme +
       theme(axis.text.x = element_text(angle = 30, hjust = 1))
   }
@@ -290,7 +312,7 @@ if (have_tool_data) {
     ggplot(d_run, aes(x = wall_s, y = max_rss_mb)) +
       geom_point(size = 2.5, alpha = 0.8, colour = "grey20") +
       facet_wrap(~ tool, ncol = 3) +
-      labs(x = "Wall time (s)", y = "Max RSS (MiB)") +
+      labs(x = "Wall time (s)", y = "Max RSS (MiB)", subtitle = dataset_label) +
       pub_theme
   }
 }
