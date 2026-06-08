@@ -1,0 +1,22 @@
+name: figures
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - r-base
+  - r-ggplot2
+  - r-dplyr
+  - r-tidyr
+  - r-readr
+  - r-stringr
+  - r-patchwork
+  - r-cowplot
+  - r-ggrepel
+  - r-magick
+  - r-png
+  - r-rcolorbrewer
+  - bioconductor-complexheatmap
+  - bioconductor-rtracklayer
+  - python
+  - matplotlib
+  - poppler
