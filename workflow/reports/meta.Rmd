@@ -10,7 +10,8 @@ params:
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE,
-                      fig.width = 9, fig.height = 5, fig.align = "center")
+                      fig.width = 9, fig.height = 5, fig.align = "center",
+                      dev = c("png", "pdf"), fig.path = "meta_figs/")
 library(readr)
 library(dplyr)
 library(tidyr)

@@ -250,26 +250,39 @@ read_result <- function(config, file_name) {
 
 # Panel: per-tool strand concordance. Verbatim from summary.Rmd tool_strand,
 # restyled. Only fastder assigns a strand; the others are all unstranded.
-panel_strand <- function(config = "config_full_simulation") {
+# compact pools the five AS-event samples into two scenario cells (main figure);
+# the default keeps the full per-sample grid (supplement).
+panel_strand <- function(config = "config_full_simulation", compact = FALSE) {
   pids <- best_pids(read_result(config, "fuzzy_jaccard.csv"))
   fs <- read_result(config, "fuzzy_strand.csv") %>%
     pick_tool_param(pids) %>%
     mutate(n = as.integer(n_fastder_transcripts), scenario = relabel_scenario(scenario))
-  fs_pct <- fs %>% group_by(scenario, sample, tool) %>%
-    mutate(pct = n / sum(n) * 100) %>% ungroup()
+  if (compact) {
+    fs_pct <- fs %>% group_by(scenario, tool, category) %>%
+      summarise(n = sum(n), .groups = "drop") %>%
+      group_by(scenario, tool) %>% mutate(pct = n / sum(n) * 100) %>% ungroup()
+  } else {
+    fs_pct <- fs %>% group_by(scenario, sample, tool) %>%
+      mutate(pct = n / sum(n) * 100) %>% ungroup()
+  }
   fs_pct$category <- factor(fs_pct$category,
                             levels = c("concordant", "discordant", "unstranded", "unmatched"))
-  ggplot(fs_pct, aes(pct, tool, fill = category)) +
-    geom_col() +
+  fs_pct$tool <- factor(fs_pct$tool, levels = rev(TOOLS))
+  p <- ggplot(fs_pct, aes(pct, tool, fill = category)) +
+    geom_col(width = 0.75) +
     scale_fill_manual(values = strand_palette) +
     scale_y_discrete(labels = tool_labels) +
-    facet_grid(scenario ~ sample, labeller = labeller(scenario = label_wrap_gen(12))) +
     labs(x = "Fraction of tool transcripts (%)", y = NULL) +
     theme_pub() + theme(legend.position = "none")
+  if (compact)
+    p + facet_wrap(~ scenario, nrow = 1, labeller = label_wrap_gen(20))
+  else
+    p + facet_grid(scenario ~ sample, labeller = labeller(scenario = label_wrap_gen(12)))
 }
 
 # Panel: multi-exon transcripts produced per tool. Verbatim from summary.Rmd
 # tool_multiexon, restyled. Baselines emit none, pinned to 1 on the log axis.
+# No per-point labels (they collided); tools read from the shared legend.
 panel_multiexon <- function(config = "config_full_simulation") {
   pids <- best_pids(read_result(config, "fuzzy_jaccard.csv"))
   d <- read_result(config, "summary.csv") %>%
@@ -283,15 +296,14 @@ panel_multiexon <- function(config = "config_full_simulation") {
               query_multi_exon = sum(query_multi_exon), .groups = "drop") %>%
     mutate(query_multi_exon_plot = pmax(query_multi_exon, 1L))
   ggplot(d, aes(query_mrnas, query_multi_exon_plot, colour = tool, shape = tool)) +
-    geom_point(size = 3.4, alpha = 0.85) +
-    ggrepel::geom_text_repel(aes(label = tool_labels[tool]), size = 3,
-                             colour = "grey20", box.padding = 0.5, max.overlaps = Inf) +
+    geom_point(size = 3.2, alpha = 0.9) +
     scale_colour_manual(values = tool_palette, labels = tool_labels) +
     scale_shape_manual(values = tool_shapes, labels = tool_labels) +
     scale_x_log10() + scale_y_log10() +
     facet_wrap(~ scenario, ncol = 2, labeller = label_wrap_gen(12)) +
     labs(x = "Total predicted transcripts", y = "Multi-exon transcripts") +
-    theme_pub_square() + theme(legend.position = "none")
+    theme_pub_square() +
+    theme(legend.position = "none", axis.text.x = element_text(angle = 45, hjust = 1))
 }
 
 # Panel: cumulative fraction of predicted boundaries within each distance of a
@@ -413,10 +425,10 @@ panel_marker_loci <- function(csv = MARKER_CSV) {
     theme_pub()
 }
 
-# Embed a vector PDF (a schematic) as a panel by rasterising it first. With
-# width_fill, the image stretches to the full panel width (height follows the
-# aspect ratio); otherwise it is centred at its native aspect.
-wrap_pdf <- function(pdf_path, dpi = 300, width_fill = FALSE) {
+# Embed a schematic PDF as a panel, rasterised at 600 dpi. rasterGrob letterboxes
+# to the cell; a grImport2 vector embed was tried but overflows narrow cells.
+# width_fill stretches to full panel width instead of centring at native aspect.
+wrap_pdf <- function(pdf_path, dpi = 600, width_fill = FALSE) {
   tmp <- tempfile(fileext = "")
   system2("pdftoppm", c("-png", "-r", dpi, "-singlefile", pdf_path, tmp))
   img <- png::readPNG(paste0(tmp, ".png"))
@@ -426,6 +438,11 @@ wrap_pdf <- function(pdf_path, dpi = 300, width_fill = FALSE) {
     grid::rasterGrob(img, interpolate = TRUE)
   }
   wrap_elements(full = grob)
+}
+
+wrap_png <- function(name, fig_dir = FIG_DIR) {
+  wrap_elements(full = grid::rasterGrob(
+    png::readPNG(file.path(fig_dir, name)), interpolate = TRUE))
 }
 
 panel_placeholder <- function(text) {

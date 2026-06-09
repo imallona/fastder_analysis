@@ -14,7 +14,8 @@ params:
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE,
-                      fig.width = 10, fig.height = 6)
+                      fig.width = 10, fig.height = 6,
+                      dev = c("png", "pdf"), fig.path = "recount3_figs/")
 suppressPackageStartupMessages({
   library(rtracklayer)
   library(GenomicRanges)

@@ -43,10 +43,11 @@ def exon(ax, y, span, color):
                            facecolor=color, edgecolor="none", zorder=2))
 
 
+# Skipped exon: empty box, dashed grey outline.
 def skipped(ax, y, span):
     ax.add_patch(Rectangle((span[0], y - exon_h / 2), span[1] - span[0], exon_h,
-                           facecolor="white", edgecolor=SKIP_EDGE, hatch="////",
-                           lw=0.7, zorder=2))
+                           facecolor="white", edgecolor=SKIP_EDGE, linestyle=(0, (3, 2)),
+                           lw=0.9, zorder=2))
 
 
 def transcript(ax, y, present, alt=None, skip=None):
@@ -61,8 +62,10 @@ def transcript(ax, y, present, alt=None, skip=None):
             exon(ax, y, span, EXON)
 
 
+# Wide and short: event classes on the left, expression scenarios on the right,
+# so the panel sits as one method row across the full figure width.
 fig, (ax, ax2) = plt.subplots(
-    2, 1, figsize=(7.4, 5.4), gridspec_kw={"height_ratios": [5, 2.1], "hspace": 0.45})
+    1, 2, figsize=(10.5, 2.9), gridspec_kw={"width_ratios": [5, 3], "wspace": 0.06})
 
 rows = [
     ("reference", set(range(6)), None, set()),
@@ -72,27 +75,28 @@ rows = [
     ("alternative last exon (ale)", {0, 1, 2, 3, 4}, {5: exons[5]}, set()),
 ]
 
+TOP = len(rows) + 1.0  # shared top, so both headers line up
 y = len(rows)
 for label, present, alt, skip in rows:
     transcript(ax, y, present, alt, skip)
     ax.text(LABEL_X, y, label, ha="right", va="center", fontsize=10, color="#222222")
     y -= 1
 
-ax.set_xlim(-0.34, 1.0)
-ax.set_ylim(0.2, len(rows) + 0.9)
+ax.set_xlim(-0.42, 1.0)
+ax.set_ylim(-0.2, TOP)
 ax.axis("off")
 ax.text(LABEL_X, len(rows) + 0.7, "Alternative-splicing event classes",
-        fontsize=10.5, color=HEADER, ha="right" if False else "left")
+        fontsize=10.5, color=HEADER, ha="left")
 
-# Legend strip.
+# Legend strip below the transcripts.
 lx = 0.0
-ax.add_patch(Rectangle((lx, 0.42), 0.045, 0.16, facecolor=EXON))
-ax.text(lx + 0.055, 0.5, "reference exon", fontsize=8.5, va="center", color="#222222")
-ax.add_patch(Rectangle((lx + 0.30, 0.42), 0.045, 0.16, facecolor=ALT))
-ax.text(lx + 0.355, 0.5, "alternative exon", fontsize=8.5, va="center", color="#222222")
-ax.add_patch(Rectangle((lx + 0.60, 0.42), 0.045, 0.16, facecolor="white",
-                       edgecolor=SKIP_EDGE, hatch="////", lw=0.7))
-ax.text(lx + 0.655, 0.5, "skipped, no coverage in variant", fontsize=8.5, va="center", color="#222222")
+ax.add_patch(Rectangle((lx, 0.12), 0.045, 0.16, facecolor=EXON))
+ax.text(lx + 0.055, 0.2, "reference exon", fontsize=8.5, va="center", color="#222222")
+ax.add_patch(Rectangle((lx + 0.30, 0.12), 0.045, 0.16, facecolor=ALT))
+ax.text(lx + 0.355, 0.2, "alternative exon", fontsize=8.5, va="center", color="#222222")
+ax.add_patch(Rectangle((lx + 0.60, 0.12), 0.045, 0.16, facecolor="white",
+                       edgecolor=SKIP_EDGE, linestyle=(0, (3, 2)), lw=0.9))
+ax.text(lx + 0.655, 0.2, "skipped, no coverage in variant", fontsize=8.5, va="center", color="#222222")
 
 
 def coverage(ax, y, heights):
@@ -103,15 +107,16 @@ def coverage(ax, y, heights):
                                    facecolor=EXON, edgecolor="none"))
 
 
-coverage(ax2, 1.05, [1, 1, 0.5, 1, 1, 1])
-ax2.text(LABEL_X, 1.28, "reference and variant", ha="right", va="center", fontsize=9.5, color="#222222")
-coverage(ax2, 0.10, [1, 1, 0.0, 1, 1, 1])
-ax2.text(LABEL_X, 0.33, "variant", ha="right", va="center", fontsize=9.5, color="#222222")
-ax2.set_xlim(-0.34, 1.0)
-ax2.set_ylim(-0.05, 1.95)
-ax2.axis("off")
-ax2.text(LABEL_X, 1.78, "Expression scenarios, exon-skipping example",
+# Scenario labels sit above each track, since the right panel is narrow.
+ax2.text(0.0, len(rows) + 0.7, "Expression scenarios (es example)",
          fontsize=10.5, color=HEADER, ha="left")
+ax2.text(0.0, 3.55, "reference and variant", ha="left", va="bottom", fontsize=9.5, color="#222222")
+coverage(ax2, 2.85, [1, 1, 0.5, 1, 1, 1])
+ax2.text(0.0, 1.75, "variant", ha="left", va="bottom", fontsize=9.5, color="#222222")
+coverage(ax2, 1.05, [1, 1, 0.0, 1, 1, 1])
+ax2.set_xlim(-0.05, 1.0)
+ax2.set_ylim(-0.2, TOP)
+ax2.axis("off")
 
 fig.savefig("fig_sim_schematic.pdf", bbox_inches="tight")
 fig.savefig("fig_sim_schematic.svg", bbox_inches="tight")

@@ -16,6 +16,9 @@
 ##   make gtex-smoke         # reduced GTEx run, 12 BigWigs, to validate the path
 ##   make gtex-pick          # rewrite the gtex configs to cover the configured tissue set (BLOOD BRAIN HEART MUSCLE LIVER LUNG TESTIS ADIPOSE_TISSUE by default)
 ##   make meta               # render the depth-sweep report (after the runs)
+##   make reports            # re-render the figure-feeding reports (PDFs included)
+##   make composites         # assemble the two composite figures
+##   make figures            # reports then composites
 ##   make smoke              # quick 2-sample smoke test
 ##   make all                # simulations, meta, both tdp43 runs, then gtex
 ##   make dryrun             # snakemake -n for the 10M simulation config
@@ -42,17 +45,23 @@ ACTIVATE := source $(CONDA_INIT) && conda activate $(CONDA_ENV) && \
 
 SNAKEMAKE := snakemake --cores $(CORES) -p
 
+## Run snakemake targets under one config. $(1) config file, $(2) targets.
+define snake
+cd $(WORKFLOW_DIR) && bash -c '$(ACTIVATE) && FASTDER_EVAL_CONFIG=../config/$(1) $(SNAKEMAKE) --use-conda $(2)'
+endef
+
 .DEFAULT_GOAL := help
 .PHONY: help all submodules sim simulations sim-5m sim-30m sim-40m tdp43 \
-        tdp43-panel gtex gtex-comparison gtex-smoke gtex-pick meta smoke dryrun unlock
+        tdp43-panel gtex gtex-comparison gtex-smoke gtex-pick meta reports \
+        composites figures smoke dryrun unlock
 
 help:
-	@echo "Targets: submodules sim simulations sim-5m sim-30m sim-40m tdp43 tdp43-panel gtex gtex-comparison gtex-smoke gtex-pick meta smoke all dryrun unlock"
+	@echo "Targets: submodules sim simulations sim-5m sim-30m sim-40m tdp43 tdp43-panel gtex gtex-comparison gtex-smoke gtex-pick meta reports composites figures smoke all dryrun unlock"
 	@echo "Variables: CORES=$(CORES) ULIMIT_KB=$(ULIMIT_KB) CONDA_ENV=$(CONDA_ENV)"
 
 ## meta only needs the simulation results, so it runs before the tdp43 runs:
 ## a tdp43 failure then cannot block the cross-depth report.
-all: simulations meta tdp43 tdp43-panel gtex gtex-comparison
+all: simulations meta tdp43 tdp43-panel gtex gtex-comparison figures
 
 ## Populate the git submodules. workflow/external/fastder must hold the fastder
 ## sources for the build_fastder rule to find a CMakeLists.txt; a plain
@@ -166,6 +175,24 @@ smoke:
 ## by snakemake inside the run targets above.
 meta:
 	bash $(WORKFLOW_DIR)/scripts/render_meta_report.sh
+
+## Re-render the reports that feed the manuscript figures, emitting a vector PDF
+## per figure (dev=c('png','pdf')). Cheap: rmarkdown over the existing results,
+## so it needs the per-config runs already done.
+reports:
+	$(call snake,config_full_simulation.yaml,render_summary_report render_benchmarks_report)
+	$(call snake,config_klim_2019_tdp43_recount3.yaml,render_recount3_report render_summary_report)
+	$(call snake,config_gtex_concordance.yaml,render_gtex_report render_summary_report)
+	$(call snake,config_gtex_comparison.yaml,render_summary_report)
+	bash $(WORKFLOW_DIR)/scripts/render_meta_report.sh
+
+## Assemble the two composite figures. The genome-wide config makes REF_GTF
+## genome-wide, which the novel-exon count needs.
+composites:
+	$(call snake,config_gtex_concordance.yaml,manuscript_figures)
+
+## Reports then composites.
+figures: reports composites
 
 dryrun:
 	cd $(WORKFLOW_DIR) && bash -c '$(ACTIVATE) && \

@@ -54,6 +54,24 @@ rule figure_marker_loci:
         "bash {input.script} {FIG_RESULTS}/config_gtex_concordance/fastder {output} > {log} 2>&1"
 
 
+# Novel ER exons per tissue, from the per-sub-group GTFs against REF_GTF, which
+# is genome-wide only under a genome-wide config (config_gtex_concordance).
+rule figure_novel_exons:
+    input:
+        gtfs=op.join(FIG_RESULTS, "config_gtex_concordance", "archive.DONE"),
+        script=op.join(FIG_SCRIPTS, "extract_novel_exons.R"),
+        reference=REF_GTF,
+    output:
+        op.join(FIG_DIR, "novel_exons.csv"),
+    log:
+        op.join(LOG_DIR, "figure_novel_exons.log"),
+    conda:
+        "../envs/figures.yaml"
+    shell:
+        "Rscript {input.script} {FIG_RESULTS}/config_gtex_concordance/fastder "
+        "{input.reference} {output} > {log} 2>&1"
+
+
 rule figure_main_1:
     input:
         helpers=op.join(FIG_SCRIPTS, "helpers.R"),
@@ -75,6 +93,7 @@ rule figure_main_2:
         script=op.join(FIG_SCRIPTS, "figure_main_2.R"),
         schematics=op.join(FIG_DIR, "fig_tdp43_scheme.pdf"),
         markers=op.join(FIG_DIR, "marker_loci.csv"),
+        novel=op.join(FIG_DIR, "novel_exons.csv"),
     output:
         op.join(FIG_DIR, "figure_main_2.pdf"),
     log:
