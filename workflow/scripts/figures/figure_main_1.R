@@ -22,8 +22,9 @@ p_multiexon <- panel_multiexon()
 p_speed     <- panel_speed(bench_dir)
 
 # Two full-width schematic rows (A pipeline, B simulation design), then the
-# benchmark panels: C depth full width; D boundary | E CDF; F strand pooled over
-# the AS samples; G multi-exon | H speed. Add order sets the A-H tags.
+# benchmark panels in narrative order: C depth full width; D multi-exon | E
+# boundary precision; F boundary-distance CDF full width; G strand | H speed.
+# Add order sets the A-H tags, so it follows the order they are cited in the text.
 design <- "
 AAAAAAAAAAAA
 BBBBBBBBBBBB
@@ -32,7 +33,7 @@ DDDDDDEEEEEE
 FFFFFFFFFFFF
 GGGGGGHHHHHH
 "
-panels <- p_pipeline + p_sim + p_depth + p_boundary + p_cdf + p_strand + p_multiexon + p_speed +
+panels <- p_pipeline + p_sim + p_depth + p_multiexon + p_boundary + p_cdf + p_strand + p_speed +
   plot_layout(design = design, heights = c(3.4, 2.3, 3.4, 2.0, 1.3, 2.4)) +
   plot_annotation(tag_levels = "A") &
   theme(plot.tag = element_text(face = "bold", size = 16))
