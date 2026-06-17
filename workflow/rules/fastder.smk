@@ -351,7 +351,7 @@ rule build_fastder:
     params:
         fastder_src=op.join(WORKFLOW_DIR, "external", "fastder"),
         build_dir=str(FASTDER_BUILD_DIR),
-        ncores=config["cores"],
+    threads: config["cores"]
     conda:
         "../envs/fastder_build.yaml"
     shell:
@@ -362,7 +362,7 @@ rule build_fastder:
         mkdir -p {params.build_dir}
         cd {params.build_dir}
         cmake -DFASTDER_USE_LIBBIGWIG=ON {params.fastder_src} > {log} 2>&1
-        cmake --build . --target fastder -j {params.ncores} >> {log} 2>&1
+        cmake --build . --target fastder -j {threads} >> {log} 2>&1
         """
 
 
@@ -385,7 +385,6 @@ rule run_fastder:
     params:
         fastder_dir=lambda wc: op.join(FASTDER_DIR, wc.scenario),
         run_dir=lambda wc: op.join(FASTDER_DIR, wc.scenario, "runs", wc.param_id),
-        ncores=config["cores"],
         fastder_args=lambda wc: PARAM_CLI_ARGS[wc.param_id],
         stranded_arg="--stranded" if STRANDED else "",
         chr_args=(
@@ -393,6 +392,7 @@ rule run_fastder:
             if FASTDER_CFG.get("chromosomes")
             else ""
         ),
+    threads: config["cores"]
     conda:
         "../envs/fastder_build.yaml"
     shell:
@@ -416,7 +416,7 @@ rule run_fastder:
             --dir {params.run_dir} \
             {params.stranded_arg} \
             {params.fastder_args} \
-            --cores {params.ncores} \
+            --cores {threads} \
             {params.chr_args} \
             > {log} 2>&1
         gtf=$(ls {params.run_dir}/FASTDER_RESULT_*.gtf 2>/dev/null)

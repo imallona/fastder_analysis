@@ -420,6 +420,7 @@ include: "rules/fastder.smk"
 include: "rules/tools.smk"
 include: "rules/evaluate.smk"
 include: "rules/reports.smk"
+include: "rules/figures.smk"
 
 
 rule all:

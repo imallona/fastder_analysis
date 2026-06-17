@@ -28,7 +28,9 @@ knitr::opts_chunk$set(
   warning = FALSE,
   fig.width = 6,
   fig.height = 6,
-  fig.align = "center"
+  fig.align = "center",
+  dev = c("png", "pdf"),
+  fig.path = "summary_figs/"
 )
 library(readr)
 library(dplyr)
@@ -39,6 +41,7 @@ suppressPackageStartupMessages({
   library(ComplexHeatmap)
   library(circlize)
   library(ggrepel)
+  library(patchwork)
 })
 
 as_event_levels <- c("es", "mes", "afe", "ale", "mixed")
@@ -55,6 +58,31 @@ as_event_palette <- c(
   afe = "#7570b3",
   ale = "#e7298a",
   mixed = "#666666"
+)
+
+# Tool palette. Visual identity follows RColorBrewer Set2 so plots that
+# already use Set2 keep the same look; the values are written out so every
+# plot can refer to a single source of truth. Keys are the tool names as they
+# appear in summary.csv.
+tool_palette <- c(
+  derfinder          = "#66C2A5",
+  fastder            = "#FC8D62",
+  grohmm             = "#8DA0CB",
+  megadepth_baseline = "#E78AC3"
+)
+
+# Scenario palette. Dark navy and dark goldenrod, chosen to sit far from
+# every colour in tool_palette so plots that face tool against scenario do
+# not collide. Keyed both by the raw summary.csv value and by the relabelled
+# factor produced by relabel_scenario(), so a plot can use either before
+# mapping the aesthetic.
+scenario_palette_raw <- c(
+  template_and_variant = "#1F2A44",
+  variant_only         = "#B8860B"
+)
+scenario_palette <- c(
+  "template + variant" = "#1F2A44",
+  "variant only"       = "#B8860B"
 )
 
 label_as <- function(v) {
@@ -211,23 +239,26 @@ if (have_tool_data) {
 
 ## Per-tool best Jaccard
 
-```{r tool_jaccard, fig.width = 10, fig.height = 5}
+```{r tool_jaccard, fig.width = 9, fig.height = 6}
 if (have_tool_data) {
   fj <- fuzzy_all$jaccard %>%
     pick_tool_param() %>%
     mutate(jaccard = as.numeric(jaccard),
-           scenario = relabel_scenario(scenario))
+           scenario = relabel_scenario(scenario),
+           as_event = label_as(sample))
   ggplot(fj, aes(x = tool, y = jaccard, fill = tool)) +
     geom_violin(alpha = 0.5, scale = "width", trim = TRUE, colour = "grey40") +
     geom_jitter(width = 0.18, size = 0.25, alpha = 0.2, colour = "grey15") +
     stat_summary(fun = median, geom = "point", shape = 21, size = 2.6,
                  colour = "black", fill = "white", stroke = 0.7) +
-    scale_fill_brewer(palette = "Set2", guide = "none") +
-    facet_wrap(~ scenario, ncol = 2) +
+    scale_fill_manual(values = tool_palette, guide = "none") +
+    facet_wrap(~ as_event) +
     coord_cartesian(ylim = c(0, 1)) +
     labs(x = NULL, y = "Best exonic Jaccard against reference") +
     pub_theme +
-    theme(axis.text.x = element_text(angle = 30, hjust = 1))
+    theme(axis.text.x = element_text(angle = 30, hjust = 1),
+          aspect.ratio = NULL,
+          strip.text.y = element_text(size = 9))
 } else {
   cat("no per-tool data: summary.csv lacks a tool column or fuzzy CSVs are empty")
 }
@@ -237,24 +268,29 @@ if (have_tool_data) {
 
 Fraction of reference loci with at least 50% of their exonic length covered by any exon emitted by the tool.
 
-```{r tool_recall, fig.width = 10, fig.height = 5}
+```{r tool_recall, fig.width = 11, fig.height = 6}
 if (have_tool_data) {
   fr <- fuzzy_all$recall %>%
     pick_tool_param() %>%
     mutate(threshold = as.numeric(threshold),
            recall = as.numeric(recall),
-           scenario = relabel_scenario(scenario)) %>%
+           scenario = relabel_scenario(scenario),
+           as_event = label_as(sample)) %>%
     filter(threshold == 0.5)
   ggplot(fr, aes(x = tool, y = recall, fill = tool)) +
     geom_col(position = position_dodge(width = 0.8), width = 0.7,
              alpha = 0.85, colour = "grey20") +
-    geom_text(aes(label = sprintf("%.2f", recall)), vjust = -0.4, size = 2.6) +
-    scale_fill_brewer(palette = "Set2", guide = "none") +
-    facet_grid(scenario ~ sample) +
+    geom_text(aes(label = sprintf("%.2f", recall)), vjust = -0.4, size = 3.2) +
+    scale_fill_manual(values = tool_palette, guide = "none") +
+    facet_grid(scenario ~ as_event) +
     coord_cartesian(ylim = c(0, 1)) +
     labs(x = NULL, y = "Locus recall at threshold 0.5") +
     pub_theme +
-    theme(axis.text.x = element_text(angle = 30, hjust = 1),
+    theme(axis.text.x = element_text(angle = 30, hjust = 1, size = 10),
+          axis.text.y = element_text(size = 10),
+          axis.title.y = element_text(size = 11),
+          strip.text.x = element_text(size = 10),
+          strip.text.y = element_text(size = 10),
           aspect.ratio = NULL)
 } else {
   cat("no per-tool recall data")
@@ -317,11 +353,19 @@ if (have_tool_data && !is.null(fuzzy_all$distances) && nrow(fuzzy_all$distances)
     mutate(scenario = relabel_scenario(scenario),
            threshold_label = factor(paste0("<=", threshold_bp, " bp"),
                                     levels = paste0("<=", thresholds_bp, " bp")))
+  # Label the 5 bp tolerance point on each tool's line, so the standalone
+  # 5 bp panel does not need to be read separately.
+  label_5bp <- fd_pct %>% filter(threshold_bp == 5)
   ggplot(fd_pct, aes(x = threshold_bp, y = pct, colour = tool, shape = tool,
                      group = tool)) +
     geom_line(linewidth = 0.7, alpha = 0.8) +
     geom_point(size = 3, alpha = 0.9) +
-    scale_colour_brewer(palette = "Set2", name = NULL) +
+    geom_vline(xintercept = log1p(5), linetype = "dashed",
+               colour = "grey60", linewidth = 0.4) +
+    geom_text(data = label_5bp,
+              aes(label = sprintf("%.1f%%", pct)),
+              vjust = -1.0, hjust = 0.5, size = 3, show.legend = FALSE) +
+    scale_colour_manual(values = tool_palette, name = NULL) +
     scale_shape_manual(values = c(fastder = 16, derfinder = 17,
                                   megadepth_baseline = 15, grohmm = 18),
                        name = NULL) +
@@ -360,7 +404,7 @@ if (have_tool_data && !is.null(fuzzy_all$distances) && nrow(fuzzy_all$distances)
                                           "derfinder", "grohmm", "fastder")))
   ggplot(fd, aes(x = abs_distance, colour = tool, linetype = tool)) +
     stat_ecdf(geom = "step", linewidth = 0.8, alpha = 0.8) +
-    scale_colour_brewer(palette = "Set2", name = NULL) +
+    scale_colour_manual(values = tool_palette, name = NULL) +
     scale_linetype_manual(values = c(megadepth_baseline = "11",
                                      derfinder = "32",
                                      grohmm = "44",
@@ -396,13 +440,24 @@ if (have_tool_data && !is.null(fuzzy_all$jaccard) && nrow(fuzzy_all$jaccard) > 0
     summarise(n_transcripts = n(),
               median_bp = median(fastder_bp, na.rm = TRUE),
               .groups = "drop")
-  ggplot(granularity, aes(x = n_transcripts, y = median_bp,
-                          colour = tool, shape = tool)) +
+  # Truth point: one cross per scenario, computed from the simulated
+  # truth_chain_stats. It marks where a perfect caller would land on these
+  # two axes.
+  truth_point <- if (!is.null(truth_chain)) {
+    truth_chain %>%
+      mutate(scenario = relabel_scenario(scenario)) %>%
+      group_by(scenario) %>%
+      summarise(n_transcripts = n(),
+                median_bp = median(total_exon_length, na.rm = TRUE),
+                .groups = "drop")
+  } else NULL
+  p <- ggplot(granularity, aes(x = n_transcripts, y = median_bp,
+                               colour = tool, shape = tool)) +
     geom_point(size = 4, alpha = 0.85) +
     ggrepel::geom_text_repel(aes(label = tool), size = 3,
                              colour = "grey20",
                              box.padding = 0.5, max.overlaps = Inf) +
-    scale_colour_brewer(palette = "Set2", name = NULL) +
+    scale_colour_manual(values = tool_palette, name = NULL) +
     scale_shape_manual(values = c(fastder = 16, derfinder = 17,
                                   megadepth_baseline = 15, grohmm = 18),
                        name = NULL) +
@@ -413,6 +468,18 @@ if (have_tool_data && !is.null(fuzzy_all$jaccard) && nrow(fuzzy_all$jaccard) > 0
          y = "Median predicted transcript length, bp (log)") +
     pub_theme +
     theme(legend.position = "none")
+  if (!is.null(truth_point) && nrow(truth_point) > 0) {
+    p <- p +
+      geom_point(data = truth_point,
+                 aes(x = n_transcripts, y = median_bp),
+                 inherit.aes = FALSE,
+                 shape = 4, size = 5, stroke = 1.2, colour = "black") +
+      geom_text(data = truth_point,
+                aes(x = n_transcripts, y = median_bp, label = "truth"),
+                inherit.aes = FALSE,
+                vjust = -1.2, size = 3, colour = "black")
+  }
+  p
 }
 ```
 
@@ -444,7 +511,7 @@ if ("tool" %in% names(df_all) && nrow(df_all) > 0) {
     ggrepel::geom_text_repel(aes(label = tool), size = 3,
                              colour = "grey20",
                              box.padding = 0.5, max.overlaps = Inf) +
-    scale_colour_brewer(palette = "Set2", name = NULL) +
+    scale_colour_manual(values = tool_palette, name = NULL) +
     scale_shape_manual(values = c(fastder = 16, derfinder = 17,
                                   megadepth_baseline = 15, grohmm = 18),
                        name = NULL) +
@@ -477,7 +544,7 @@ if (have_tool_data && !is.null(fuzzy_all$distances) && nrow(fuzzy_all$distances)
   ggplot(b5, aes(x = tool, y = pct, fill = tool)) +
     geom_col(width = 0.7) +
     geom_text(aes(label = sprintf("%.1f", pct)), vjust = -0.3, size = 3) +
-    scale_fill_brewer(palette = "Set2", name = NULL) +
+    scale_fill_manual(values = tool_palette, name = NULL) +
     facet_wrap(~ scenario, ncol = 2) +
     coord_cartesian(ylim = c(0, 105)) +
     labs(x = NULL, y = "Predicted boundaries within 5 bp (%)") +
@@ -509,7 +576,7 @@ if ("tool" %in% names(df_all) && nrow(df_all) > 0) {
   )
   ggplot(sp, aes(x = sensitivity, y = precision, colour = tool, shape = level)) +
     geom_point(size = 3, alpha = 0.85) +
-    scale_colour_brewer(palette = "Set2", name = NULL) +
+    scale_colour_manual(values = tool_palette, name = NULL) +
     scale_shape_manual(values = c(Transcript = 16, Exon = 17), name = NULL) +
     facet_wrap(~ scenario, ncol = 2) +
     coord_cartesian(xlim = c(0, 100), ylim = c(0, 100)) +
@@ -565,12 +632,14 @@ if (track_ok) {
     Gviz::plotTracks(
       list(Gviz::GenomeAxisTrack(),
            atrack(truth, "truth", "grey40"),
-           atrack(tool_gr$fastder, "fastder", "#1b9e77"),
-           atrack(tool_gr$derfinder, "derfinder", "#d95f02"),
-           atrack(tool_gr$megadepth_baseline, "megadepth", "#7570b3"),
-           atrack(tool_gr$grohmm, "grohmm", "#e7298a")),
+           atrack(tool_gr$fastder, "fastder", tool_palette[["fastder"]]),
+           atrack(tool_gr$derfinder, "derfinder", tool_palette[["derfinder"]]),
+           atrack(tool_gr$megadepth_baseline, "megadepth",
+                  tool_palette[["megadepth_baseline"]]),
+           atrack(tool_gr$grohmm, "grohmm", tool_palette[["grohmm"]])),
       from = from, to = to, chromosome = chrom,
       background.title = "white", col.title = "black", col.axis = "black",
+      cex.title = 1.1, title.width = 1.4,
       main = sprintf("%s  %s:%d-%d", top, chrom, from, to), cex.main = 0.9)
     TRUE
   }, error = function(e) {
@@ -604,7 +673,7 @@ if (have_tool_data) {
                            colour = tool, group = tool)) +
       geom_line(linewidth = 0.7) +
       geom_point(size = 2) +
-      scale_colour_brewer(palette = "Set2") +
+      scale_colour_manual(values = tool_palette) +
       facet_wrap(~ scenario, ncol = 2) +
       coord_cartesian(ylim = c(0, 1)) +
       labs(x = "position_tolerance / maxregiongap (bp)",
@@ -649,27 +718,27 @@ Each event class is run through two scenarios that differ in which transcripts c
 
 For each reference transcript, the highest exonic Jaccard against any fastder transcript. A value of 1 means the fastder match has the same exon set; 0 means no overlap.
 
-The parameter grid is decomposed: min_coverage is the panel row, the AS event is the panel column, and within each panel the boxes run over min_length and position_tolerance, split by scenario.
+The parameter grid is decomposed: the AS event is the panel column, min_coverage and position_tolerance are the panel rows, and within each panel the boxes run over min_length, split by scenario. position_tolerance is given its own row band rather than crowding the x-axis: the near-identical bands show that it barely moves the result.
 
-```{r pub_jaccard, fig.width = 12, fig.height = 5}
+```{r pub_jaccard, fig.width = 12, fig.height = 11}
 if (!is.null(fuzzy$jaccard) && nrow(fuzzy$jaccard) > 0) {
   fj <- fuzzy$jaccard %>%
     mutate(jaccard = as.numeric(jaccard),
            as_event = label_as(sample),
            scenario = relabel_scenario(scenario)) %>%
     parse_param_id() %>%
-    mutate(param_sub = paste0("ml", min_length, "\npt", position_tolerance))
+    mutate(param_sub = paste0("ml", min_length))
   ggplot(fj, aes(x = param_sub, y = jaccard, fill = scenario)) +
     geom_boxplot(outlier.size = 0.25, linewidth = 0.3) +
-    scale_fill_brewer(palette = "Set2", name = NULL) +
-    labs(x = "min_length / position_tolerance",
+    scale_fill_manual(values = scenario_palette, name = NULL) +
+    labs(x = "min_length",
          y = "Best exonic Jaccard against reference") +
     coord_cartesian(ylim = c(0, 1)) +
-    facet_grid(min_coverage ~ as_event,
-               labeller = labeller(min_coverage = function(v) paste0("mc ", v))) +
+    facet_grid(min_coverage + position_tolerance ~ as_event,
+               labeller = labeller(min_coverage = function(v) paste0("mc ", v),
+                                   position_tolerance = function(v) paste0("pt ", v))) +
     pub_theme +
-    theme(axis.text.x = element_text(angle = 45, hjust = 1),
-          legend.position = "bottom")
+    theme(legend.position = "bottom")
 } else {
   cat("no fuzzy_jaccard data")
 }
@@ -693,7 +762,7 @@ if (!is.null(fuzzy$distances) && nrow(fuzzy$distances) > 0) {
            abs_distance = abs(distance))
   ggplot(fd, aes(x = abs_distance, colour = scenario)) +
     stat_ecdf(geom = "step", linewidth = 0.7) +
-    scale_colour_brewer(palette = "Set2", name = NULL) +
+    scale_colour_manual(values = scenario_palette, name = NULL) +
     scale_x_continuous(trans = "log1p",
                        breaks = c(0, 1, 5, 20, 100, 1000, 10000),
                        labels = c("0", "1", "5", "20", "100", "1k", "10k")) +
@@ -938,7 +1007,7 @@ if (have_data) {
     geom_jitter(size = 0.8, width = 0.02, alpha = 0.4) +
     stat_summary(fun = mean, geom = "line", linewidth = 0.7) +
     stat_summary(fun = mean, geom = "point", size = 1.8) +
-    scale_colour_brewer(palette = "Set2", name = NULL) +
+    scale_colour_manual(values = scenario_palette, name = NULL) +
     facet_grid(metric ~ param, scales = "free") +
     labs(x = "Parameter value", y = "Metric value") +
     pub_theme +
@@ -1033,7 +1102,7 @@ if ("tool" %in% names(df_all) && nrow(df_all) > 0) {
     geom_jitter(width = 0.15, height = 0, size = 1.6, alpha = 0.4) +
     stat_summary(fun = median, geom = "point", shape = 21, size = 2.6,
                  colour = "black", fill = "white", stroke = 0.7) +
-    scale_colour_brewer(palette = "Set2", name = NULL) +
+    scale_colour_manual(values = tool_palette, name = NULL) +
     scale_shape_manual(values = c(fastder = 16, derfinder = 17,
                                   megadepth_baseline = 15, grohmm = 18),
                        name = NULL) +
@@ -1067,7 +1136,7 @@ levels_long_metric <- df %>%
 ggplot(levels_long_metric, aes(x = level, y = value, fill = scenario)) +
   geom_boxplot(alpha = 0.6, outlier.size = 0.5) +
   facet_wrap(~ metric, ncol = 2) +
-  scale_fill_brewer(palette = "Set2") +
+  scale_fill_manual(values = scenario_palette) +
   labs(x = "Level", y = "Value (%)", fill = NULL) +
   pub_theme +
   theme(axis.text.x = element_text(angle = 30, hjust = 1),
@@ -1124,7 +1193,7 @@ build_level_heatmap <- function(metric_name, palette_high) {
     `min_length` = meta$min_length,
     `coverage_tol` = meta$coverage_tolerance,
     col = list(
-      Scenario = c("template + variant" = "#66c2a5", "variant only" = "#fc8d62"),
+      Scenario = scenario_palette,
       `AS event` = as_event_palette,
       `min_coverage` = safe_ramp(meta$min_coverage, "#08306b"),
       `min_length` = safe_ramp(meta$min_length, "#7f2704"),
@@ -1179,7 +1248,7 @@ mn <- df %>%
 ggplot(mn, aes(x = feature, y = value, fill = scenario)) +
   geom_boxplot(alpha = 0.6, outlier.size = 0.5) +
   facet_wrap(~ kind, ncol = 2) +
-  scale_fill_brewer(palette = "Set2") +
+  scale_fill_manual(values = scenario_palette) +
   labs(x = NULL, y = "Fraction (%)", fill = NULL) +
   pub_theme +
   theme(legend.position = "bottom", aspect.ratio = NULL)
@@ -1218,7 +1287,7 @@ build_mn_heatmap <- function(kind_name, palette_high) {
     `min_length` = meta$min_length,
     `coverage_tol` = meta$coverage_tolerance,
     col = list(
-      Scenario = c("template + variant" = "#66c2a5", "variant only" = "#fc8d62"),
+      Scenario = scenario_palette,
       `AS event` = as_event_palette,
       `min_coverage` = safe_ramp(meta$min_coverage, "#08306b"),
       `min_length` = safe_ramp(meta$min_length, "#7f2704"),
@@ -1367,39 +1436,48 @@ if (!is.null(truth_chrom) && nrow(truth_chrom) > 0) {
 p
 ```
 
-## Total exonic length per transcript
+## Per-region descriptors of fastder calls
 
-```{r length_hist, fig.width = 8, fig.height = 4}
+Three panels on the same parameter combination: exonic length distribution per region, mean coverage against the number of exons, and the same against total exonic length. They share the supplementary figure that pairs region count with structural complexity.
+
+```{r region_descriptors, fig.width = 12, fig.height = 4.5}
 cs_pid <- if (exists("best_fastder_pid")) best_fastder_pid else
           sort(unique(cs$param_id))[1]
 cs_plot <- cs %>%
   filter(param_id == cs_pid) %>%
   mutate(scenario = relabel_scenario(scenario))
-ggplot(cs_plot, aes(x = total_exon_length)) +
+
+p_length <- ggplot(cs_plot, aes(x = total_exon_length)) +
   geom_histogram(bins = 30, fill = "grey60", colour = "grey30") +
-  facet_wrap(~ scenario, ncol = 2) +
+  facet_wrap(~ scenario, ncol = 1) +
   scale_x_log10() +
-  labs(x = "Total exonic length per transcript (bp)",
-       y = "Number of transcripts",
-       caption = paste("parameter combination:", cs_pid)) +
-  pub_theme
-```
+  labs(x = "Total exonic length per region (bp)",
+       y = "Number of regions",
+       title = "A. Exonic length") +
+  pub_theme +
+  theme(aspect.ratio = NULL)
 
-## Mean coverage vs number of exons
-
-```{r score_vs_n_exons, fig.width = 8, fig.height = 4}
-cs_pid <- if (exists("best_fastder_pid")) best_fastder_pid else
-          sort(unique(cs$param_id))[1]
-cs_plot <- cs %>%
-  filter(param_id == cs_pid) %>%
-  mutate(scenario = relabel_scenario(scenario))
-ggplot(cs_plot, aes(x = n_exons, y = score)) +
+p_cov_vs_n <- ggplot(cs_plot, aes(x = n_exons, y = score)) +
   geom_point(alpha = 0.3) +
   scale_y_log10() +
-  facet_wrap(~ scenario, ncol = 2) +
-  labs(x = "Number of exons per transcript", y = "Mean coverage",
-       caption = paste("parameter combination:", cs_pid)) +
-  pub_theme
+  facet_wrap(~ scenario, ncol = 1) +
+  labs(x = "Exons per region", y = "Mean coverage",
+       title = "B. Coverage vs exon count") +
+  pub_theme +
+  theme(aspect.ratio = NULL)
+
+p_cov_vs_len <- ggplot(cs_plot, aes(x = total_exon_length, y = score)) +
+  geom_point(alpha = 0.3) +
+  scale_x_log10() +
+  scale_y_log10() +
+  facet_wrap(~ scenario, ncol = 1) +
+  labs(x = "Total exonic length (bp)", y = "Mean coverage",
+       title = "C. Coverage vs length") +
+  pub_theme +
+  theme(aspect.ratio = NULL)
+
+(p_length | p_cov_vs_n | p_cov_vs_len) +
+  plot_annotation(caption = paste("parameter combination:", cs_pid))
 ```
 
 ## Mean coverage vs total exonic length

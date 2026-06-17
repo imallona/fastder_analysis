@@ -1,22 +1,22 @@
-name: rmarkdown
+name: figures
 channels:
   - conda-forge
   - bioconda
 dependencies:
   - r-base
-  - r-rmarkdown
-  - r-knitr
   - r-ggplot2
   - r-dplyr
   - r-tidyr
   - r-readr
-  - r-scales
   - r-stringr
-  - r-circlize
-  - r-ggrepel
   - r-patchwork
+  - r-cowplot
+  - r-ggrepel
+  - r-magick
+  - r-png
+  - r-rcolorbrewer
   - bioconductor-complexheatmap
   - bioconductor-rtracklayer
-  - bioconductor-gviz
-  - bioconductor-genomicranges
-  - pandoc
+  - python
+  - matplotlib
+  - poppler

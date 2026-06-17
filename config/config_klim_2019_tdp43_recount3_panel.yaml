@@ -65,6 +65,15 @@ fastder:
   # threshold the calls include noise; the cryptic exons are read out from the
   # report via the knockdown-specific junctions and the near-zero control.
   min_coverage: [0.02]
+  # Tighten the stitching gate so a low-coverage cryptic exon is not absorbed
+  # into a wide block with a neighbouring high-coverage constitutive exon. The
+  # gate compares the running stitched coverage to the candidate; a value of
+  # 1.0 keeps neighbours within (1 +/- 1.0) of each other, which lets normal
+  # transcript-internal variation through while rejecting a 10x-100x jump
+  # between a cryptic exon and its flanking constitutive exon. The fastder
+  # default (1000) is effectively open and is the reason the panel figures
+  # bury STMN2 and HDGFL2 inside one large stitched region.
+  coverage_tolerance: [1.0]
   # Cryptic exon panel: chr8 (STMN2), chr19 (HDGFL2, ELAVL3, CELF5), chr20
   # (KCNQ2). Loci picked from knockdown-specific novel junctions in the
   # recount3 junction matrix.

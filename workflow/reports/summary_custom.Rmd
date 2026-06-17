@@ -28,7 +28,9 @@ knitr::opts_chunk$set(
   warning = FALSE,
   fig.width = 8,
   fig.height = 5,
-  fig.align = "center"
+  fig.align = "center",
+  dev = c("png", "pdf"),
+  fig.path = "summary_custom_figs/"
 )
 library(readr)
 library(dplyr)
@@ -41,10 +43,14 @@ suppressPackageStartupMessages({
 })
 
 tool_levels <- c("megadepth_baseline", "derfinder", "grohmm", "fastder")
-tool_palette <- c(megadepth_baseline = "#66c2a5",
-                  derfinder = "#fc8d62",
-                  grohmm = "#e78ac3",
-                  fastder = "#8da0cb")
+# Tool palette. Same hex values as summary.Rmd and benchmarks.Rmd so the
+# truthless real-data reports match the simulation report.
+tool_palette <- c(
+  derfinder          = "#66C2A5",
+  fastder            = "#FC8D62",
+  grohmm             = "#8DA0CB",
+  megadepth_baseline = "#E78AC3"
+)
 
 # Read a CSV if it exists and is non-empty, otherwise return NULL so each
 # section can skip cleanly.
