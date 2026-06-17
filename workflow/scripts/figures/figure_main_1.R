@@ -33,15 +33,16 @@ DDDDDDEEEEEE
 FFFFFFFFFFFF
 GGGGGGHHHHHH
 "
+# Taller rows A (schematic, was cropped) and F (CDF, was crowded).
 panels <- p_pipeline + p_sim + p_depth + p_multiexon + p_boundary + p_cdf + p_strand + p_speed +
-  plot_layout(design = design, heights = c(3.4, 2.3, 3.4, 2.0, 1.3, 2.4)) +
+  plot_layout(design = design, heights = c(4.3, 2.3, 3.4, 2.0, 2.6, 2.4)) +
   plot_annotation(tag_levels = "A") &
   theme(plot.tag = element_text(face = "bold", size = 16))
 
 # One dedicated legend (tools as line + symbol, plus strand fill) below the
 # panels, so the legend line types match the plotted lines exactly.
-fig <- cowplot::plot_grid(panels, make_combined_legend(), ncol = 1, rel_heights = c(1, 0.05))
+fig <- cowplot::plot_grid(panels, make_combined_legend(), ncol = 1, rel_heights = c(1, 0.07))
 
-ggsave(out, fig, width = 8.27, height = 15.0, limitsize = FALSE)
-ggsave(sub("\\.pdf$", ".svg", out), fig, width = 8.27, height = 15.0, limitsize = FALSE)
+ggsave(out, fig, width = 8.27, height = 17.5, limitsize = FALSE)
+ggsave(sub("\\.pdf$", ".svg", out), fig, width = 8.27, height = 17.5, limitsize = FALSE)
 cat("wrote", out, "and", sub("\\.pdf$", ".svg", out), "\n")

@@ -718,27 +718,27 @@ Each event class is run through two scenarios that differ in which transcripts c
 
 For each reference transcript, the highest exonic Jaccard against any fastder transcript. A value of 1 means the fastder match has the same exon set; 0 means no overlap.
 
-The parameter grid is decomposed: min_coverage is the panel row, the AS event is the panel column, and within each panel the boxes run over min_length and position_tolerance, split by scenario.
+The parameter grid is decomposed: the AS event is the panel column, min_coverage and position_tolerance are the panel rows, and within each panel the boxes run over min_length, split by scenario. position_tolerance is given its own row band rather than crowding the x-axis: the near-identical bands show that it barely moves the result.
 
-```{r pub_jaccard, fig.width = 12, fig.height = 5}
+```{r pub_jaccard, fig.width = 12, fig.height = 11}
 if (!is.null(fuzzy$jaccard) && nrow(fuzzy$jaccard) > 0) {
   fj <- fuzzy$jaccard %>%
     mutate(jaccard = as.numeric(jaccard),
            as_event = label_as(sample),
            scenario = relabel_scenario(scenario)) %>%
     parse_param_id() %>%
-    mutate(param_sub = paste0("ml", min_length, "\npt", position_tolerance))
+    mutate(param_sub = paste0("ml", min_length))
   ggplot(fj, aes(x = param_sub, y = jaccard, fill = scenario)) +
     geom_boxplot(outlier.size = 0.25, linewidth = 0.3) +
     scale_fill_manual(values = scenario_palette, name = NULL) +
-    labs(x = "min_length / position_tolerance",
+    labs(x = "min_length",
          y = "Best exonic Jaccard against reference") +
     coord_cartesian(ylim = c(0, 1)) +
-    facet_grid(min_coverage ~ as_event,
-               labeller = labeller(min_coverage = function(v) paste0("mc ", v))) +
+    facet_grid(min_coverage + position_tolerance ~ as_event,
+               labeller = labeller(min_coverage = function(v) paste0("mc ", v),
+                                   position_tolerance = function(v) paste0("pt ", v))) +
     pub_theme +
-    theme(axis.text.x = element_text(angle = 45, hjust = 1),
-          legend.position = "bottom")
+    theme(legend.position = "bottom")
 } else {
   cat("no fuzzy_jaccard data")
 }

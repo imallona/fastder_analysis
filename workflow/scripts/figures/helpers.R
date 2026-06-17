@@ -74,7 +74,17 @@ make_combined_legend <- function() {
     scale_linetype_manual(values = tool_linetypes, labels = tool_labels, name = NULL) +
     scale_fill_manual(values = strand_palette, name = NULL) +
     theme_pub() + theme(legend.position = "bottom", legend.box = "vertical")
-  cowplot::get_legend(p)
+  # ggplot2 >= 3.5: get_legend returns an empty box; take the bottom guide-box.
+  legend_grob <- tryCatch(
+    cowplot::get_plot_component(p, "guide-box-bottom", return_all = TRUE),
+    error = function(e) NULL)
+  if (is.list(legend_grob) && !grid::is.grob(legend_grob)) {
+    nonempty <- Filter(function(g) !inherits(g, "zeroGrob"), legend_grob)
+    legend_grob <- if (length(nonempty) > 0) nonempty[[1]] else NULL
+  }
+  if (is.null(legend_grob) || inherits(legend_grob, "zeroGrob"))
+    legend_grob <- cowplot::get_legend(p)
+  legend_grob
 }
 
 # Parse mirrors benchmarks.Rmd: tool is encoded in the run_<tool> rule name.
@@ -171,9 +181,13 @@ panel_depth <- function(which_levels = c("Transcript", "Exon")) {
     # on top and the long scenario label on the rotated right strip, so the
     # square facets do not clip. Both levels: keep the report's layout.
     (if (length(which_levels) == 1)
-       facet_grid(scenario ~ metric, labeller = labeller(scenario = label_wrap_gen(12)))
+       facet_grid(scenario ~ metric, labeller = labeller(
+         scenario = label_wrap_gen(12),
+         metric = c(precision = "Precision", sensitivity = "Sensitivity")))
      else
-       facet_grid(level + metric ~ scenario, labeller = labeller(scenario = label_wrap_gen(12)))) +
+       facet_grid(level + metric ~ scenario, labeller = labeller(
+         scenario = label_wrap_gen(12),
+         metric = c(precision = "Precision", sensitivity = "Sensitivity")))) +
     labs(x = "Reads per sample (M)", y = "Percent") +
     theme_pub_square() + theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
     guides(colour = "none", shape = "none", linetype = "none")
@@ -199,7 +213,7 @@ panel_boundary <- function() {
     scale_linetype_manual(values = tool_linetypes, labels = tool_labels) +
     coord_cartesian(ylim = c(0, 100)) +
     facet_wrap(~ scenario, labeller = label_wrap_gen(12)) +
-    labs(x = "Reads per sample (M)", y = "Within 5 bp (%)") +
+    labs(x = "Reads per sample (M)", y = "Exon boundaries within\n5 bp of truth (%)") +
     theme_pub_square() + theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
     guides(colour = "none", shape = "none", linetype = "none")
 }
@@ -301,7 +315,7 @@ panel_multiexon <- function(config = "config_full_simulation") {
     scale_shape_manual(values = tool_shapes, labels = tool_labels) +
     scale_x_log10() + scale_y_log10() +
     facet_wrap(~ scenario, ncol = 2, labeller = label_wrap_gen(12)) +
-    labs(x = "Total predicted transcripts", y = "Multi-exon transcripts") +
+    labs(x = "Predicted transcripts (count)", y = "Multi-exon transcripts (count)") +
     theme_pub_square() +
     theme(legend.position = "none", axis.text.x = element_text(angle = 45, hjust = 1))
 }
@@ -324,7 +338,7 @@ panel_boundary_cdf <- function(config = "config_full_simulation") {
                        labels = c("0", "5", "100", "10k")) +
     coord_cartesian(ylim = c(0, 1)) +
     facet_wrap(~ scenario, labeller = label_wrap_gen(12)) +
-    labs(x = "Distance to nearest boundary (bp)", y = "Cumulative fraction") +
+    labs(x = "Distance to nearest true boundary (bp)", y = "Cumulative fraction of boundaries") +
     theme_pub_square() + theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
     guides(colour = "none", shape = "none", linetype = "none")
 }
@@ -351,7 +365,7 @@ panel_novel <- function(csv = NOVEL_CSV) {
     geom_text(aes(label = lab), vjust = -0.2, size = 3, lineheight = 0.85) +
     scale_fill_manual(values = tissue_palette, guide = "none") +
     expand_limits(y = max(d$novel) * 1.25) +
-    labs(x = NULL, y = "novel ER exons") +
+    labs(x = NULL, y = "Novel ER exons (count)") +
     theme_pub() + theme(axis.text.x = element_text(angle = 30, hjust = 1))
 }
 
@@ -378,7 +392,7 @@ panel_gtexcmp_exons <- function(config = GTEXCMP) {
   ggplot(d, aes(factor(n_exons), n)) +
     geom_col(fill = FASTDER_ROSE, width = 0.85) +
     scale_x_discrete(labels = d$lab) + scale_y_log10() +
-    labs(x = "exons / region", y = "fastder regions") +
+    labs(x = "Exons per region\n(count)", y = "Number of regions") +
     theme_pub()
 }
 
@@ -389,7 +403,7 @@ panel_gtexcmp_length <- function(config = GTEXCMP) {
   ggplot(d, aes(total_exon_length)) +
     geom_histogram(bins = 40, fill = FASTDER_ROSE) +
     scale_x_log10() +
-    labs(x = "length (bp)", y = "fastder regions") +
+    labs(x = "Exonic length per region (bp)", y = "Number of regions") +
     theme_pub()
 }
 
@@ -399,8 +413,30 @@ panel_gtexcmp_score <- function(config = GTEXCMP) {
   ggplot(d, aes(score)) +
     geom_histogram(bins = 40, fill = FASTDER_ROSE) +
     scale_x_log10() +
-    labs(x = "ER score", y = "fastder regions") +
+    labs(x = "Expressed-region score", y = "Number of regions") +
     theme_pub()
+}
+
+# fastder regions per chromosome and strand, genome-wide (concordance run spans
+# all chromosomes, the chr19 comparison run does not). Sub-groups pooled per tissue.
+GTEXCONC <- "config_gtex_concordance"
+genomic_strand_fill <- c("-" = "#F8766D", "." = "#00BA38", "+" = "#619CFF")
+panel_gtex_genomic_dist <- function(config = GTEXCONC) {
+  chrom_order <- c(paste0("chr", 1:22), "chrX", "chrY", "chrM")
+  d <- read_result(config, "chain_stats.csv") %>%
+    mutate(tissue = factor(sub("_[0-9]+$", "", scenario),
+                           levels = c("brain", "heart", "muscle", "blood")),
+           chrom = factor(chrom, levels = chrom_order),
+           strand = factor(strand, levels = c("-", ".", "+"))) %>%
+    filter(!is.na(chrom))
+  ggplot(d, aes(chrom, fill = strand)) +
+    geom_bar() +
+    scale_fill_manual(values = genomic_strand_fill, name = "strand") +
+    facet_wrap(~ tissue, ncol = 1, scales = "free_y") +
+    labs(x = NULL, y = "fastder regions (count)") +
+    theme_pub() +
+    theme(legend.position = "right", legend.title = element_text(),
+          axis.text.x = element_text(angle = 45, hjust = 1))
 }
 
 # Panel: troponin marker loci as compact per-tissue ER tracks. One facet per

@@ -331,14 +331,15 @@ if (!is.null(dissim)) {
   print(
     ggplot(long, aes(s1, s2, fill = correlation)) +
       geom_tile() +
-      geom_text(aes(label = sprintf("%.3f", correlation)), size = 3) +
+      geom_text(aes(label = sprintf("%.3f", correlation)), size = 5) +
       scale_fill_gradient(low = "white", high = "#4575b4", limits = c(NA, 1)) +
       coord_fixed() +
       labs(x = NULL, y = NULL,
            title = "Spearman correlation of 50 kb binned coverage",
            subtitle = paste(dissim$n_bins, "bins")) +
-      theme_minimal() +
-      theme(axis.text.x = element_text(angle = 45, hjust = 1),
+      theme_minimal(base_size = 14) +
+      theme(axis.text = element_text(size = 13),
+            axis.text.x = element_text(angle = 45, hjust = 1),
             aspect.ratio = 1)
   )
 
