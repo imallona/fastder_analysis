@@ -10,7 +10,7 @@ suppressPackageStartupMessages({
   library(patchwork)
 })
 
-BASE_SIZE <- 12
+BASE_SIZE <- 9
 
 TOOLS <- c("fastder", "derfinder", "megadepth_baseline", "grohmm")
 
@@ -46,6 +46,7 @@ theme_pub <- function(base_size = BASE_SIZE) {
       panel.grid = element_blank(),
       strip.background = element_blank(),
       strip.text = element_text(size = base_size),
+      axis.text = element_text(size = base_size - 1),
       legend.position = "bottom",
       legend.title = element_blank(),
       plot.subtitle = element_text(size = base_size - 1),
@@ -369,6 +370,62 @@ panel_novel <- function(csv = NOVEL_CSV) {
     theme_pub() + theme(axis.text.x = element_text(angle = 30, hjust = 1))
 }
 
+# Novel ER exons per group (knockdown vs control) from extract_novel_exons_tdp43.R,
+# the genome-wide companion to the STMN2 track. Colours match the coverage
+# track: knockdown red, control blue.
+TDP43_NOVEL_CSV <- file.path(FIG_DIR, "tdp43_novel_exons.csv")
+panel_novel_tdp43 <- function(csv = TDP43_NOVEL_CSV) {
+  d <- read_csv(csv, show_col_types = FALSE) %>%
+    mutate(group = factor(group, levels = c("knockdown", "control")),
+           lab = paste0(novel, "\n(", pct, "%)"))
+  ggplot(d, aes(group, novel, fill = group)) +
+    geom_col(width = 0.7) +
+    geom_text(aes(label = lab), vjust = -0.2, size = 3, lineheight = 0.85) +
+    scale_fill_manual(values = c(knockdown = "#d73027", control = "#4575b4"),
+                      guide = "none") +
+    expand_limits(y = max(d$novel) * 1.25) +
+    labs(x = NULL, y = "Novel ER exons (count)") +
+    theme_pub()
+}
+
+# ECDF of the distance from each fastder boundary to the nearest Ensembl
+# boundary, knockdown vs control (fuzzy_distances.csv). The two curves overlap:
+# TDP-43 cryptic splicing is locus-specific, so the groups do not diverge
+# genome-wide. Kept as a deliberate negative result.
+TDP43_CONFIG <- "config_klim_2019_tdp43_recount3_panel"
+panel_tdp43_boundary_dist <- function(config = TDP43_CONFIG) {
+  d <- read_result(config, "fuzzy_distances.csv") %>%
+    filter(tool == "fastder") %>%
+    mutate(group = factor(scenario, levels = c("knockdown", "control")),
+           ad = abs(distance) + 1)
+  ggplot(d, aes(ad, colour = group)) +
+    stat_ecdf(linewidth = 0.6) +
+    scale_x_log10() +
+    scale_colour_manual(values = c(knockdown = "#d73027", control = "#4575b4"),
+                        name = NULL) +
+    labs(x = "distance to nearest Ensembl boundary (bp)", y = "ECDF") +
+    theme_pub()
+}
+
+# Exonic Jaccard between the knockdown and control catalogs. Same white-blue
+# scale and fixed 0..1 limits as the GTEx concordance heatmap so cells compare
+# directly across the two examples despite their different genomic scope.
+TDP43_JACCARD_CSV <- file.path(FIG_DIR, "tdp43_jaccard.csv")
+jaccard_fill <- function() {
+  scale_fill_gradientn(colours = c("white", "#9ecae1", "#08306b"),
+                       values = c(0, 0.5, 1), limits = c(0, 1), name = "Jaccard")
+}
+panel_tdp43_jaccard <- function(csv = TDP43_JACCARD_CSV) {
+  d <- read_csv(csv, col_types = cols(cpm = col_character())) %>%
+    mutate(cpm = factor(paste0(cpm, " CPM"),
+                        levels = paste0(c("1.0", "0.02"), " CPM")))
+  ggplot(d, aes(cpm, "kd vs\ncontrol", fill = jaccard)) +
+    geom_tile(colour = "grey80") +
+    geom_text(aes(label = sprintf("%.2f", jaccard)), size = 3) +
+    jaccard_fill() + coord_fixed() + labs(x = NULL, y = NULL) +
+    theme_pub()
+}
+
 # Median precision per tool across the 32 sub-groups (chr19). `level` picks the
 # gffcompare level: "exon" or "transcript".
 panel_gtexcmp_precision <- function(config = GTEXCMP, level = "exon") {
@@ -439,23 +496,28 @@ panel_gtex_genomic_dist <- function(config = GTEXCONC) {
           axis.text.x = element_text(angle = 45, hjust = 1))
 }
 
-# Panel: troponin marker loci as compact per-tissue ER tracks. One facet per
-# gene, one row per tissue, ER exons drawn as boxes. Tissue-restricted: TNNT2
-# and TNNI3 in heart, TNNT3 in skeletal muscle. Data extracted from the
-# per-sub-group GTFs into marker_loci.csv.
+# Troponin loci, one facet per gene stacked vertically with a free x scale each
+# since the genes sit on different chromosomes. Rows are the tissues plus an
+# Ensembl reference row (tissue == "Ensembl" in marker_loci.csv).
 MARKER_CSV <- file.path(FIG_DIR, "marker_loci.csv")
 panel_marker_loci <- function(csv = MARKER_CSV) {
   tissues <- c("brain", "heart", "muscle", "blood")
+  # Ensembl on top, then the tissue rows below it.
+  ylevels <- c(rev(tissues), "Ensembl")
   d <- read_csv(csv, show_col_types = FALSE) %>%
-    mutate(tissue = factor(tissue, levels = rev(tissues)),
+    mutate(track = ifelse(tissue == "Ensembl", "Ensembl", "fastder"),
+           tissue = factor(tissue, levels = ylevels),
            gene = factor(gene, levels = c("TNNT2", "TNNT3", "TNNI3")),
            start = start / 1e6, end = end / 1e6)
   ggplot(d, aes(xmin = start, xmax = end,
-                ymin = as.integer(tissue) - 0.4, ymax = as.integer(tissue) + 0.4)) +
-    geom_rect(fill = FASTDER_ROSE) +
-    scale_y_continuous(breaks = seq_along(tissues), labels = rev(tissues),
-                       limits = c(0.5, length(tissues) + 0.5)) +
-    facet_wrap(~ gene, scales = "free_x", nrow = 1, labeller = labeller(
+                ymin = as.integer(tissue) - 0.4, ymax = as.integer(tissue) + 0.4,
+                fill = track)) +
+    geom_rect() +
+    scale_fill_manual(values = c(Ensembl = "grey50", fastder = FASTDER_ROSE),
+                      guide = "none") +
+    scale_y_continuous(breaks = seq_along(ylevels), labels = ylevels,
+                       limits = c(0.5, length(ylevels) + 0.5)) +
+    facet_wrap(~ gene, scales = "free_x", ncol = 1, labeller = labeller(
       gene = c(TNNT2 = "TNNT2 (chr1)", TNNT3 = "TNNT3 (chr11)", TNNI3 = "TNNI3 (chr19)"))) +
     labs(x = "position (Mb)", y = NULL) +
     theme_pub()

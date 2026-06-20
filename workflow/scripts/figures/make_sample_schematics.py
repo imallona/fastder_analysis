@@ -45,8 +45,10 @@ ax.text(0.30, 0.20, "called separately", fontsize=7.5, color=GREY, ha="left", st
 for y in (0.555, 0.355):
     ax.annotate("", xy=(0.60, 0.46), xytext=(0.46, y),
                 arrowprops=dict(arrowstyle="-|>", color=GREY, lw=1.1))
-ax.text(0.62, 0.46, "cryptic-exon genes\nSTMN2, HDGFL2,\nELAVL3, CELF5, KCNQ2",
+ax.text(0.62, 0.50, "cryptic-exon genes\nSTMN2, HDGFL2,\nELAVL3, CELF5, KCNQ2",
         fontsize=8, ha="left", va="center")
+ax.text(0.62, 0.22, "1.0 CPM: STMN2 only\n0.02 CPM: full panel",
+        fontsize=7.5, color=GREY, ha="left", va="center")
 ax.set_xlim(0, 1.0)
 ax.set_ylim(0.05, 1.0)
 ax.axis("off")
