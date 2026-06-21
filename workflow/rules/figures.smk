@@ -46,12 +46,14 @@ rule figure_marker_loci:
     input:
         gtfs=op.join(FIG_RESULTS, "config_gtex_concordance", "archive.DONE"),
         script=op.join(FIG_SCRIPTS, "extract_marker_loci.sh"),
+        reference=REF_GTF,
     output:
         op.join(FIG_DIR, "marker_loci.csv"),
     log:
         op.join(LOG_DIR, "figure_marker_loci.log"),
     shell:
-        "bash {input.script} {FIG_RESULTS}/config_gtex_concordance/fastder {output} > {log} 2>&1"
+        "bash {input.script} {FIG_RESULTS}/config_gtex_concordance/fastder "
+        "{output} {input.reference} > {log} 2>&1"
 
 
 # Novel ER exons per tissue, from the per-sub-group GTFs against REF_GTF, which

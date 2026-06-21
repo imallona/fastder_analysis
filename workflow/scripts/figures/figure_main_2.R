@@ -1,8 +1,6 @@
-# Main Figure 2: fastder on recount3 data, two worked examples in order.
-#   TDP-43: design, STMN2 cryptic-exon track, call-structure detail.
+# Main Figure 2: two recount3 worked examples.
+#   TDP-43: design, STMN2 track, novel ERs per group.
 #   GTEx:   design, concordance heatmap, marker loci, novel exons, precision.
-# Tags follow panel order. Quantitative panels are vector; track and heatmaps
-# are wrapped grid objects.
 
 args <- commandArgs(trailingOnly = TRUE)
 out <- if (length(args) >= 1) args[[1]] else "figure_main_2.pdf"
@@ -18,34 +16,45 @@ wrap_png <- function(name) {
     png::readPNG(file.path(fig_dir, name)), interpolate = TRUE))
 }
 
-# Variable names skip F so they never shadow R's FALSE; the A-L panel tags come
-# from the order panels are added, not from these names.
-A <- wrap_pdf(file.path(fig_dir, "fig_tdp43_scheme.pdf"))  # TDP-43 design
-B <- wrap_png("fig_tdp43_stmn2.png")                       # STMN2 track
-D <- panel_gtexcmp_exons(TDP)                              # exons/region, TDP run
-E <- panel_gtexcmp_length(TDP)                             # exonic length, TDP run
-G <- wrap_pdf(file.path(fig_dir, "fig_gtex_scheme.pdf"))   # GTEx design
-H <- wrap_png("fig_gtex_concordance.png")                  # concordance heatmap
-I <- panel_marker_loci()                                   # troponin loci
-J <- panel_novel()                                         # novel ER exons
-K <- panel_gtexcmp_precision(GTX, level = "exon")
-L <- panel_gtexcmp_precision(GTX, level = "transcript")
-M <- panel_gtexcmp_exons(GTX)                              # exons/region, chr19 run
+# A and F use native fit placement (no stretch) at identical source size, so the
+# two design headers print at the same font size. B is delivered standalone
+# (fig_tdp43_stmn2.pdf) and placed into this reserved slot by hand.
+A  <- wrap_pdf(file.path(fig_dir, "fig_tdp43_scheme.pdf"))
+B  <- panel_placeholder("panel B: STMN2 coverage track\n(place fig_tdp43_stmn2.pdf here)")
+# C and D are negative results: no genome-wide knockdown/control separation.
+C  <- panel_novel_tdp43()
+Dd <- panel_tdp43_boundary_dist()
+Ej <- panel_tdp43_jaccard()
+Fg <- wrap_pdf(file.path(fig_dir, "fig_gtex_scheme.pdf"))
+Gc <- wrap_png("fig_gtex_concordance.png")
+Hm <- panel_marker_loci()
+In <- panel_novel()
+Jp <- panel_gtexcmp_precision(GTX, level = "exon")
+Kp <- panel_gtexcmp_precision(GTX, level = "transcript")
 
-# Areas are alphabetical by panel order: A scheme, B STMN2, C exons-TDP,
-# D length-TDP, E GTEx design, F concordance, G marker loci, H novel, I-K precision/exons.
+# Patchwork assigns panels to areas alphabetically. The three small TDP panels
+# (C, D, E) sit in one row. B (STMN2 track) and G (concordance heatmap) each
+# span two design rows so they render at double height; A and F sit beside them
+# in the top row only, with empty space below. A4 width; nudge in the SVG.
+# A (TDP design) and F (GTEx design) get identical 6-col x 2-row cells so the two
+# headers match. B's slot is reserved for the standalone track. C/D/E share a row.
 design <- "
-AAABBBBBBBBB
-CCCCCCDDDDDD
-EEEFFFFFFHHH
+AAAAAABBBBBB
+AAAAAABBBBBB
+CCCCDDDDEEEE
+FFFFFF######
+FFFFFF######
 GGGGGGGGGGGG
+GGGGGGGGGGGG
+HHHHHHHHHHHH
 IIIIJJJJKKKK
 "
-fig <- A + B + D + E + G + H + I + J + K + L + M +
-  plot_layout(design = design, heights = c(3.6, 2.0, 3.6, 1.6, 1.9)) +
+fig <- A + B + C + Dd + Ej + Fg + Gc + Hm + In + Jp + Kp +
+  plot_layout(design = design,
+              heights = c(1.1, 1.1, 1.7, 1.1, 1.1, 1.9, 1.9, 2.0, 1.9)) +
   plot_annotation(tag_levels = "A") &
-  theme(plot.tag = element_text(face = "bold", size = 15))
+  theme(plot.tag = element_text(face = "bold", size = 11))
 
-ggsave(out, fig, width = 8.27, height = 13.2, limitsize = FALSE)
-ggsave(sub("\\.pdf$", ".svg", out), fig, width = 8.27, height = 13.2, limitsize = FALSE)
+ggsave(out, fig, width = 8.27, height = 13.5, limitsize = FALSE)
+ggsave(sub("\\.pdf$", ".svg", out), fig, width = 8.27, height = 13.5, limitsize = FALSE)
 cat("wrote", out, "and", sub("\\.pdf$", ".svg", out), "\n")
