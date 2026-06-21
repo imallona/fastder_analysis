@@ -23,8 +23,8 @@ parse_args <- function(args) {
     out = "fig_tdp43_stmn2.svg",
     gene = "STMN2",
     tools = "fastder,derfinder,megadepth_baseline,grohmm",
-    width = "12",
-    height = "5",
+    width = "4.5",
+    height = "6.5",
     pdf = "true")
   i <- 1
   while (i <= length(args)) {
@@ -61,7 +61,11 @@ if (nrow(r) != 1) stop("gene not in panel: ", opt$gene)
 manifest <- read.csv(opt$manifest, stringsAsFactors = FALSE)
 manifest <- manifest[order(manifest$group, manifest$sample), ]
 groups <- unique(manifest$group)
-group_colors <- setNames(c("#d73027", "#4575b4")[seq_along(groups)], groups)
+# WT blue, KD red, matching panels A and C-E. Short titles keep the track compact;
+# the legend and scheme spell out TDP-43 WT / TDP-43 KD.
+group_colors <- c(control = "#4575b4", knockdown = "#d73027")[groups]
+group_short <- c(control = "WT", knockdown = "KD")
+manifest$idx <- ave(seq_len(nrow(manifest)), manifest$group, FUN = seq_along)
 
 # Tool columns, palette and labels, identical to the report.
 tools <- c(fastder = "fastder_gtf",
@@ -131,7 +135,8 @@ extract_min_cov <- function() {
 min_cov_cpm <- extract_min_cov()
 
 build_tracks <- function() {
-  axis_track <- GenomeAxisTrack()
+  # Labels below the scale line so they are not clipped at the top of the canvas.
+  axis_track <- GenomeAxisTrack(labelPos = "below", fontsize = 9)
   body <- list()
   body_sizes <- numeric(0)
 
@@ -141,10 +146,13 @@ build_tracks <- function() {
                              end(gene_models) >= r$start &
                              gene_models$type == "exon"]
     if (length(in_window) > 0) {
+      # Merge all transcripts into one clear exon model rather than stacking many
+      # faint transcript rows: the marker track only needs the gene's exon layout.
+      merged <- reduce(granges(in_window), ignore.strand = TRUE)
       body <- c(body, AnnotationTrack(
-        in_window, name = "Ensembl", group = in_window$transcript_id,
-        stacking = "squish", fill = "grey60", col = NA))
-      body_sizes <- c(body_sizes, 1.4)
+        merged, name = "Ensembl", stacking = "dense",
+        fill = "grey45", col = "grey45"))
+      body_sizes <- c(body_sizes, 1.0)
     }
   }
 
@@ -153,14 +161,15 @@ build_tracks <- function() {
     f <- m$cpm_factor
     body <- c(body, DataTrack(
       range = m$bigwig, genome = "hg38", chromosome = r$chrom,
-      name = paste0(m$group, "\n", m$sample, "\nCPM"),
+      name = paste0(group_short[m$group], " ", m$idx),
       type = c("histogram", "h"),
       transformation = local({ factor <- f; function(x) x * factor }),
       baseline = min_cov_cpm,
       col.baseline = "#d73027", lty.baseline = 2, lwd.baseline = 0.7,
+      col = group_colors[m$group],
       col.histogram = group_colors[m$group],
       fill.histogram = group_colors[m$group]))
-    body_sizes <- c(body_sizes, 1.6)
+    body_sizes <- c(body_sizes, 1.1)
   }
 
   for (tool in names(tools)) {
@@ -170,10 +179,10 @@ build_tracks <- function() {
         gr <- gr[seqnames(gr) == r$chrom & start(gr) <= r$end & end(gr) >= r$start]
       }
       body <- c(body, AnnotationTrack(
-        gr, name = paste0(tool_labels[tool], "\n", group),
+        gr, name = paste0(tool_labels[tool], " ", group_short[group]),
         chromosome = r$chrom, fill = tool_colors[tool], col = NA,
         stacking = "squish", shape = "box"))
-      body_sizes <- c(body_sizes, 1.0)
+      body_sizes <- c(body_sizes, 0.7)
     }
   }
 
@@ -189,8 +198,8 @@ draw <- function(tr) {
   plotTracks(list(tr$axis, tr$highlight),
              from = r$start, to = r$end, chromosome = r$chrom,
              background.title = "white", col.title = "black",
-             col.axis = "black", fontsize = 9, cex.title = 1, cex.axis = 0.9,
-             title.width = 2.2, sizes = c(0.6, tr$sizes))
+             col.axis = "black", fontsize = 10, cex.title = 0.85, cex.axis = 0.85,
+             rotation.title = 0, title.width = 1.6, sizes = c(1.0, tr$sizes))
 }
 
 tr <- build_tracks()

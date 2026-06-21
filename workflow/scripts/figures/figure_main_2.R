@@ -16,8 +16,11 @@ wrap_png <- function(name) {
     png::readPNG(file.path(fig_dir, name)), interpolate = TRUE))
 }
 
+# A and F use native fit placement (no stretch) at identical source size, so the
+# two design headers print at the same font size. B is delivered standalone
+# (fig_tdp43_stmn2.pdf) and placed into this reserved slot by hand.
 A  <- wrap_pdf(file.path(fig_dir, "fig_tdp43_scheme.pdf"))
-B  <- wrap_pdf(file.path(fig_dir, "fig_tdp43_stmn2.pdf"))   # vector track, replaces the raster PNG
+B  <- panel_placeholder("panel B: STMN2 coverage track\n(place fig_tdp43_stmn2.pdf here)")
 # C and D are negative results: no genome-wide knockdown/control separation.
 C  <- panel_novel_tdp43()
 Dd <- panel_tdp43_boundary_dist()
@@ -30,20 +33,28 @@ Jp <- panel_gtexcmp_precision(GTX, level = "exon")
 Kp <- panel_gtexcmp_precision(GTX, level = "transcript")
 
 # Patchwork assigns panels to areas alphabetically. The three small TDP panels
-# (C, D, E) sit in one row. A4 width; nudge in the SVG.
+# (C, D, E) sit in one row. B (STMN2 track) and G (concordance heatmap) each
+# span two design rows so they render at double height; A and F sit beside them
+# in the top row only, with empty space below. A4 width; nudge in the SVG.
+# A (TDP design) and F (GTEx design) get identical 6-col x 2-row cells so the two
+# headers match. B's slot is reserved for the standalone track. C/D/E share a row.
 design <- "
-AAAABBBBBBBB
+AAAAAABBBBBB
+AAAAAABBBBBB
 CCCCDDDDEEEE
-FFFFGGGGGGGG
-HHHHHIIIIIII
-HHHHHJJJJJJJ
-HHHHHKKKKKKK
+FFFFFF######
+FFFFFF######
+GGGGGGGGGGGG
+GGGGGGGGGGGG
+HHHHHHHHHHHH
+IIIIJJJJKKKK
 "
 fig <- A + B + C + Dd + Ej + Fg + Gc + Hm + In + Jp + Kp +
-  plot_layout(design = design, heights = c(2.2, 1.6, 3.0, 1.3, 1.3, 1.3)) +
+  plot_layout(design = design,
+              heights = c(1.1, 1.1, 1.7, 1.1, 1.1, 1.9, 1.9, 2.0, 1.9)) +
   plot_annotation(tag_levels = "A") &
   theme(plot.tag = element_text(face = "bold", size = 11))
 
-ggsave(out, fig, width = 8.27, height = 11, limitsize = FALSE)
-ggsave(sub("\\.pdf$", ".svg", out), fig, width = 8.27, height = 11, limitsize = FALSE)
+ggsave(out, fig, width = 8.27, height = 13.5, limitsize = FALSE)
+ggsave(sub("\\.pdf$", ".svg", out), fig, width = 8.27, height = 13.5, limitsize = FALSE)
 cat("wrote", out, "and", sub("\\.pdf$", ".svg", out), "\n")

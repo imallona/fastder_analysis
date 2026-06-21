@@ -362,30 +362,37 @@ panel_novel <- function(csv = NOVEL_CSV) {
     mutate(tissue = factor(tissue, levels = c("brain", "heart", "muscle", "blood")),
            lab = paste0(novel, "\n(", pct, "%)"))
   ggplot(d, aes(tissue, novel, fill = tissue)) +
-    geom_col(width = 0.8) +
+    geom_col(width = 0.45) +
     geom_text(aes(label = lab), vjust = -0.2, size = 3, lineheight = 0.85) +
     scale_fill_manual(values = tissue_palette, guide = "none") +
     expand_limits(y = max(d$novel) * 1.25) +
-    labs(x = NULL, y = "Novel ER exons (count)") +
+    labs(x = "tissue", y = "Novel ER exons (count)") +
     theme_pub() + theme(axis.text.x = element_text(angle = 30, hjust = 1))
 }
 
+# TDP-43 group display labels: the data uses control/knockdown, the figure shows
+# the genotype (wild type, knockdown). Control blue, knockdown red, kept across
+# the track and every TDP panel.
+TDP_GROUP_LEVELS <- c("control", "knockdown")
+TDP_GROUP_LABELS <- c(control = "TDP-43 WT", knockdown = "TDP-43 KD")
+TDP_GROUP_FILL <- c("TDP-43 WT" = "#4575b4", "TDP-43 KD" = "#d73027")
+relabel_tdp_group <- function(v)
+  factor(v, levels = TDP_GROUP_LEVELS, labels = TDP_GROUP_LABELS[TDP_GROUP_LEVELS])
+
 # Novel ER exons per group (knockdown vs control) from extract_novel_exons_tdp43.R,
-# the genome-wide companion to the STMN2 track. Colours match the coverage
-# track: knockdown red, control blue.
+# the genome-wide companion to the STMN2 track. Colours match the coverage track.
 TDP43_NOVEL_CSV <- file.path(FIG_DIR, "tdp43_novel_exons.csv")
 panel_novel_tdp43 <- function(csv = TDP43_NOVEL_CSV) {
   d <- read_csv(csv, show_col_types = FALSE) %>%
-    mutate(group = factor(group, levels = c("knockdown", "control")),
+    mutate(group = relabel_tdp_group(group),
            lab = paste0(novel, "\n(", pct, "%)"))
   ggplot(d, aes(group, novel, fill = group)) +
     geom_col(width = 0.7) +
     geom_text(aes(label = lab), vjust = -0.2, size = 3, lineheight = 0.85) +
-    scale_fill_manual(values = c(knockdown = "#d73027", control = "#4575b4"),
-                      guide = "none") +
+    scale_fill_manual(values = TDP_GROUP_FILL, guide = "none") +
     expand_limits(y = max(d$novel) * 1.25) +
-    labs(x = NULL, y = "Novel ER exons (count)") +
-    theme_pub()
+    labs(x = "group", y = "Novel ER exons (count)") +
+    theme_pub() + theme(axis.text.x = element_text(angle = 20, hjust = 1))
 }
 
 # ECDF of the distance from each fastder boundary to the nearest Ensembl
@@ -396,15 +403,15 @@ TDP43_CONFIG <- "config_klim_2019_tdp43_recount3_panel"
 panel_tdp43_boundary_dist <- function(config = TDP43_CONFIG) {
   d <- read_result(config, "fuzzy_distances.csv") %>%
     filter(tool == "fastder") %>%
-    mutate(group = factor(scenario, levels = c("knockdown", "control")),
+    mutate(group = relabel_tdp_group(scenario),
            ad = abs(distance) + 1)
   ggplot(d, aes(ad, colour = group)) +
     stat_ecdf(linewidth = 0.6) +
     scale_x_log10() +
-    scale_colour_manual(values = c(knockdown = "#d73027", control = "#4575b4"),
-                        name = NULL) +
-    labs(x = "distance to nearest Ensembl boundary (bp)", y = "ECDF") +
-    theme_pub()
+    scale_colour_manual(values = TDP_GROUP_FILL, name = NULL) +
+    labs(x = "distance to nearest Ensembl boundary (bp)",
+         y = "cumulative fraction") +
+    theme_pub_square()
 }
 
 # Exonic Jaccard between the knockdown and control catalogs. Same white-blue
@@ -419,11 +426,14 @@ panel_tdp43_jaccard <- function(csv = TDP43_JACCARD_CSV) {
   d <- read_csv(csv, col_types = cols(cpm = col_character())) %>%
     mutate(cpm = factor(paste0(cpm, " CPM"),
                         levels = paste0(c("1.0", "0.02"), " CPM")))
-  ggplot(d, aes(cpm, "kd vs\ncontrol", fill = jaccard)) +
-    geom_tile(colour = "grey80") +
-    geom_text(aes(label = sprintf("%.2f", jaccard)), size = 3) +
-    jaccard_fill() + coord_fixed() + labs(x = NULL, y = NULL) +
-    theme_pub()
+  ggplot(d, aes(cpm, jaccard, fill = cpm)) +
+    geom_col(width = 0.6) +
+    geom_text(aes(label = sprintf("%.2f", jaccard)), vjust = -0.3, size = 3) +
+    scale_fill_manual(values = c("1.0 CPM" = "#9ecae1", "0.02 CPM" = "#3182bd"),
+                      guide = "none") +
+    coord_cartesian(ylim = c(0, 1)) +
+    labs(x = "min coverage", y = "TDP-43 WT vs KD Jaccard") +
+    theme_pub() + theme(axis.text.x = element_text(angle = 30, hjust = 1))
 }
 
 # Median precision per tool across the 32 sub-groups (chr19). `level` picks the
@@ -434,10 +444,10 @@ panel_gtexcmp_precision <- function(config = GTEXCMP, level = "exon") {
     group_by(tool) %>% summarise(prec = median(.data[[col]], na.rm = TRUE), .groups = "drop") %>%
     filter(tool %in% TOOLS)
   ggplot(d, aes(reorder(tool, -prec), prec, fill = tool)) +
-    geom_col(width = 0.75) +
+    geom_col(width = 0.45) +
     scale_fill_manual(values = tool_palette, guide = "none") +
     scale_x_discrete(labels = tool_labels) +
-    labs(x = NULL, y = paste0(tools::toTitleCase(level), " precision (%)")) +
+    labs(x = "tool", y = paste0(tools::toTitleCase(level), " precision (%)")) +
     theme_pub() + theme(axis.text.x = element_text(angle = 30, hjust = 1))
 }
 
@@ -516,21 +526,27 @@ panel_marker_loci <- function(csv = MARKER_CSV) {
     scale_fill_manual(values = c(Ensembl = "grey50", fastder = FASTDER_ROSE),
                       guide = "none") +
     scale_y_continuous(breaks = seq_along(ylevels), labels = ylevels,
-                       limits = c(0.5, length(ylevels) + 0.5)) +
-    facet_wrap(~ gene, scales = "free_x", ncol = 1, labeller = labeller(
+                       limits = c(0.5, length(ylevels) + 0.5), expand = c(0, 0)) +
+    facet_wrap(~ gene, scales = "free_x", nrow = 1, labeller = labeller(
       gene = c(TNNT2 = "TNNT2 (chr1)", TNNT3 = "TNNT3 (chr11)", TNNI3 = "TNNI3 (chr19)"))) +
     labs(x = "position (Mb)", y = NULL) +
-    theme_pub()
+    theme_pub() + theme(panel.spacing = grid::unit(6, "pt"),
+                        axis.text.x = element_text(angle = 30, hjust = 1))
 }
 
 # Embed a schematic PDF as a panel, rasterised at 600 dpi. rasterGrob letterboxes
 # to the cell; a grImport2 vector embed was tried but overflows narrow cells.
 # width_fill stretches to full panel width instead of centring at native aspect.
-wrap_pdf <- function(pdf_path, dpi = 600, width_fill = FALSE) {
+wrap_pdf <- function(pdf_path, dpi = 600, width_fill = FALSE, fill = FALSE) {
   tmp <- tempfile(fileext = "")
   system2("pdftoppm", c("-png", "-r", dpi, "-singlefile", pdf_path, tmp))
   img <- png::readPNG(paste0(tmp, ".png"))
-  grob <- if (width_fill) {
+  grob <- if (fill) {
+    # Stretch to fill both cell dimensions; the source is rendered near the cell
+    # aspect so distortion stays small. Guarantees no overflow past the panel.
+    grid::rasterGrob(img, width = grid::unit(1, "npc"),
+                     height = grid::unit(1, "npc"), interpolate = TRUE)
+  } else if (width_fill) {
     grid::rasterGrob(img, width = grid::unit(1, "npc"), interpolate = TRUE)
   } else {
     grid::rasterGrob(img, interpolate = TRUE)
@@ -544,6 +560,10 @@ wrap_png <- function(name, fig_dir = FIG_DIR) {
 }
 
 panel_placeholder <- function(text) {
-  ggplot() + annotate("text", 0, 0, label = text, size = 4) +
-    theme_void()
+  ggplot() +
+    annotate("text", 0, 0, label = text, size = 3.2, colour = "grey40") +
+    coord_cartesian(xlim = c(-1, 1), ylim = c(-1, 1)) +
+    theme_void() +
+    theme(panel.border = element_rect(colour = "grey70", fill = NA,
+                                      linetype = "dashed"))
 }
