@@ -77,6 +77,11 @@ fastder:
   # chr21 is small and gene-poor; chr19 is the most gene-dense chromosome and
   # is the one the GTEx cross-tool run uses, so the two together test both
   # extremes of gene density.
+  # Ablation for the junction-integration question: false is the normal run,
+  # true emits every expressed region on its own, unsnapped. Snapping cannot be
+  # switched off separately, because the snap coordinate comes from the
+  # junction that joined two regions.
+  no_stitch: [false, true]
   chromosomes: ["chr21", "chr19"]
   # One core, matching the single thread Snakemake gives derfinder, groHMM and
   # the megadepth baseline. Without this the runtime comparison would put

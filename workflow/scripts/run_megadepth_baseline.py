@@ -26,6 +26,8 @@ import os.path as op
 import pyBigWig
 import numpy as np
 
+from compute_library_sizes import library_size
+
 
 def load_bigwig_samples(bw_dir):
     """Return one entry per sample, each a list of that sample's BigWig
@@ -83,7 +85,7 @@ def read_library_sizes(path):
 
     Reading them rather than recomputing keeps this rule's wall time
     comparable to fastder's, which takes the same number from the BigWig
-    summary header at no cost.
+    summary header without reading any intervals.
     """
     sizes = {}
     with open(path) as handle:
@@ -92,6 +94,21 @@ def read_library_sizes(path):
             bigwig, _sample, size = line.rstrip("\n").split("\t")
             sizes[os.path.realpath(bigwig)] = float(size)
     return sizes
+
+
+def sample_cpm_factors(sample_groups, library_sizes_path):
+    """CPM divisor per sample, from the shared table or computed here.
+
+    The pipeline passes --library-sizes so every tool divides by identical
+    numbers. Without it the same values are computed from the BigWig summary
+    headers, which keeps the script usable on its own.
+    """
+    if library_sizes_path:
+        sizes = read_library_sizes(library_sizes_path)
+        lookup = lambda path: sizes[os.path.realpath(path)]
+    else:
+        lookup = library_size
+    return [sum(lookup(p) for p in sample) / 1e6 for sample in sample_groups]
 
 
 def mean_cpm_coverage(samples, chrom, length, cpm_factors):
@@ -151,8 +168,9 @@ def main():
     ap.add_argument("--cutoff", type=float, default=0.05,
                     help="Coverage threshold in CPM (matches fastder --min-coverage)")
     ap.add_argument("--min-length", type=int, default=10)
-    ap.add_argument("--library-sizes", required=True,
-                    help="TSV from compute_library_sizes.py: bigwig, sample, library_size")
+    ap.add_argument("--library-sizes", default=None,
+                    help="TSV from compute_library_sizes.py: bigwig, sample, "
+                         "library_size. Computed from the BigWig headers if omitted.")
     ap.add_argument("--chromosomes", nargs="+", default=None,
                     help="Chromosomes to analyse. Does not scope library_size. "
                          "Default = intersection across all BigWigs.")
@@ -162,11 +180,9 @@ def main():
     flat_paths = [p for sample in samples for p in sample]
     chroms = args.chromosomes if args.chromosomes else common_chroms(flat_paths)
 
-    # CPM scaling factor per sample, restricted to the user's chromosome set.
-    # A stranded sample's library size is the sum of its plus and minus tracks.
-    lib_sizes = read_library_sizes(args.library_sizes)
-    cpm_factors = [sum(lib_sizes[os.path.realpath(p)] for p in sample) / 1e6
-                   for sample in samples]
+    # CPM scaling factor per sample. A stranded sample's library size is the
+    # sum of its plus and minus tracks.
+    cpm_factors = sample_cpm_factors(samples, args.library_sizes)
     for sample, factor in zip(samples, cpm_factors):
         if factor <= 0:
             print(f"[megadepth_baseline] WARN: {op.basename(sample[0])} has empty "

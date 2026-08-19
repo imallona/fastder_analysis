@@ -293,6 +293,9 @@ recount3:
 fastder:
   stranded: false
   min_coverage: [1.0]
+  # Scaling sweep. This is the genome-wide workload, so both parallel stages
+  # have work to spread: parsing over samples, averaging over chromosomes.
+  scaling_cores: [1, 2, 4, 8, 16]
 
 gffcompare:
   reference_annotation: ""

@@ -6,11 +6,12 @@ is what fastder accumulates in Parser.cpp and what recount3 calls the AUC. It
 covers every chromosome present, not only the ones a run analyses, so a given
 CPM threshold is the same absolute cutoff whatever subset is analysed.
 
-Computing it here, once, rather than inside each tool keeps the runtime
-comparison honest. fastder reads the total from the BigWig summary header for
-free, while derfinder would have to import every chromosome to reach the same
-number; charging that to derfinder inside its benchmarked rule would inflate
-its wall time by the ratio of the genome to the analysed subset.
+Computing it once here, rather than inside each tool, keeps it out of the
+benchmarked rules. fastder takes the total from the BigWig summary header,
+which reads no intervals, while derfinder would have to import every
+chromosome to reach the same number. Charged inside its own rule, that would
+inflate derfinder's wall time by the ratio of the genome to the analysed
+subset.
 
 Output is a TSV of bigwig path, sample id and library size, sorted by path.
 """

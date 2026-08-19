@@ -448,3 +448,55 @@ rule link_fastder_gtf:
         mkdir -p $(dirname {output.gtf})
         cp -f $(cat {input.gtf_path}) {output.gtf} 2> {log}
         """
+
+
+# Scaling sweep: fastder against itself at several core counts, on one
+# scenario. Times how the two parallel stages behave rather than comparing
+# tools, so it is separate from run_fastder and from the cross-tool benchmark.
+#
+# Parsing parallelises up to the number of samples and averaging up to the
+# number of chromosomes, while stitching is serial. On a single-chromosome
+# workload the curve therefore flattens almost at once, so run this on a
+# genome-wide config.
+rule run_fastder_scaling:
+    input:
+        fastder_exe=op.join(FASTDER_BUILD_DIR, "fastder"),
+        extract_done=op.join(FASTDER_DIR, SCALING_SCENARIO, "extract.DONE"),
+    output:
+        done=touch(op.join(FASTDER_DIR, "scaling", "cores{ncores}.DONE")),
+    benchmark:
+        op.join(BENCH_DIR, "run_fastder_scaling", "cores{ncores}.tsv")
+    log:
+        op.join(LOG_DIR, "run_fastder_scaling", "cores{ncores}.log")
+    params:
+        fastder_dir=op.join(FASTDER_DIR, SCALING_SCENARIO),
+        run_dir=lambda wc: op.join(FASTDER_DIR, "scaling", f"cores{wc.ncores}"),
+        fastder_args=PARAM_CLI_ARGS[PARAM_IDS[0]],
+        stranded_arg="--stranded" if STRANDED else "",
+        chr_args=(
+            "--chr " + " ".join(str(c) for c in FASTDER_CFG["chromosomes"])
+            if FASTDER_CFG.get("chromosomes")
+            else ""
+        ),
+    threads: lambda wc: int(wc.ncores)
+    conda:
+        "../envs/fastder_build.yaml"
+    shell:
+        """
+        mkdir -p {params.run_dir}
+        rm -f {params.run_dir}/FASTDER_RESULT_*.gtf
+        for f in {params.fastder_dir}/*.bw \
+                  {params.fastder_dir}/*.MM \
+                  {params.fastder_dir}/*.RR \
+                  {params.fastder_dir}/*.csv; do
+            [ -e "$f" ] || continue
+            ln -sf "$f" {params.run_dir}/
+        done
+        {input.fastder_exe} \
+            --dir {params.run_dir} \
+            {params.stranded_arg} \
+            {params.fastder_args} \
+            --cores {wildcards.ncores} \
+            {params.chr_args} \
+            > {log} 2>&1
+        """

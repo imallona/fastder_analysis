@@ -7,12 +7,12 @@
 # Per-sample library sizes, shared by every tool.
 #
 # The library size is the whole-file sum of length times value, the same
-# quantity fastder accumulates internally and recount3 calls the AUC. Computing
-# it in its own rule keeps the runtime comparison honest: fastder reads the
-# total from the BigWig summary header at no cost, whereas derfinder would have
-# to import every chromosome to reach the same number, and charging that to
-# derfinder inside its benchmarked rule would inflate its wall time by the
-# ratio of the genome to the analysed subset.
+# quantity fastder accumulates internally and recount3 calls the AUC. Its own
+# rule keeps it out of the benchmarked ones. fastder takes the total from the
+# BigWig summary header, which reads no intervals, whereas derfinder would have
+# to import every chromosome to reach the same number. Charged inside its own
+# rule, that would inflate derfinder's wall time by the ratio of the genome to
+# the analysed subset.
 rule compute_library_sizes:
     input:
         chr_prefix_done=op.join(FASTDER_DIR, "{scenario}", "match_chr_prefix.DONE"),

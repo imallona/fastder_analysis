@@ -1,7 +1,11 @@
 import os
 import os.path as op
 import itertools
+import sys
 from pathlib import Path
+
+sys.path.insert(0, op.join(workflow.basedir, "scripts"))
+import param_grid
 
 # IMPORTANT: scenarios control whether ASimulatoR template transcripts contribute reads. template_and_variant keeps the default (template + variant both expressed); variant_only post-filters the FASTQ and GFF so the truth set carries only alternative isoforms.
 
@@ -264,6 +268,16 @@ STRANDED = FASTDER_CFG.get("stranded", False)
 # as the genome-wide GTEx atlas, can leave it unset and keep every core.
 FASTDER_CORES = FASTDER_CFG.get("cores", config["cores"])
 
+# Core counts for the scaling sweep, which times fastder against itself rather
+# than against other tools. Empty means the sweep is not part of this run.
+# Use it on a genome-wide workload: parsing parallelises up to the sample count
+# and averaging up to the chromosome count, so on a single-chromosome workload
+# the curve flattens for want of anything to parallelise.
+SCALING_CORES = FASTDER_CFG.get("scaling_cores") or []
+# Scenario the sweep runs on. Defaults to the first, which is enough because
+# the sweep measures fastder against itself on one fixed workload.
+SCALING_SCENARIO = FASTDER_CFG.get("scaling_scenario") or (SCENARIOS[0] if SCENARIOS else "")
+
 # Human reference download, keyed by chromosome scope. Configs that analyse
 # different chromosome sets get independent, cacheable reference folders
 # instead of clobbering one shared directory, and a chromosome-set change is
@@ -302,35 +316,11 @@ LIGHT_STAR_IDX = op.join(LIGHT_DIR, "star_idx_" + REF_SCOPE)
 STAR_IDX_FILES = ["SA", "SAindex", "Genome", "chrNameLength.txt",
                   "genomeParameters.txt"]
 
-# Maps each parameter name to its (id_abbreviation, CLI flag).
-_PARAM_SPEC = {
-    "min_coverage":       ("mc", "--min-coverage"),
-    "min_length":         ("ml", "--min-length"),
-    "position_tolerance": ("pt", "--position-tolerance"),
-    "coverage_tolerance": ("ct", "--coverage-tolerance"),
-}
-
-# Cross-product of all configured value lists; {} means "run once with all defaults".
-_grid_axes = [
-    [(key, val) for val in FASTDER_CFG[key]]
-    for key in _PARAM_SPEC
-    if key in FASTDER_CFG
-]
-_PARAM_COMBOS = [dict(items) for items in itertools.product(*_grid_axes)] if _grid_axes else [{}]
-
-
-def _param_id(combo):
-    """Short, directory-safe identifier for a parameter combination."""
-    abbr = {k: spec[0] for k, spec in _PARAM_SPEC.items()}
-    parts = [f"{abbr[k]}{v}" for k, v in combo.items()]
-    return "_".join(parts) if parts else "default"
-
-
-def _fastder_cli_args(combo):
-    """CLI flags to pass to fastder for this combination (only explicitly-set params)."""
-    flag = {k: spec[1] for k, spec in _PARAM_SPEC.items()}
-    return " ".join(f"{flag[k]} {v}" for k, v in combo.items())
-
+# The grid itself lives in scripts/param_grid.py so it can be unit tested.
+_PARAM_COMBOS = param_grid.build_combos(FASTDER_CFG)
+_param_id = param_grid.param_id
+_fastder_cli_args = param_grid.fastder_cli_args
+_PARAM_SPEC = param_grid.PARAM_SPEC
 
 PARAM_IDS = [_param_id(c) for c in _PARAM_COMBOS]
 PARAM_CLI_ARGS = {_param_id(c): _fastder_cli_args(c) for c in _PARAM_COMBOS}
@@ -448,5 +438,6 @@ rule all:
           if BACKEND == "recount3" and R3_DATA_SOURCE == "gtex"
           else [op.join(RESULTS_DIR, "recount3.html")]
           if BACKEND == "recount3" else []),
+        *[op.join(FASTDER_DIR, "scaling", f"cores{n}.DONE") for n in SCALING_CORES],
         op.join(RESULTS_DIR, "archive.DONE"),
     default_target: True
