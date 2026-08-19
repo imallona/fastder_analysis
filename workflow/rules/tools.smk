@@ -4,6 +4,36 @@
 # grid block are defined.
 
 
+# Per-sample library sizes, shared by every tool.
+#
+# The library size is the whole-file sum of length times value, the same
+# quantity fastder accumulates internally and recount3 calls the AUC. Computing
+# it in its own rule keeps the runtime comparison honest: fastder reads the
+# total from the BigWig summary header at no cost, whereas derfinder would have
+# to import every chromosome to reach the same number, and charging that to
+# derfinder inside its benchmarked rule would inflate its wall time by the
+# ratio of the genome to the analysed subset.
+rule compute_library_sizes:
+    input:
+        chr_prefix_done=op.join(FASTDER_DIR, "{scenario}", "match_chr_prefix.DONE"),
+    output:
+        tsv=op.join(FASTDER_DIR, "{scenario}", "library_sizes.tsv"),
+    log:
+        op.join(LOG_DIR, "compute_library_sizes", "{scenario}.log"),
+    params:
+        bigwig_dir=lambda wc: op.join(FASTDER_DIR, wc.scenario),
+        script=op.join(WORKFLOW_DIR, "scripts", "compute_library_sizes.py"),
+    threads: 1
+    conda:
+        "../envs/megadepth_baseline.yaml"
+    shell:
+        """
+        python3 {params.script} \
+            --bigwig-dir {params.bigwig_dir} \
+            --out {output.tsv} > {log} 2>&1
+        """
+
+
 # derfinder: Bioconductor coverage-based ER detection. CPM-normalised
 # per-base mean coverage thresholded at --cutoff, post-filtered by
 # --min-length, with optional gap-bridging via --maxregiongap. Sweeps the
@@ -12,6 +42,7 @@
 rule run_derfinder:
     input:
         chr_prefix_done=op.join(FASTDER_DIR, "{scenario}", "match_chr_prefix.DONE"),
+        library_sizes=op.join(FASTDER_DIR, "{scenario}", "library_sizes.tsv"),
     output:
         gtf=op.join(DATA_DIR, "tools", "derfinder", "{scenario}", "{param_id}", "output.gtf"),
     benchmark:
@@ -25,6 +56,7 @@ rule run_derfinder:
         maxregiongap=lambda wc: int(_parse_mc_pt(wc.param_id)[1]),
         min_length=lambda wc: (FASTDER_CFG.get("min_length") or [10])[0],
         script=op.join(WORKFLOW_DIR, "scripts", "run_derfinder.R"),
+    threads: 1
     conda:
         "../envs/derfinder.yaml"
     shell:
@@ -35,6 +67,7 @@ rule run_derfinder:
             --cutoff {params.cutoff} \
             --min-length {params.min_length} \
             --maxregiongap {params.maxregiongap} \
+            --library-sizes {input.library_sizes} \
             --chromosomes {params.chroms} > {log} 2>&1
         """
 
@@ -46,6 +79,7 @@ rule run_derfinder:
 rule run_megadepth_baseline:
     input:
         chr_prefix_done=op.join(FASTDER_DIR, "{scenario}", "match_chr_prefix.DONE"),
+        library_sizes=op.join(FASTDER_DIR, "{scenario}", "library_sizes.tsv"),
     output:
         gtf=op.join(DATA_DIR, "tools", "megadepth_baseline", "{scenario}", "{param_id}", "output.gtf"),
     benchmark:
@@ -58,6 +92,7 @@ rule run_megadepth_baseline:
         cutoff=lambda wc: _parse_mc_pt(wc.param_id)[0],
         min_length=lambda wc: (FASTDER_CFG.get("min_length") or [10])[0],
         script=op.join(WORKFLOW_DIR, "scripts", "run_megadepth_baseline.py"),
+    threads: 1
     conda:
         "../envs/megadepth_baseline.yaml"
     shell:
@@ -67,6 +102,7 @@ rule run_megadepth_baseline:
             --out-gtf {output.gtf} \
             --cutoff {params.cutoff} \
             --min-length {params.min_length} \
+            --library-sizes {input.library_sizes} \
             --chromosomes {params.chroms} > {log} 2>&1
         """
 
@@ -83,6 +119,7 @@ rule run_megadepth_baseline:
 rule run_grohmm:
     input:
         chr_prefix_done=op.join(FASTDER_DIR, "{scenario}", "match_chr_prefix.DONE"),
+        library_sizes=op.join(FASTDER_DIR, "{scenario}", "library_sizes.tsv"),
     output:
         gtf=op.join(DATA_DIR, "tools", "grohmm", "{scenario}", "{param_id}", "output.gtf"),
     benchmark:
@@ -98,6 +135,7 @@ rule run_grohmm:
         window_size=lambda wc: (config.get("grohmm") or {}).get("window_size", 50),
         count_scale=lambda wc: (config.get("grohmm") or {}).get("count_scale", 100),
         script=op.join(WORKFLOW_DIR, "scripts", "run_grohmm.R"),
+    threads: 1
     conda:
         "../envs/grohmm.yaml"
     shell:
@@ -110,5 +148,6 @@ rule run_grohmm:
             --window-size {params.window_size} \
             --min-length {params.min_length} \
             --count-scale {params.count_scale} \
+            --library-sizes {input.library_sizes} \
             --chromosomes {params.chroms} > {log} 2>&1
         """

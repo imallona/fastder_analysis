@@ -392,7 +392,7 @@ rule run_fastder:
             if FASTDER_CFG.get("chromosomes")
             else ""
         ),
-    threads: config["cores"]
+    threads: FASTDER_CORES
     conda:
         "../envs/fastder_build.yaml"
     shell:

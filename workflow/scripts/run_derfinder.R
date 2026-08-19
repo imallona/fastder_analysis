@@ -20,7 +20,7 @@
 #   --cutoff       <-> fastder --min-coverage      (CPM)
 #   --min-length   <-> fastder --min-length        (bp; post-filter)
 #   --maxregiongap <-> fastder --position-tolerance (bp; gap-bridging slack)
-#   --chromosomes  <-> fastder --chr               (used for library_size scope)
+#   --chromosomes  <-> fastder --chr               (regions reported, not library_size)
 #
 # The --maxregiongap mapping is a behavioural analogue rather than an
 # exact equivalent: derfinder bridges below-threshold gaps inside a
@@ -46,7 +46,9 @@ opt_list <- list(
   make_option("--maxregiongap", type = "integer", default = 0,
               help = "Bridge below-threshold gaps of at most this many bases inside a region"),
   make_option("--min-length", type = "integer", default = 1,
-              help = "Drop regions shorter than this many bases")
+              help = "Drop regions shorter than this many bases"),
+  make_option("--library-sizes", type = "character",
+              help = "TSV from compute_library_sizes.py: bigwig, sample, library_size")
 )
 parser <- OptionParser(option_list = opt_list)
 arg_strings <- commandArgs(trailingOnly = TRUE)
@@ -87,31 +89,32 @@ if (length(chroms) == 0) {
   chroms <- seqlevels(rtracklayer::BigWigFile(flat_files[1]))
 }
 
-# library_size per sample, scoped to the user's chromosomes. Matches
-# fastder's accumulator: total_reads = (end - start) * value, summed over
-# only the chromosomes passed via --chr.
-compute_library_size <- function(bw_path, target_chroms) {
-  available <- seqlevels(rtracklayer::BigWigFile(bw_path))
-  keep <- intersect(target_chroms, available)
-  if (length(keep) == 0) return(0)
-  gr <- rtracklayer::import.bw(bw_path,
-                               which = GRanges(seqnames = keep,
-                                               ranges = IRanges(1L, .Machine$integer.max %/% 2L)))
-  if (length(gr) == 0) return(0)
-  sum(as.numeric(width(gr)) * as.numeric(gr$score))
+# Library sizes come from compute_library_sizes.py, which sums length * value
+# over the whole file for every BigWig. Reading them rather than recomputing
+# keeps this rule's wall time comparable to fastder's, which gets the same
+# number from the BigWig summary header at no cost.
+lib_size_table <- read.delim(opt$`library-sizes`, stringsAsFactors = FALSE)
+lib_size_by_path <- setNames(as.numeric(lib_size_table$library_size),
+                             normalizePath(lib_size_table$bigwig, mustWork = FALSE))
+
+lookup_library_size <- function(bw_path) {
+  key <- normalizePath(bw_path, mustWork = FALSE)
+  if (!key %in% names(lib_size_by_path)) {
+    stop("no library size for ", bw_path, " in ", opt$`library-sizes`)
+  }
+  lib_size_by_path[[key]]
 }
 
 message("[run_derfinder] ", length(flat_files), " BigWig files grouped into ",
-        length(samples), " samples; computing library sizes")
+        length(samples), " samples; reading library sizes")
 lib_sizes <- vapply(samples, function(files)
-  sum(vapply(files, compute_library_size, numeric(1), target_chroms = chroms)),
+  sum(vapply(files, lookup_library_size, numeric(1))),
   FUN.VALUE = numeric(1))
 cpm_factors <- lib_sizes / 1e6
 for (i in seq_along(samples)) {
   if (cpm_factors[i] <= 0) {
     message("[run_derfinder] WARN: sample ", sample_ids[i],
-            " has empty library_size on chromosomes ",
-            paste(chroms, collapse = ","), "; sample will be skipped.")
+            " has empty library_size; sample will be skipped.")
   }
 }
 

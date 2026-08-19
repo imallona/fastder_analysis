@@ -256,6 +256,14 @@ FASTDER_CFG = config.get("fastder") or {}
 # Removing the stranded branches needs the original contributor's agreement.
 STRANDED = FASTDER_CFG.get("stranded", False)
 
+# Cores given to fastder itself, separate from config["cores"], which sizes the
+# rest of the workflow. The cross-tool runtime comparison sets this to 1 so
+# every tool gets the same resources: derfinder, groHMM and the megadepth
+# baseline are single-threaded, so leaving fastder on config["cores"] would
+# compare 12 cores against 1. Runs that are not part of that comparison, such
+# as the genome-wide GTEx atlas, can leave it unset and keep every core.
+FASTDER_CORES = FASTDER_CFG.get("cores", config["cores"])
+
 # Human reference download, keyed by chromosome scope. Configs that analyse
 # different chromosome sets get independent, cacheable reference folders
 # instead of clobbering one shared directory, and a chromosome-set change is
