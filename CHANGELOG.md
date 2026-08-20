@@ -55,6 +55,7 @@
 - The Euler profile sends memory as `--mem-per-cpu`. Euler's cli_filter rejects `--mem`, which `mem_mb` becomes. The plugin prefers `mem_mb_per_cpu` and emits the accepted flag. Rules keep their portable `mem_mb`; the profile translates.
 - The profile pins no partition. Euler routes by requested runtime, so every rule declares one. Checked against a working run: job 11288220 pinned nothing and got `normal.24h`.
 - `tests/test_euler_resources.py` keeps the translation in step. Every rule over the default declares a per-cpu figure. Totals must cover the request without wasting ten times it. Runtimes must fit their partition.
+- The probe filters node features with grep. `sinfo` has no `--constraint`, so the check exited non-zero and failed the job.
 - `common.sh` creates the directories it points at. apptainer refuses to build into a missing one. Job 11293212 died on the first container pull.
 - `record_host_info` reads MemTotal with awk. The sed version tripped a Python SyntaxWarning on every run.
 - Run paths live in `slurm/site.env`, sourced by `common.sh`. Conda environments and the image cache go to project storage. That is NFS; scratch is Lustre, which handles many small files badly. `sbatch` exports the submitting shell, so an activated environment carries over.

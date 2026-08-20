@@ -62,7 +62,9 @@ cat workflow/results/config_quick_light/host_info.tsv || echo "not written"
 echo
 
 echo "=================== 4. are the pinned nodes reachable ==================="
-sinfo -h -o "%D %P %t" --constraint=EPYC_7763 -p normal.4h,normal.24h | head
+# sinfo has no --constraint; features come back in %f and are filtered here.
+sinfo -h -o "%D %P %t %f" -p normal.4h,normal.24h | grep EPYC_7763 | head -5 \
+    || echo "no EPYC_7763 nodes visible in the normal partitions"
 echo
 echo "If nothing is listed above, the --constraint in profiles/euler/config.yaml"
 echo "names a model this account cannot reach and the timed rules will queue"
