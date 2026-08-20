@@ -15,3 +15,6 @@ slurm/logs/*.out
 review*.md
 style_report*.md
 code_eval.md
+
+# Container image cache, kept beside the checkout.
+.apptainer-cache/

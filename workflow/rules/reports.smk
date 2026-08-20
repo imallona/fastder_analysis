@@ -137,7 +137,7 @@ rule record_host_info:
             printf 'cpu_cores_total\t%s\n' "$(nproc --all)"
             printf 'cpu_cores_available\t%s\n' "$(nproc)"
             printf 'mem_total_kb\t%s\n' \
-                "$(sed -n 's/^MemTotal:[[:space:]]*\([0-9]*\).*/\1/p' /proc/meminfo)"
+                "$(awk '/^MemTotal:/ {{print $2}}' /proc/meminfo)"
             printf 'slurm_job_id\t%s\n' "${{SLURM_JOB_ID:-none}}"
             printf 'slurm_node\t%s\n' "${{SLURMD_NODENAME:-none}}"
         }} > {output.tsv} 2> {log}

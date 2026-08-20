@@ -50,6 +50,15 @@
 - Simulated reads are stored gzipped. `runASimulatoR.R` compresses them after the simulation. `make_scenario.py` writes its filtered copy compressed. STAR reads them with `--readFilesCommand zcat`. Plain FASTQ was about 680 GB. Compressed it is about 170 GB. Uncompressed reads on disk will re-simulate.
 - Scenario FASTQ files and sorted BAMs are `temp()`. Nothing was reclaimed as the DAG advanced. The BAMs held 110 GB too. BigWigs, junction tables and results survive. ASimulatoR reads stay, being costly to regenerate.
 - The fastder submodule tracks `revision` upstream. It tracked `main` before. The pin is `8da02f5`. It carries whole-file library size. It also carries `--min-junction-reads` and `--no-stitch`. The old pin lacked all three.
+- The Makefile skips `conda activate` when `CONDA_INIT` names nothing. An already activated environment is then used as it stands. Job 11290024 died sourcing a `$HOME/miniconda3` Euler does not have.
+- Defaults sit inside the checkout, so no configuration is needed. Conda environments go to `workflow/.snakemake/conda`. The container cache goes to `.apptainer-cache`. A repo on project storage keeps both off `$HOME`.
+- The Euler profile sends memory as `--mem-per-cpu`. Euler's cli_filter rejects `--mem`, which `mem_mb` becomes. The plugin prefers `mem_mb_per_cpu` and emits the accepted flag. Rules keep their portable `mem_mb`; the profile translates.
+- The profile pins no partition. Euler routes by requested runtime, so every rule declares one. Checked against a working run: job 11288220 pinned nothing and got `normal.24h`.
+- `tests/test_euler_resources.py` keeps the translation in step. Every rule over the default declares a per-cpu figure. Totals must cover the request without wasting ten times it. Runtimes must fit their partition.
+- `common.sh` creates the directories it points at. apptainer refuses to build into a missing one. Job 11293212 died on the first container pull.
+- `record_host_info` reads MemTotal with awk. The sed version tripped a Python SyntaxWarning on every run.
+- Run paths live in `slurm/site.env`, sourced by `common.sh`. Conda environments and the image cache go to project storage. That is NFS; scratch is Lustre, which handles many small files badly. `sbatch` exports the submitting shell, so an activated environment carries over.
+- The probe reads the plugin version from package metadata. Plugin 2.7.1 exposes no `__version__`.
 - The sbatch wrappers populate the submodules themselves. A clone leaves them empty. `build_fastder` then has no sources. `make submodules-latest` moves a pin deliberately.
 - The sbatch wrappers source `common.sh` correctly. Slurm copies the script to a spool directory. `$0` pointed there, not at the repo. Job 11285331 died after seven seconds. `SLURM_SUBMIT_DIR` locates the repo now. `common.sh` also checks its prerequisites first.
 - `ml_star_align` writes scratch to `$TMPDIR`. STAR temp and sort spill move there. The Euler profile requests `--tmp` for both rules.

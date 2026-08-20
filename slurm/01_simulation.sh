@@ -6,12 +6,8 @@
 # New here: eight event classes, chr21 and chr19, ten samples per scenario,
 # the --no-stitch ablation, every tool on one core.
 #
-# Build the environments once on a login node first; the proxy is shared:
-#
-#   module load eth_proxy
-#   source /cluster/project/platt/$USER/miniforge3/bin/activate
-#   make envs CONFIG=config_full_simulation.yaml EULER=1 \
-#        CONDA_PREFIX_DIR=/cluster/project/platt/$USER/fastder-eval-envs
+# Snakemake builds the conda environments in this driver before it submits
+# anything, so no separate step is needed.
 #
 # The longest of the four run groups.
 #

@@ -9,19 +9,31 @@ unset TMPDIR
 # Compute nodes reach the internet only through the ETH proxy.
 module load eth_proxy
 
-CONDA_INIT="${CONDA_INIT:-/cluster/project/platt/$USER/miniforge3/bin/activate}"
-CONDA_ENV="${CONDA_ENV:-snakemake}"
-
-# $HOME caps inodes and scratch is purged, so envs live on project storage.
-CONDA_PREFIX_DIR="${CONDA_PREFIX_DIR:-/cluster/project/platt/$USER/fastder-eval-envs}"
-
-# The ASimulatoR image, off $HOME for the same reason.
-export APPTAINER_CACHEDIR="${APPTAINER_CACHEDIR:-/cluster/project/platt/$USER/apptainer-cache}"
-
-source "$CONDA_INIT"
-conda activate "$CONDA_ENV"
-
 cd "${SLURM_SUBMIT_DIR:-$PWD}"
+
+# Paths for the run, kept in one file rather than spread through the scripts.
+if [ -f slurm/site.env ]; then
+    source slurm/site.env
+fi
+
+# sbatch exports the submitting shell, so an environment activated there is
+# already on PATH. CONDA_INIT and CONDA_ENV are the fallback.
+if ! command -v snakemake > /dev/null && [ -n "${CONDA_INIT:-}" ]; then
+    source "$CONDA_INIT"
+    conda activate "${CONDA_ENV:?CONDA_INIT is set, so CONDA_ENV must be too}"
+fi
+
+# Defaults are repo-relative, so they land wherever the checkout lives and no
+# site path is needed. Snakemake's own default puts conda environments under
+# workflow/.snakemake/conda, which is why CONDA_PREFIX_DIR stays empty here.
+CONDA_PREFIX_DIR="${CONDA_PREFIX_DIR:-}"
+export APPTAINER_CACHEDIR="${APPTAINER_CACHEDIR:-$PWD/.apptainer-cache}"
+export APPTAINER_TMPDIR="${APPTAINER_TMPDIR:-$APPTAINER_CACHEDIR/tmp}"
+
+# apptainer refuses to build into a directory that does not exist, and conda
+# is no better. Job 11293212 died on the first container pull for this.
+mkdir -p "$APPTAINER_CACHEDIR" "$APPTAINER_TMPDIR"
+[ -n "$CONDA_PREFIX_DIR" ] && mkdir -p "$CONDA_PREFIX_DIR"
 
 # build_fastder compiles these sources, and the pin is what gets benchmarked.
 # A no-op when they already match.
@@ -41,8 +53,8 @@ if [ ! -f workflow/external/fastder/CMakeLists.txt ]; then
     exit 1
 fi
 if ! command -v snakemake > /dev/null; then
-    echo "no snakemake after activating $CONDA_ENV from $CONDA_INIT" >&2
-    echo "  conda create -n $CONDA_ENV -c conda-forge -c bioconda snakemake" >&2
+    echo "no snakemake on PATH. Activate its environment before sbatch," >&2
+    echo "or set CONDA_INIT and CONDA_ENV in slurm/site.env." >&2
     exit 1
 fi
 if ! python -c "import snakemake_executor_plugin_slurm" 2> /dev/null; then
@@ -51,10 +63,10 @@ if ! python -c "import snakemake_executor_plugin_slurm" 2> /dev/null; then
     exit 1
 fi
 
-MAKE_ARGS=(EULER=1
-           CONDA_INIT="$CONDA_INIT"
-           CONDA_ENV="$CONDA_ENV"
-           CONDA_PREFIX_DIR="$CONDA_PREFIX_DIR")
+MAKE_ARGS=(EULER=1)
+[ -n "${CONDA_INIT:-}" ] && MAKE_ARGS+=(CONDA_INIT="$CONDA_INIT")
+[ -n "${CONDA_ENV:-}" ] && MAKE_ARGS+=(CONDA_ENV="$CONDA_ENV")
+[ -n "$CONDA_PREFIX_DIR" ] && MAKE_ARGS+=(CONDA_PREFIX_DIR="$CONDA_PREFIX_DIR")
 
 announce() {
     echo "host $(hostname), job ${SLURM_JOB_ID:-none}, $(date -Is)"

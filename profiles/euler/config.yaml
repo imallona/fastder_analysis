@@ -8,8 +8,18 @@ default-resources:
   # From my_share_info. Unset, the plugin guesses from the last job.
   slurm_account: es_platt
   # Floor for rules added later; every current rule declares both.
+  # Euler's cli_filter rejects --mem, which is what mem_mb becomes. The plugin
+  # prefers mem_mb_per_cpu and emits --mem-per-cpu, so the rules keep their
+  # portable mem_mb and every job that needs more than the default is listed
+  # below. Total memory is this times the rule's threads.
   mem_mb: 4000
+  mem_mb_per_cpu: 4000
   runtime: 60
+  # No slurm_partition. The plugin falls back to the cluster default, which
+  # sinfo marks as ultramem.bulk, and Euler's submission filter then routes by
+  # the requested runtime: job 11288220 of platt_invivo_cortical_neurons asked
+  # for 24 hours and landed in normal.24h. Runtime is what decides, so every
+  # rule declares one.
   # What bounds the share held. --cores does not work on a cluster.
   # The Makefile passes --resources cores_used=N when EULER=1.
   cores_used: threads
@@ -19,24 +29,64 @@ default-resources:
 # Not exclusive: that would book 128 cores per job. Co-tenancy can inflate a
 # wall clock, which Methods states. test_euler_profile.py pins this set.
 set-resources:
-  run_fastder:
-    slurm_extra: "'--constraint=EPYC_7763'"
-  run_fastder_scaling:
-    slurm_extra: "'--constraint=EPYC_7763'"
-  run_derfinder:
-    slurm_extra: "'--constraint=EPYC_7763'"
-  run_grohmm:
-    slurm_extra: "'--constraint=EPYC_7763'"
-  run_megadepth_baseline:
-    slurm_extra: "'--constraint=EPYC_7763'"
-
-  # Node-local scratch in MB. Slurm reserves none by default.
-  # ml_star_align holds STAR scratch and the sort spill; ml_star_index stages
-  # the reference. test_euler_profile.py pins this set too.
+  build_fastder:
+    mem_mb_per_cpu: 1000
+  eval_fuzzy_metrics:
+    mem_mb_per_cpu: 8000
+  figure_main_1:
+    mem_mb_per_cpu: 8000
+  figure_main_2:
+    mem_mb_per_cpu: 8000
+  figure_marker_loci:
+    mem_mb_per_cpu: 8000
+  figure_novel_exons:
+    mem_mb_per_cpu: 8000
+  figure_schematics:
+    mem_mb_per_cpu: 8000
+  figure_supp_revision:
+    mem_mb_per_cpu: 8000
+  generate_stranded_bigwigs:
+    mem_mb_per_cpu: 8000
+  ml_bam_to_bigwig:
+    mem_mb_per_cpu: 8000
+  ml_emit_mm_rr:
+    mem_mb_per_cpu: 8000
   ml_star_align:
     slurm_extra: "'--tmp=20000'"
+    mem_mb_per_cpu: 2700
   ml_star_index:
     slurm_extra: "'--tmp=5000'"
+    mem_mb_per_cpu: 2700
+  pump:
+    mem_mb_per_cpu: 2700
+  recount3_group_junctions:
+    mem_mb_per_cpu: 16000
+  render_benchmarks_report:
+    mem_mb_per_cpu: 8000
+  render_gtex_report:
+    mem_mb_per_cpu: 16000
+  render_recount3_report:
+    mem_mb_per_cpu: 16000
+  render_summary_report:
+    mem_mb_per_cpu: 16000
+  run_asimulator:
+    mem_mb_per_cpu: 2700
+  run_derfinder:
+    slurm_extra: "'--constraint=EPYC_7763'"
+    mem_mb_per_cpu: 8000
+  run_fastder:
+    slurm_extra: "'--constraint=EPYC_7763'"
+    mem_mb_per_cpu: 8000
+  run_fastder_scaling:
+    slurm_extra: "'--constraint=EPYC_7763'"
+    mem_mb_per_cpu: 8000
+  run_grohmm:
+    slurm_extra: "'--constraint=EPYC_7763'"
+    mem_mb_per_cpu: 8000
+  run_megadepth_baseline:
+    slurm_extra: "'--constraint=EPYC_7763'"
+  unify:
+    mem_mb_per_cpu: 2700
 
 # Concurrent jobs. cores_used above is the binding limit.
 jobs: 32

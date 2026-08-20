@@ -20,14 +20,15 @@ set -euo pipefail
 
 module load eth_proxy
 
-CONDA_INIT="${CONDA_INIT:-/cluster/project/platt/$USER/miniforge3/bin/activate}"
-CONDA_ENV="${CONDA_ENV:-snakemake}"
-CONDA_PREFIX_DIR="${CONDA_PREFIX_DIR:-/cluster/project/platt/$USER/fastder-eval-envs}"
-
-source "$CONDA_INIT"
-conda activate "$CONDA_ENV"
-
 cd "${SLURM_SUBMIT_DIR:-$PWD}"
+
+[ -f slurm/site.env ] && source slurm/site.env
+
+if ! command -v snakemake > /dev/null && [ -n "${CONDA_INIT:-}" ]; then
+    source "$CONDA_INIT"
+    conda activate "${CONDA_ENV:?CONDA_INIT is set, so CONDA_ENV must be too}"
+fi
+CONDA_PREFIX_DIR="${CONDA_PREFIX_DIR:-}"
 
 # common.sh does this for the run scripts; the probe stays standalone.
 if [ -d .git ]; then
@@ -39,21 +40,21 @@ echo "=================== the driver's own environment ==================="
 echo "host      $(hostname)"
 echo "job id    ${SLURM_JOB_ID:-none}"
 echo "snakemake $(snakemake --version 2>&1)"
-python -c 'import snakemake_executor_plugin_slurm as m; print("slurm plugin", m.__version__)' \
+python -c 'from importlib.metadata import version
+print("slurm plugin", version("snakemake-executor-plugin-slurm"))' \
     || echo "slurm plugin MISSING: pip install snakemake-executor-plugin-slurm"
 echo "repo      $(git log --oneline -1 2>&1)"
 git submodule status --recursive 2>&1 | sed 's/^/submodule /'
 echo
 
 echo "=================== 1. can it plan from here ==================="
-make smoke EULER=1 CONDA_INIT="$CONDA_INIT" CONDA_ENV="$CONDA_ENV" \
-     CONDA_PREFIX_DIR="$CONDA_PREFIX_DIR" EXTRA=-n 2>&1 | tail -25 || true
+make smoke EULER=1 ${CONDA_PREFIX_DIR:+CONDA_PREFIX_DIR="$CONDA_PREFIX_DIR"} \
+     EXTRA=-n 2>&1 | tail -25 || true
 echo
 
 echo "=================== 2. and 3. can it submit, and does benchmarking survive ==================="
 # One real child job writing a benchmark TSV, and the Methods host line.
-make smoke EULER=1 CONDA_INIT="$CONDA_INIT" CONDA_ENV="$CONDA_ENV" \
-     CONDA_PREFIX_DIR="$CONDA_PREFIX_DIR" \
+make smoke EULER=1 ${CONDA_PREFIX_DIR:+CONDA_PREFIX_DIR="$CONDA_PREFIX_DIR"} \
      EXTRA="--until record_host_info"
 echo
 echo "host_info.tsv:"

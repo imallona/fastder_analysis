@@ -63,10 +63,11 @@ EXTRA ?=
 
 WORKFLOW_DIR := workflow
 
-## Activate the snakemake env and cap per-process virtual memory at 100 GB.
-## snakemake's per-job shells inherit the ulimit, so every job is bounded.
-ACTIVATE := source $(CONDA_INIT) && conda activate $(CONDA_ENV) && \
-            ulimit -v $(ULIMIT_KB)
+## Activate the snakemake env, unless CONDA_INIT names nothing that exists: an
+## already activated environment is then used as it stands. Caps per-process
+## virtual memory at 100 GB, which per-job shells inherit.
+CONDA_ACTIVATE := $(if $(wildcard $(CONDA_INIT)),source $(CONDA_INIT) && conda activate $(CONDA_ENV) && ,)
+ACTIVATE := $(CONDA_ACTIVATE) ulimit -v $(ULIMIT_KB)
 
 SNAKEMAKE := snakemake --cores $(CORES) -p $(PROFILE_FLAG) $(RESOURCE_FLAG) $(CONDA_PREFIX_FLAG) $(EXTRA)
 
@@ -92,9 +93,9 @@ all: simulations meta tdp43 tdp43-panel gtex gtex-comparison figures
 submodules:
 	git submodule update --init --recursive
 
-## Move the pins to each tracked branch tip, fastder to revision.
+## Move the fastder pin to the tip of revision. monorail-external stays put.
 submodules-latest:
-	git submodule update --init --recursive --remote
+	git submodule update --init --remote workflow/external/fastder
 	git submodule status --recursive
 
 simulations: sim sim-5m sim-30m sim-40m

@@ -6,9 +6,9 @@ The workflow itself knows nothing about Slurm. Rules declare `mem_mb` and `runti
 
 ## Where things live
 
-`$HOME` is 50 GB with a 500k inode cap: code only. `/cluster/scratch/$USER` is large but purged after 15 days, which does not survive the weeks between a run and the figures it feeds. `/cluster/project/platt` is the only location with neither problem, so both the working copy and the conda environments belong there.
+`$HOME` is 50 GB with a 500k inode cap: code only. Scratch is large but purged after 15 days, which does not survive the weeks between a run and the figures it feeds. Group project storage has neither problem, so the working copy, the conda environments and the container cache belong there.
 
-Conda environments go to `/cluster/project/platt/$USER/fastder-eval-envs` and the ASimulatoR image to `/cluster/project/platt/$USER/apptainer-cache`. Both are set in `common.sh` and can be overridden by exporting `CONDA_PREFIX_DIR` and `APPTAINER_CACHEDIR` before `sbatch`.
+`slurm/site.env` holds those paths, in one file rather than spread through the scripts. `common.sh` sources it.
 
 Rough sizes: the GTEx runs need about 100 GB, dominated by 160 coverage BigWigs at about 124 MB each and one junction matrix per tissue at about 2.8 GB gzipped, stored decompressed.
 
@@ -21,14 +21,14 @@ STAR's scratch and the samtools sort spill go to node-local disk through `$TMPDI
 ## First time on a new cluster
 
 ```
-module load eth_proxy
-source /cluster/project/platt/$USER/miniforge3/bin/activate
-conda activate snakemake
+conda activate <the snakemake env>
 pip install snakemake-executor-plugin-slurm
-
-make envs CONFIG=config_full_simulation.yaml EULER=1 CONDA_PREFIX_DIR=/cluster/project/platt/$USER/fastder-eval-envs
 sbatch slurm/00_probe.sh
 ```
+
+`sbatch` exports the submitting shell, so the environment activated here carries into the job. `slurm/site.env` sets where conda environments and the container image cache go; both are on project storage, which is NFS, because conda writes tens of thousands of small files per environment and Lustre handles that badly. `CONDA_INIT` and `CONDA_ENV` there are the fallback for a shell with no environment active.
+
+Snakemake builds the per-rule conda environments in the driver before it submits anything, so there is no separate environment step. `make envs` exists for building them ahead of time, which only saves the first driver some minutes.
 
 Environments are built on the login node on purpose. Compute nodes reach the internet only through a shared, rate limited proxy, and 32 jobs solving environments at once abuses it.
 

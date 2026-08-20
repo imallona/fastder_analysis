@@ -39,10 +39,25 @@ def test_common_sh_checks_its_prerequisites():
         assert required in text
 
 
+def test_common_sh_creates_the_directories_it_points_at():
+    """apptainer refuses to build into a directory that is not there."""
+    text = (SLURM_DIR / "common.sh").read_text()
+    assert 'mkdir -p "$APPTAINER_CACHEDIR"' in text
+    assert 'mkdir -p "$CONDA_PREFIX_DIR"' in text
+
+
 def test_scripts_populate_the_submodules_themselves():
     """A clone leaves them empty and build_fastder then has no sources."""
     for path in [SLURM_DIR / "common.sh", SLURM_DIR / "00_probe.sh"]:
         assert "git submodule update --init --recursive" in path.read_text()
+
+
+def test_no_site_paths_are_hardcoded():
+    """Paths belong in site.env, not spread through the scripts."""
+    for path in list(WRAPPERS) + [SLURM_DIR / "common.sh"]:
+        text = path.read_text()
+        assert "/cluster/" not in text, path.name
+        assert "miniforge3" not in text, path.name
 
 
 def test_fastder_submodule_tracks_the_revision_branch():
