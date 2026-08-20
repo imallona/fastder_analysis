@@ -1,10 +1,7 @@
 """The Euler profile can fall behind the rules it is written against.
 
-Two things break silently. A rule added without resources runs on the profile's
-4 GB default and is killed at scale. A tool added to the runtime comparison
-without a CPU pin produces a wall clock measured on whatever node the scheduler
-had free, which is not comparable with the others and is reported in the paper
-as if it were.
+A rule with no resources runs on the 4 GB default and dies at scale. A timed
+rule with no CPU pin gets an incomparable wall clock, reported as if it were.
 """
 
 import re

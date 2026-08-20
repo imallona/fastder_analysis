@@ -3,23 +3,17 @@
 #
 #   sbatch slurm/01_simulation.sh
 #
-# What this run covers, all of it new in the revision: the eight ASimulatoR
-# event classes rather than four, chr21 and chr19 rather than chr21 alone, ten
-# samples per scenario rather than five, the --no-stitch ablation, and every
-# tool pinned to one core so the runtime comparison is like for like.
+# New here: eight event classes, chr21 and chr19, ten samples per scenario,
+# the --no-stitch ablation, every tool on one core.
 #
-# The environments are built on a login node first, once. Compute nodes share a
-# rate limited proxy, and 32 jobs solving environments at the same time abuse
-# it:
+# Build the environments once on a login node first; the proxy is shared:
 #
 #   module load eth_proxy
 #   source /cluster/project/platt/$USER/miniforge3/bin/activate
 #   make envs CONFIG=config_full_simulation.yaml EULER=1 \
 #        CONDA_PREFIX_DIR=/cluster/project/platt/$USER/fastder-eval-envs
 #
-# This is the longest of the four run groups. run_asimulator asks for 24 hours
-# per scenario and STAR indexes two chromosomes, so the driver's own wall clock
-# is set well above the sum of what it waits for.
+# The longest of the four run groups.
 #
 #SBATCH --job-name=fastder-sim
 #SBATCH --time=96:00:00
@@ -28,7 +22,13 @@
 #SBATCH --output=slurm/logs/%x-%j.out
 #SBATCH --signal=B:TERM@300
 
-source "$(dirname "$0")/common.sh"
+set -euo pipefail
+
+# Slurm copies the batch script into a spool directory before running it, so
+# $0 does not point into the repo. sbatch is called from the repo root, which
+# is what SLURM_SUBMIT_DIR holds.
+repo="${SLURM_SUBMIT_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
+source "$repo/slurm/common.sh"
 
 announce simulations mjr-sweep
 echo
@@ -38,6 +38,5 @@ make simulations mjr-sweep "${MAKE_ARGS[@]}" EXTRA=-n 2>&1 | tail -30
 echo
 echo "=================== the run ==================="
 run_targets simulations
-# The junction read-support sensitivity run reuses the simulated data of the
-# 10M point, so it costs only its own fastder calls and has to follow them.
+# Reuses the 10M simulated data, so it has to follow.
 run_targets mjr-sweep

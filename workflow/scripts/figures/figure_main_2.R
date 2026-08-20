@@ -2,12 +2,9 @@
 #   TDP-43: design, STMN2 track, novel ERs per group.
 #   GTEx:   design, concordance heatmap, marker loci, novel exons, precision.
 #
-# gffcompare transcript-level precision is no longer a panel here. That level
-# counts a prediction correct only when its whole intron chain matches a
-# reference transcript, which is isoform reconstruction, and no tool in the
-# comparison attempts it. fastder scoring above the others there reflects
-# emitting multi-exon output at all, not emitting it well. It is written to its
-# own file for the supplement rather than deleted, so the number stays visible.
+# Transcript-level precision is no longer a panel: that level measures isoform
+# reconstruction, which no tool here attempts. It goes to its own file, so the
+# number stays visible.
 
 args <- commandArgs(trailingOnly = TRUE)
 out <- if (length(args) >= 1) args[[1]] else "figure_main_2.pdf"
@@ -65,7 +62,7 @@ ggsave(out, fig, width = 8.27, height = 13.5, limitsize = FALSE)
 ggsave(sub("\\.pdf$", ".svg", out), fig, width = 8.27, height = 13.5, limitsize = FALSE)
 cat("wrote", out, "and", sub("\\.pdf$", ".svg", out), "\n")
 
-# The demoted transcript-level panel on its own, for the supplement.
+# The demoted panel, for the supplement.
 supp <- file.path(dirname(out), "supp_gtex_transcript_precision.pdf")
 p_supp <- panel_gtexcmp_precision(GTX, level = "transcript")
 ggsave(supp, p_supp, width = 4.0, height = 4.0, limitsize = FALSE)

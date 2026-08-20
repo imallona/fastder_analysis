@@ -88,9 +88,7 @@ rule ml_star_align:
         unpack(ml_star_fastq_input),
         idx=[op.join(LIGHT_STAR_IDX, f) for f in STAR_IDX_FILES],
     output:
-        # Read by ml_bam_to_bigwig and ml_emit_mm_rr, and by nothing after
-        # them. The coverage BigWig and the junction tables are what the tools
-        # consume, and they are two orders of magnitude smaller.
+        # Read by the bigwig and junction rules, and by nothing after.
         bam=temp(op.join(LIGHT_DIR, "{scenario}", "{sample}", "Aligned.sortedByCoord.out.bam")),
         # Declared so it goes with the BAM instead of being left behind.
         bai=temp(op.join(LIGHT_DIR, "{scenario}", "{sample}", "Aligned.sortedByCoord.out.bam.bai")),
@@ -111,10 +109,8 @@ rule ml_star_align:
     shell:
         """
         mkdir -p {params.outprefix}
-        # STAR's scratch and the sort spill go to node-local disk when there is
-        # one. Both are written and deleted within this job, so putting them on
-        # shared storage costs space and metadata traffic for nothing. STAR
-        # creates outTmpDir itself and fails if it already exists.
+        # STAR scratch and sort spill on node-local disk; both die with the
+        # job. STAR creates outTmpDir itself and fails if it exists.
         scratch="${{TMPDIR:-{params.outprefix}}}/star_{wildcards.scenario}_{wildcards.sample}"
         rm -rf "$scratch"
         mkdir -p "$scratch"

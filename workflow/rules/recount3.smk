@@ -58,9 +58,7 @@ rule recount3_fetch_junctions:
         ),
     resources:
         mem_mb=4000,
-        # The junction matrix of one study is about 2.8 GB gzipped and is
-        # decompressed as it downloads, so this is bounded by the link, not by
-        # the work.
+        # Bounded by the link: 2.8 GB gzipped per study.
         runtime=240,
     conda:
         "../envs/base.yaml"

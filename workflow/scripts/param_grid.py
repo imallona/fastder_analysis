@@ -71,15 +71,10 @@ def drop_ignored(combo):
 def parse_param_id(param_id):
     """Recover a combination from its identifier.
 
-    The inverse of param_id() for every parameter in PARAM_SPEC, so a results
-    table carrying only param_id can still be grouped by the axis that moved.
-    Switches come back as booleans, values as float or int. Parameters absent
-    from the identifier are absent from the result, which is not the same as
-    being zero: an identifier written before a parameter existed says nothing
-    about it.
-
-    workflow/scripts/figures/helpers.R matches the same identifiers with
-    regular expressions; keep the two in step.
+    The inverse of param_id(), so a table carrying only param_id can be grouped
+    by the axis that moved. A parameter absent from the identifier is absent
+    here, which is not the same as zero. figures/helpers.R matches the same
+    identifiers with regular expressions; keep the two in step.
     """
     combo = {}
     for name, (abbrev, _) in PARAM_SPEC.items():

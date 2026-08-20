@@ -1,55 +1,23 @@
-# Snakemake profile for the ETH Euler cluster.
-#
-# Nothing under workflow/ mentions Slurm. The rules declare mem_mb and runtime,
-# which are plain Snakemake resources that bound concurrency on a workstation
-# and become scheduler requests here. Everything cluster specific lives in this
-# file, so deleting this directory leaves the workflow exactly as it runs
-# locally.
-#
-# Use it through the Makefile, which passes the absolute path:
-#
-#   make gtex-comparison EULER=1
-#
-# Conda environments are built on project storage, not in the working
-# directory, and the path is passed on the command line because a profile does
-# not expand $USER and a username does not belong in a shared file. See
-# slurm/README.md.
+# Snakemake profile for the ETH Euler cluster. See slurm/README.md.
+# Every Slurm setting lives here; nothing under workflow/ knows about Slurm.
+# Used through the Makefile: make gtex-comparison EULER=1.
 
 executor: slurm
 
 default-resources:
-  # From my_share_info. Left unset, the plugin infers the account from the most
-  # recent job, which is wrong as soon as you belong to more than one group.
+  # From my_share_info. Unset, the plugin guesses from the last job.
   slurm_account: es_platt
-  # Rules that declare neither fall back to these. Every rule in this workflow
-  # declares both; this is the floor for anything added later.
+  # Floor for rules added later; every current rule declares both.
   mem_mb: 4000
   runtime: 60
-  # Cores booked by a job, which is what actually bounds how much of the share
-  # this workflow holds. --cores does not: once jobs go to a scheduler it
-  # raises the local limit to maxsize, and jobs counts nodes, not cores. The
-  # Makefile passes the budget as --resources cores_used=N when EULER=1.
+  # What bounds the share held. --cores does not work on a cluster.
+  # The Makefile passes --resources cores_used=N when EULER=1.
   cores_used: threads
 
-# The rules whose wall clock is reported in the paper. Everything else runs
-# wherever the scheduler has room.
-#
-# --constraint pins the CPU model. Euler's normal partitions mix EPYC 9654,
-# 7742, 7H12 and 7763, and a single-core wall clock measured on one generation
-# is not comparable with the same run on another. EPYC_7763 has 246 nodes, so
-# availability is good, and its 128 cores fit inside the 208 core es_platt
-# share, whereas an exclusive 192 core EPYC_9654 would take almost the whole
-# share and push everything else queued behind it down the priority list.
-#
-# The node is not requested exclusively. An exclusive job holds all 128 cores
-# whatever its thread count, so 32 concurrent timed jobs would book 4096 cores
-# against a 208 core share, which is more of the cluster than this benchmark is
-# worth. The cost is co-tenancy: fastder is memory bandwidth bound while
-# parsing, so a neighbour on the other sockets can inflate a wall clock. Pinning
-# the model removes the larger source of incomparability, and the residual
-# contention belongs in Methods as a caveat.
-#
-# tests/test_euler_profile.py asserts this set matches the timed rules.
+# The five rules whose wall clock reaches the paper. Euler mixes EPYC 9654,
+# 7742, 7H12 and 7763, and a timing on one is not comparable with another.
+# Not exclusive: that would book 128 cores per job. Co-tenancy can inflate a
+# wall clock, which Methods states. test_euler_profile.py pins this set.
 set-resources:
   run_fastder:
     slurm_extra: "'--constraint=EPYC_7763'"
@@ -62,24 +30,18 @@ set-resources:
   run_megadepth_baseline:
     slurm_extra: "'--constraint=EPYC_7763'"
 
-  # Node-local scratch, in MB per node, requested with --tmp. Slurm reserves
-  # none by default, so a job writing into $TMPDIR shares whatever the node has
-  # left. ml_star_align holds STAR's scratch and the sort spill, roughly the
-  # size of the BAM twice over at the deepest sweep point; ml_star_index stages
-  # the fastas and the annotation there through mktemp.
-  # tests/test_euler_profile.py asserts every rule using node scratch asks for
-  # it.
+  # Node-local scratch in MB. Slurm reserves none by default.
+  # ml_star_align holds STAR scratch and the sort spill; ml_star_index stages
+  # the reference. test_euler_profile.py pins this set too.
   ml_star_align:
     slurm_extra: "'--tmp=20000'"
   ml_star_index:
     slurm_extra: "'--tmp=5000'"
 
-# Concurrent Slurm jobs. The GTEx runs fan out to 32 sub-groups. This caps the
-# job count; cores_used above caps the cores, which is the binding limit.
+# Concurrent jobs. cores_used above is the binding limit.
 jobs: 32
 
-# Euler asks that Slurm not be flooded. The default is ten submissions per
-# second, more than this workflow needs.
+# Euler asks that Slurm not be flooded; the default is ten per second.
 max-jobs-per-second: 2
 
 # Cores for jobs the driver runs itself rather than submitting.
@@ -92,17 +54,9 @@ retries: 2
 printshellcmds: true
 rerun-incomplete: true
 
-# The plugin deletes the logs of successful jobs, which is unhelpful the first
-# time a rule behaves oddly without failing.
+# The plugin deletes successful job logs by default.
 slurm-keep-successful-logs: true
 
-# Deliberately not set: software-deployment-method. The Makefile targets pass
-# --use-conda, and only the simulation targets add --use-singularity, since
-# ASimulatoR is the one containerised step. Setting it here would ask every
-# recount3 run for a container runtime it never uses.
-#
-# Also not set: default-storage-provider and the local-storage-prefix keys from
-# the plugin's example profile, which exist for clusters with no shared
-# filesystem. On Euler /cluster/home, /cluster/project and /cluster/scratch are
-# visible from every compute node, so Snakemake's shared-filesystem default is
-# correct.
+# Not set: software-deployment-method, since only the simulation targets need
+# a container. Not set: the storage-provider keys, since Euler shares its
+# filesystems across nodes.

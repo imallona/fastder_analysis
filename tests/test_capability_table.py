@@ -1,9 +1,7 @@
 """The capability table replaces two figure panels, so it carries their claims.
 
-Boundary snapping is the claim to watch. fastder snaps only the internal edges
-of a multi-exon chain, never a monoexonic region and never the outer ends of a
-chain, and the reviewer objected that the paper credited more to the mechanism
-than it does. A bare "yes" in that cell would put the overclaim back.
+Boundary snapping is the claim to watch: fastder snaps internal chain edges
+only, never a monoexonic region. A bare "yes" puts the overclaim back.
 """
 
 import csv

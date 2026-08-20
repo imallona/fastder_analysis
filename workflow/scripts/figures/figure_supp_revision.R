@@ -1,12 +1,7 @@
-# Supplementary figures added in the revision, one file each so the manuscript
-# can place them independently:
-#
-#   supp_ablation.pdf              junction integration on and off, against depth
-#   supp_min_junction_reads.pdf    accuracy against the junction read-support filter
+# Supplementary figures of the revision, one file each:
+#   supp_ablation.pdf              junction integration on and off, by depth
+#   supp_min_junction_reads.pdf    accuracy against the read-support filter
 #   supp_scaling.pdf               wall time and peak memory against cores
-#
-# Each panel reads the tidy CSV its collector script wrote and saves the frame
-# it drew next to the figure, so every plotted number is on disk.
 #
 # Usage: Rscript figure_supp_revision.R <out_dir>
 
@@ -16,9 +11,7 @@ out_dir <- if (length(args) >= 1) args[[1]] else "."
 source(file.path(dirname(sub("--file=", "",
   grep("--file=", commandArgs(FALSE), value = TRUE))), "helpers.R"))
 
-# Structural ceilings of the scaling workload, annotated on the panel. The
-# simulation loads ten samples over two chromosomes; override for another
-# workload with the two environment variables.
+# Ceilings of the scaling workload: ten samples, two chromosomes.
 scaling_samples <- as.integer(Sys.getenv("FASTDER_SCALING_SAMPLES", "10"))
 scaling_chroms <- as.integer(Sys.getenv("FASTDER_SCALING_CHROMS", "2"))
 

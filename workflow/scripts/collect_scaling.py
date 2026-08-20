@@ -1,12 +1,8 @@
 """Tidy table for the core scaling sweep.
 
-run_fastder_scaling times one fixed workload at each core count in
-fastder.scaling_cores, and Snakemake writes one benchmark TSV per point. This
-reads them into a single table so the panel plots what is on disk.
-
-Peak resident memory is reported next to wall time because each parsing thread
-holds one sample's intervals, so cores are traded against memory. The
-genome-wide run already peaks near 15 GB.
+run_fastder_scaling writes one benchmark TSV per core count. Memory is
+reported next to wall time: each parsing thread holds one sample, so cores are
+traded against memory.
 
 Usage:
     python collect_scaling.py --bench-dir <dir> --out <csv>

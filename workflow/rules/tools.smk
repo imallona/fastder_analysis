@@ -61,8 +61,7 @@ rule run_derfinder:
         script=op.join(WORKFLOW_DIR, "scripts", "run_derfinder.R"),
     threads: 1
     resources:
-        # derfinder imports the coverage of a whole chromosome into R. Peak
-        # resident set was 3.8 GB in the first submission's benchmarks.
+        # Peaked at 3.8 GB: derfinder imports a whole chromosome.
         mem_mb=8000,
         runtime=120,
     conda:

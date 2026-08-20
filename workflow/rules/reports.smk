@@ -116,10 +116,7 @@ rule render_summary_report:
 
 
 # 15. Render the Rmarkdown benchmarks report from logs/benchmarks/.
-# The machine the timings were measured on, recorded by the job itself rather
-# than remembered afterwards. Wall clocks are only interpretable next to the
-# CPU model, core count and memory of the host that produced them, and on a
-# cluster that host is whatever the scheduler picked.
+# The machine the timings came from, recorded by the job itself.
 rule record_host_info:
     output:
         tsv=op.join(RESULTS_DIR, "host_info.tsv"),

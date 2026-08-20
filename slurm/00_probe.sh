@@ -1,20 +1,14 @@
 #!/bin/bash
-# Step 0 on Euler: check the cluster behaves the way the run scripts assume.
-# Costs one short job. Run it once per cluster, and again after a Slurm or
-# executor plugin upgrade.
+# Step 0 on Euler, one short job. Rerun after a Slurm or plugin upgrade.
 #
 #   sbatch slurm/00_probe.sh
 #
 # It answers four things a login node cannot:
 #
-# 1. Does the environment come up inside a batch job: conda activates, the
-#    Snakefile parses, the DAG builds.
-# 2. May a batch job submit to Slurm from here. If not, the driver has to sit
-#    on a login node and everything below changes.
-# 3. Does the benchmark directive still produce a TSV when the payload runs on
-#    a compute node. Every runtime number in the paper depends on it.
-# 4. Are the EPYC_7763 nodes the profile pins the timed rules to reachable
-#    from this account.
+# 1. Does the environment come up inside a batch job.
+# 2. May a batch job submit to Slurm from here.
+# 3. Does the benchmark directive still write a TSV on a compute node.
+# 4. Are the pinned EPYC_7763 nodes reachable from this account.
 #
 #SBATCH --job-name=fastder-probe
 #SBATCH --time=00:45:00
@@ -35,11 +29,20 @@ conda activate "$CONDA_ENV"
 
 cd "${SLURM_SUBMIT_DIR:-$PWD}"
 
+# common.sh does this for the run scripts; the probe stays standalone.
+if [ -d .git ]; then
+    git submodule sync --recursive > /dev/null
+    git submodule update --init --recursive
+fi
+
 echo "=================== the driver's own environment ==================="
 echo "host      $(hostname)"
 echo "job id    ${SLURM_JOB_ID:-none}"
-echo "snakemake $(snakemake --version)"
-python -c 'import snakemake_executor_plugin_slurm as m; print("slurm plugin", m.__version__)'
+echo "snakemake $(snakemake --version 2>&1)"
+python -c 'import snakemake_executor_plugin_slurm as m; print("slurm plugin", m.__version__)' \
+    || echo "slurm plugin MISSING: pip install snakemake-executor-plugin-slurm"
+echo "repo      $(git log --oneline -1 2>&1)"
+git submodule status --recursive 2>&1 | sed 's/^/submodule /'
 echo
 
 echo "=================== 1. can it plan from here ==================="
@@ -48,9 +51,7 @@ make smoke EULER=1 CONDA_INIT="$CONDA_INIT" CONDA_ENV="$CONDA_ENV" \
 echo
 
 echo "=================== 2. and 3. can it submit, and does benchmarking survive ==================="
-# One real child job that writes a benchmark TSV. record_host_info is the
-# cheapest rule that produces one, and its output is what Methods reports as
-# the benchmark machine.
+# One real child job writing a benchmark TSV, and the Methods host line.
 make smoke EULER=1 CONDA_INIT="$CONDA_INIT" CONDA_ENV="$CONDA_ENV" \
      CONDA_PREFIX_DIR="$CONDA_PREFIX_DIR" \
      EXTRA="--until record_host_info"

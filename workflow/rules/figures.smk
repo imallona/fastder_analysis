@@ -110,7 +110,7 @@ rule figure_main_2:
         novel=op.join(FIG_DIR, "novel_exons.csv"),
     output:
         composite=op.join(FIG_DIR, "figure_main_2.pdf"),
-        # The transcript-level panel, out of the composite but kept visible.
+        # Demoted from the composite, kept visible.
         supp=op.join(FIG_DIR, "supp_gtex_transcript_precision.pdf"),
     log:
         op.join(LOG_DIR, "figure_main_2.log"),
@@ -123,9 +123,7 @@ rule figure_main_2:
         "{_fig_exports} Rscript {input.script} {output.composite} > {log} 2>&1"
 
 
-# Tidy tables for the revision's three new panels. The collectors read the
-# results and benchmark trees and write what the panels plot, so a number in a
-# figure can be traced without rerunning R.
+# Tidy tables for the three new panels: what is plotted, on disk.
 rule collect_ablation_table:
     input:
         script=op.join(WORKFLOW_DIR, "scripts", "collect_param_sweeps.py"),
@@ -171,9 +169,7 @@ rule collect_min_junction_reads_table:
         """
 
 
-# The sweep runs under whichever config declares fastder.scaling_cores. The
-# simulation config is the contrasting series, with its ceilings annotated on
-# the panel; the genome-wide one is the workload with headroom to show.
+# The sweep runs under whichever config declares fastder.scaling_cores.
 rule collect_scaling_table:
     input:
         script=op.join(WORKFLOW_DIR, "scripts", "collect_scaling.py"),
@@ -220,9 +216,7 @@ rule figure_supp_revision:
         "{_fig_exports} Rscript {input.script} {params.out_dir} > {log} 2>&1"
 
 
-# Tool capability table, replacing the Figure 1 panels that plotted every tool
-# but fastder at zero. Its cells are read from the tool sources and the runner
-# scripts, so it depends on no results and runs anywhere.
+# Capability table, replacing the two zero-bar panels. Reads no results.
 rule capability_table:
     input:
         script=op.join(FIG_SCRIPTS, "make_capability_table.py"),

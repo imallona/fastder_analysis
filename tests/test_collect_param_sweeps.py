@@ -1,10 +1,8 @@
 """The sweep tables decide what the ablation and filter panels show.
 
-fastder's grid also moves min_coverage, min_length and position_tolerance, so
-averaging every combination into one number per swept value mixes runs that
-differ for another reason. An unstitched run carries no position_tolerance in
-its identifier at all, because --no-stitch makes it inert, so an equality test
-on the identifier drops one arm of the ablation.
+The grid also moves min_coverage, min_length and position_tolerance, so a
+careless average mixes runs differing for another reason. An unstitched
+identifier omits position_tolerance, which an equality test would drop.
 """
 
 import csv

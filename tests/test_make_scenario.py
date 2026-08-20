@@ -1,9 +1,7 @@
-"""The simulated reads are stored compressed, so the scenario step has to keep
-them that way.
+"""The simulated reads are compressed, and the scenario step must keep them so.
 
-The failure mode this guards is quiet: `open(path, "w")` on a name ending in
-.gz writes plain text, and STAR is invoked with --readFilesCommand zcat, so the
-alignment fails one rule later with nothing pointing back here.
+open(path, "w") on a .gz name writes plain text, and STAR reads with zcat, so
+the failure surfaces one rule later.
 """
 
 import gzip

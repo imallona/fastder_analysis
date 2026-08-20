@@ -1,9 +1,8 @@
 """The scaling table records how fastder uses the cores it is given.
 
-The trap is the empty max_rss cell. Snakemake samples every 0.5 s for the first
-thirty samples, so a run finishing before the first sample has a wall clock and
-no memory figure. Reading that empty string as zero draws a memory curve
-diving to the floor exactly where the run is fastest.
+The trap is the empty max_rss cell: a run finishing before the first sample has
+a wall clock and no memory. Read as zero, the memory curve dives to the floor
+exactly where the run is fastest.
 """
 
 import csv

@@ -7,6 +7,7 @@
 ##
 ## Usage:
 ##   make submodules         # fetch the fastder and monorail-external submodules
+##   make submodules-latest  # move them to the tip of the branch each tracks
 ##   make sim                # the 10M paper simulation run
 ##   make simulations        # the full depth sweep: 5M, 10M, 30M, 40M
 ##   make mjr-sweep          # junction read-support sensitivity, reuses the 10M simulation
@@ -45,28 +46,19 @@ ULIMIT_KB   ?= 104857600
 CONDA_ENV   ?= snakemake
 CONDA_INIT  ?= $(HOME)/miniconda3/bin/activate
 
-## EULER=1 sends every rule to Slurm through profiles/euler instead of running
-## it here, e.g. make gtex-comparison EULER=1. Off by default, so a plain
-## checkout behaves like a workstation run.
+## EULER=1 sends every rule to Slurm, e.g. make gtex EULER=1.
 EULER ?=
 PROFILE_FLAG := $(if $(EULER),--profile $(CURDIR)/profiles/euler,)
 
-## Cores this workflow may hold at once on the cluster, well under the 208 core
-## es_platt share so the rest of the group is not crowded out. Each job books
-## its thread count, so 32 allows 32 single-core tool runs, or two of the
-## twelve-thread rules (STAR, ASimulatoR, the fastder build).
+## Cores held at once on the cluster; the es_platt share is 208.
 EULER_CORE_BUDGET ?= 32
 RESOURCE_FLAG := $(if $(EULER),--resources cores_used=$(EULER_CORE_BUDGET),)
 
-## Where snakemake builds its per-rule conda environments. Empty means the
-## default, workflow/.snakemake/conda. On Euler point it at project storage:
-## conda writes tens of thousands of small files per environment and $HOME is
-## capped at 500k inodes.
+## Conda env location. On Euler use project storage: $HOME caps inodes.
 CONDA_PREFIX_DIR ?=
 CONDA_PREFIX_FLAG := $(if $(CONDA_PREFIX_DIR),--conda-prefix $(CONDA_PREFIX_DIR),)
 
-## Extra snakemake flags appended to every target, e.g. EXTRA=-n for a dry run
-## or EXTRA="--until run_fastder" to stop at one rule.
+## Extra snakemake flags, e.g. EXTRA=-n.
 EXTRA ?=
 
 WORKFLOW_DIR := workflow
@@ -86,21 +78,24 @@ endef
 .DEFAULT_GOAL := help
 .PHONY: help all submodules sim simulations sim-5m sim-30m sim-40m tdp43 \
         tdp43-panel gtex gtex-comparison gtex-smoke gtex-pick meta reports \
-        composites figures smoke dryrun unlock envs mjr-sweep
+        composites figures smoke dryrun unlock envs mjr-sweep submodules-latest
 
 help:
-	@echo "Targets: submodules sim simulations sim-5m sim-30m sim-40m mjr-sweep tdp43 tdp43-panel gtex gtex-comparison gtex-smoke gtex-pick meta reports composites figures smoke all dryrun unlock envs"
+	@echo "Targets: submodules submodules-latest sim simulations sim-5m sim-30m sim-40m mjr-sweep tdp43 tdp43-panel gtex gtex-comparison gtex-smoke gtex-pick meta reports composites figures smoke all dryrun unlock envs"
 	@echo "Variables: CORES=$(CORES) ULIMIT_KB=$(ULIMIT_KB) CONDA_ENV=$(CONDA_ENV) EULER=$(EULER) EULER_CORE_BUDGET=$(EULER_CORE_BUDGET) CONDA_PREFIX_DIR=$(CONDA_PREFIX_DIR)"
 
 ## meta only needs the simulation results, so it runs before the tdp43 runs:
 ## a tdp43 failure then cannot block the cross-depth report.
 all: simulations meta tdp43 tdp43-panel gtex gtex-comparison figures
 
-## Populate the git submodules. workflow/external/fastder must hold the fastder
-## sources for the build_fastder rule to find a CMakeLists.txt; a plain
-## git clone leaves the submodules empty. Idempotent, safe to re-run.
+## Submodules at their recorded commits. A clone leaves them empty.
 submodules:
 	git submodule update --init --recursive
+
+## Move the pins to each tracked branch tip, fastder to revision.
+submodules-latest:
+	git submodule update --init --recursive --remote
+	git submodule status --recursive
 
 simulations: sim sim-5m sim-30m sim-40m
 
@@ -124,9 +119,7 @@ sim-40m:
 	  FASTDER_EVAL_CONFIG=../config/config_full_simulation_40M.yaml \
 	  $(SNAKEMAKE) --use-conda --use-singularity'
 
-## Junction read-support sensitivity: fastder alone over the min_junction_reads
-## ladder, every other parameter at its shipped default. Reuses the simulated
-## data of the 10M run, so run it after make sim.
+## min_junction_reads sweep, fastder alone. Reuses the 10M data, so run after sim.
 mjr-sweep:
 	cd $(WORKFLOW_DIR) && bash -c '$(ACTIVATE) && \
 	  FASTDER_EVAL_CONFIG=../config/config_min_junction_reads_sweep.yaml \
@@ -243,10 +236,7 @@ dryrun:
 unlock:
 	cd $(WORKFLOW_DIR) && bash -c '$(ACTIVATE) && snakemake --unlock'
 
-## Build the conda environments of one config without running any rule.
-## Compute nodes reach the internet only through a shared, rate limited proxy,
-## so on Euler this is run once on a login node rather than by 32 jobs at once.
-## CONFIG selects which config's environments to build.
+## Build one config's conda envs, on a login node: the proxy is shared.
 CONFIG ?= config_full_simulation.yaml
 
 envs:

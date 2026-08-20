@@ -1,13 +1,9 @@
-"""Tidy tables for the two single-axis fastder sweeps of the revision.
+"""Tidy tables for the two single-axis fastder sweeps.
 
-Both hold every fastder parameter at its shipped default and move one axis: the
-ablation moves --no-stitch, the read-support sweep moves --min-junction-reads.
-The panels plot these tables rather than recomputing, so a figure and the
-numbers on disk cannot disagree.
-
-Exon sensitivity and precision come from summary.csv, and the share of
-predicted exon boundaries within 5 bp of a reference boundary from
-fuzzy_distances.csv. Values are averaged over the samples of a scenario.
+Every parameter stays at its shipped default while one axis moves: --no-stitch
+for the ablation, --min-junction-reads for the read-support sweep. Accuracy
+comes from summary.csv, boundary distances from fuzzy_distances.csv, averaged
+over the samples of a scenario.
 
 Usage:
     python collect_param_sweeps.py --axis no_stitch --results-root <dir> --out <csv>
@@ -22,10 +18,8 @@ from collections import defaultdict
 
 from param_grid import parse_param_id
 
-# fastder's shipped defaults, from cpp/main.cpp. A sweep row is only comparable
-# with the others if every axis but the swept one sits here. min_junction_reads
-# is listed because a config may sweep both axes: without it, the ablation
-# would average filtered and unfiltered runs into the same arm.
+# Shipped defaults, from cpp/main.cpp. A row is comparable only if every axis
+# but the swept one sits here.
 DEFAULTS = {"min_coverage": 0.05, "min_length": 10, "position_tolerance": 5,
             "min_junction_reads": 0}
 
@@ -51,9 +45,8 @@ def simulation_run_dirs(results_root, prefix="config_full_simulation"):
 def comparable(combo, axis):
     """True when every parameter but the swept axis is at its default.
 
-    --no-stitch makes position_tolerance inert, so the identifier of an
-    unstitched run does not carry it: absence is accepted, a present but
-    different value is not.
+    --no-stitch makes position_tolerance inert, so an unstitched identifier
+    omits it. Absence is accepted; a different value is not.
     """
     for name, default in DEFAULTS.items():
         if name == axis:
@@ -64,12 +57,8 @@ def comparable(combo, axis):
 
 
 def axis_value(combo, axis):
-    """The swept value, with the meaning an absent parameter has.
-
-    An identifier written before --min-junction-reads existed describes a run
-    with no junction filter, which is 0. An identifier with no ns component
-    describes a stitched run.
-    """
+    """The swept value. An absent parameter means the published behaviour:
+    no junction filter, stitching on."""
     if axis in combo:
         return combo[axis]
     return False if axis == "no_stitch" else 0

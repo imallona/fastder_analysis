@@ -3,16 +3,11 @@
 #
 #   sbatch slurm/03_tdp43.sh
 #
-# Cheap next to the other two: four recount3 BigWigs over chr8, chr19 and
-# chr20. It is rerun because the whole-file library size changes what a CPM
-# threshold means, and the published thresholds, 1.0 CPM for the showcase and
-# 0.02 CPM for the panel, were hand-tuned at the old scale.
+# Cheap: four recount3 BigWigs over chr8, chr19 and chr20. Rerun because
+# whole-file library size changes what a CPM threshold means.
 #
-# The configs still carry those old values. Re-picking them by eye a second
-# time is what the revision set out to avoid, so treat this run as the input to
-# the threshold sweep rather than as a finished result: it says what the
-# current values now produce, and the sweep then reports the range over which
-# the STMN2 cryptic exon is called in the knockdown and not in the control.
+# The configs still carry the old hand-tuned thresholds, 1.0 and 0.02 CPM.
+# This run feeds the threshold sweep; it is not a finished result.
 #
 #SBATCH --job-name=fastder-tdp43
 #SBATCH --time=24:00:00
@@ -21,7 +16,13 @@
 #SBATCH --output=slurm/logs/%x-%j.out
 #SBATCH --signal=B:TERM@300
 
-source "$(dirname "$0")/common.sh"
+set -euo pipefail
+
+# Slurm copies the batch script into a spool directory before running it, so
+# $0 does not point into the repo. sbatch is called from the repo root, which
+# is what SLURM_SUBMIT_DIR holds.
+repo="${SLURM_SUBMIT_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
+source "$repo/slurm/common.sh"
 
 announce tdp43 tdp43-panel
 echo

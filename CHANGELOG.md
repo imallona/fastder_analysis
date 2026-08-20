@@ -49,6 +49,9 @@
 
 - Simulated reads are stored gzipped. `runASimulatoR.R` compresses them after the simulation. `make_scenario.py` writes its filtered copy compressed. STAR reads them with `--readFilesCommand zcat`. Plain FASTQ was about 680 GB. Compressed it is about 170 GB. Uncompressed reads on disk will re-simulate.
 - Scenario FASTQ files and sorted BAMs are `temp()`. Nothing was reclaimed as the DAG advanced. The BAMs held 110 GB too. BigWigs, junction tables and results survive. ASimulatoR reads stay, being costly to regenerate.
+- The fastder submodule tracks `revision` upstream. It tracked `main` before. The pin is `8da02f5`. It carries whole-file library size. It also carries `--min-junction-reads` and `--no-stitch`. The old pin lacked all three.
+- The sbatch wrappers populate the submodules themselves. A clone leaves them empty. `build_fastder` then has no sources. `make submodules-latest` moves a pin deliberately.
+- The sbatch wrappers source `common.sh` correctly. Slurm copies the script to a spool directory. `$0` pointed there, not at the repo. Job 11285331 died after seven seconds. `SLURM_SUBMIT_DIR` locates the repo now. `common.sh` also checks its prerequisites first.
 - `ml_star_align` writes scratch to `$TMPDIR`. STAR temp and sort spill move there. The Euler profile requests `--tmp` for both rules.
 - Aggregate panels keep the default configuration. `--no-stitch` and `--min-junction-reads` are not accuracy settings. Folding them in moved the headline numbers. `default_grid()` in `helpers.R` holds the corner. `best_pids()` picks among default runs only.
 - `meta.Rmd` filters to the default configuration. Its curves no longer average ablation runs.

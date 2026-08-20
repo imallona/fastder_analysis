@@ -3,15 +3,10 @@
 # D boundary precision vs depth, E boundary-distance CDF, F runtime vs memory.
 # Data panels are reproduced verbatim from the report code, restyled.
 #
-# The multi-exon and strand-concordance panels of the first submission are gone.
-# Only fastder emits multi-exon structure or assigns a strand, so the bars put
-# every other tool at zero by construction, which is a capability statement
-# drawn as a measurement. The manuscript states it as a table instead, and the
-# fastder quantities stay in the summary report, which is why panel_multiexon()
-# and panel_strand() remain in helpers.R.
-#
-# groHMM is dropped from C and D for the reason argued at EXON_LEVEL_TOOLS in
-# helpers.R. It stays in E.
+# The multi-exon and strand panels are gone: they put every tool but fastder
+# at zero by construction. The capability table states that instead.
+# panel_multiexon() and panel_strand() stay in helpers.R for the report.
+# groHMM leaves C and D; see EXON_LEVEL_TOOLS in helpers.R.
 
 args <- commandArgs(trailingOnly = TRUE)
 out <- if (length(args) >= 1) args[[1]] else "figure_main_1.pdf"
@@ -28,11 +23,8 @@ p_boundary  <- panel_boundary(tools = EXON_LEVEL_TOOLS)
 p_cdf       <- panel_boundary_cdf()
 p_speed     <- panel_speed(bench_dir)
 
-# Two full-width schematic rows (A pipeline, B simulation design), then the
-# benchmark panels in narrative order: C exon accuracy, D boundary precision,
-# E boundary-distance CDF, F speed, each full width now that the two half-width
-# capability panels are gone. Add order sets the A-F tags, so it follows the
-# order they are cited in the text.
+# Two schematic rows, then C exon accuracy, D boundary precision, E CDF,
+# F speed. Add order sets the A-F tags, matching the citation order.
 design <- "
 AAAAAAAAAAAA
 BBBBBBBBBBBB

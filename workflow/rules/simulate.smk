@@ -33,9 +33,7 @@ rule run_asimulator:
     threads: config["cores"]
     resources:
         mem_mb=32000,
-        # Ten samples over two chromosomes at the deepest sweep point. The
-        # runtime is generous on purpose: a simulation killed near the end
-        # costs more than an over-long reservation.
+        # Generous: a simulation killed near the end costs more.
         runtime=1440,
     container:
         "docker://biomedbigdata/asimulator"
@@ -56,11 +54,8 @@ rule make_scenario:
         fq2=op.join(ASIM_DIR, "{sample}", "sample_01_2.fastq.gz"),
     output:
         gff=op.join(ASIM_DIR, "{sample}", "{scenario}", "splicing_variants.gff3"),
-        # Deleted once the alignment has read them. template_and_variant is a
-        # link to the ASimulatoR reads and costs nothing; variant_only is a
-        # filtered copy, and at four depths those copies are hundreds of GB.
-        # Rebuilding them costs one make_scenario job. Pass --notemp to keep
-        # them.
+        # Deleted once aligned. variant_only is a copy, hundreds of GB
+        # over four depths. --notemp keeps them.
         fq1=temp(op.join(ASIM_DIR, "{sample}", "{scenario}", "sample_01_1.fastq.gz")),
         fq2=temp(op.join(ASIM_DIR, "{sample}", "{scenario}", "sample_01_2.fastq.gz")),
     benchmark:
