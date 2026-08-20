@@ -23,6 +23,9 @@ rule ml_star_index:
     params:
         idx_dir=LIGHT_STAR_IDX,
     threads: config["cores"]
+    resources:
+        mem_mb=32000,
+        runtime=240,
     conda:
         "../envs/star.yaml"
     shell:
@@ -95,6 +98,9 @@ rule ml_star_align:
         outprefix=lambda wc: op.join(LIGHT_DIR, wc.scenario, wc.sample) + "/",
         idx_dir=LIGHT_STAR_IDX,
     threads: config["cores"]
+    resources:
+        mem_mb=32000,
+        runtime=240,
     conda:
         "../envs/star.yaml"
     shell:
@@ -139,6 +145,9 @@ rule ml_bam_to_bigwig:
         chrom_sizes=lambda wc: op.join(LIGHT_DIR, wc.scenario, f"{wc.sample}.chrom.sizes"),
         stranded=STRANDED,
         outdir=lambda wc: op.join(LIGHT_DIR, wc.scenario),
+    resources:
+        mem_mb=8000,
+        runtime=120,
     conda:
         "../envs/stranded_bigwig.yaml"
     shell:
@@ -190,6 +199,9 @@ rule ml_emit_mm_rr:
         samples=PUMP_SAMPLES,
         project=config["monorail"]["project_name"],
         emit_script=op.join(WORKFLOW_DIR, "scripts", "emit_lean_mm_rr.py"),
+    resources:
+        mem_mb=8000,
+        runtime=120,
     run:
         # Build paired --sample / --sj args
         sample_args = []

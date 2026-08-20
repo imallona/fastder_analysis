@@ -20,6 +20,9 @@ rule run_gffcompare:
         out_prefix=lambda wc: os.path.join(
             str(RESULTS_DIR), wc.tool, wc.scenario, wc.sample, wc.param_id, "gffcompare",
         ),
+    resources:
+        mem_mb=4000,
+        runtime=60,
     conda:
         "../envs/gffcompare.yaml"
     shell:
@@ -43,6 +46,9 @@ rule collect_results:
         op.join(BENCH_DIR, "collect_results.tsv")
     params:
         parser=op.join(WORKFLOW_DIR, "scripts", "parse_gffcompare.py"),
+    resources:
+        mem_mb=4000,
+        runtime=60,
     run:
         import csv
         import sys
@@ -95,6 +101,9 @@ rule collect_chain_stats:
         script=op.join(WORKFLOW_DIR, "scripts", "collect_chain_stats.py"),
         scenarios=SCENARIOS,
         param_ids=PARAM_IDS,
+    resources:
+        mem_mb=4000,
+        runtime=60,
     run:
         # Each gtf_path file is at FASTDER_DIR/<scenario>/run_fastder_<pid>.gtf_path
         # so we recover (scenario, param_id) by matching the path components.
@@ -130,6 +139,9 @@ rule eval_fuzzy_metrics:
     params:
         ref_gff=lambda wc: op.join(FASTDER_DIR, wc.scenario, f"{wc.sample}_label{LABEL_EXT}"),
         script=op.join(WORKFLOW_DIR, "scripts", "eval_fuzzy.py"),
+    resources:
+        mem_mb=8000,
+        runtime=60,
     conda:
         "../envs/bedtools.yaml"
     shell:
@@ -164,6 +176,9 @@ rule collect_fuzzy_metrics:
         strand=op.join(RESULTS_DIR, "fuzzy_strand.csv"),
     benchmark:
         op.join(BENCH_DIR, "collect_fuzzy_metrics.tsv")
+    resources:
+        mem_mb=4000,
+        runtime=60,
     run:
         import csv as _csv
         # The per-(tool, scenario, sample, param_id) CSVs do not carry a
@@ -211,6 +226,9 @@ rule collect_truth_stats:
         op.join(LOG_DIR, "collect_truth_stats.log"),
     params:
         script=op.join(WORKFLOW_DIR, "scripts", "collect_truth_stats.py"),
+    resources:
+        mem_mb=4000,
+        runtime=60,
     run:
         if not input.gffs:
             with open(output[0], "w") as fh:

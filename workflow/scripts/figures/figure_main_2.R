@@ -1,6 +1,13 @@
 # Main Figure 2: two recount3 worked examples.
 #   TDP-43: design, STMN2 track, novel ERs per group.
 #   GTEx:   design, concordance heatmap, marker loci, novel exons, precision.
+#
+# gffcompare transcript-level precision is no longer a panel here. That level
+# counts a prediction correct only when its whole intron chain matches a
+# reference transcript, which is isoform reconstruction, and no tool in the
+# comparison attempts it. fastder scoring above the others there reflects
+# emitting multi-exon output at all, not emitting it well. It is written to its
+# own file for the supplement rather than deleted, so the number stays visible.
 
 args <- commandArgs(trailingOnly = TRUE)
 out <- if (length(args) >= 1) args[[1]] else "figure_main_2.pdf"
@@ -30,7 +37,6 @@ Gc <- wrap_png("fig_gtex_concordance.png")
 Hm <- panel_marker_loci()
 In <- panel_novel()
 Jp <- panel_gtexcmp_precision(GTX, level = "exon")
-Kp <- panel_gtexcmp_precision(GTX, level = "transcript")
 
 # Patchwork assigns panels to areas alphabetically. The three small TDP panels
 # (C, D, E) sit in one row. B (STMN2 track) and G (concordance heatmap) each
@@ -47,9 +53,9 @@ FFFFFF######
 GGGGGGGGGGGG
 GGGGGGGGGGGG
 HHHHHHHHHHHH
-IIIIJJJJKKKK
+IIIIIIJJJJJJ
 "
-fig <- A + B + C + Dd + Ej + Fg + Gc + Hm + In + Jp + Kp +
+fig <- A + B + C + Dd + Ej + Fg + Gc + Hm + In + Jp +
   plot_layout(design = design,
               heights = c(1.1, 1.1, 1.7, 1.1, 1.1, 1.9, 1.9, 2.0, 1.9)) +
   plot_annotation(tag_levels = "A") &
@@ -58,3 +64,10 @@ fig <- A + B + C + Dd + Ej + Fg + Gc + Hm + In + Jp + Kp +
 ggsave(out, fig, width = 8.27, height = 13.5, limitsize = FALSE)
 ggsave(sub("\\.pdf$", ".svg", out), fig, width = 8.27, height = 13.5, limitsize = FALSE)
 cat("wrote", out, "and", sub("\\.pdf$", ".svg", out), "\n")
+
+# The demoted transcript-level panel on its own, for the supplement.
+supp <- file.path(dirname(out), "supp_gtex_transcript_precision.pdf")
+p_supp <- panel_gtexcmp_precision(GTX, level = "transcript")
+ggsave(supp, p_supp, width = 4.0, height = 4.0, limitsize = FALSE)
+ggsave(sub("\\.pdf$", ".svg", supp), p_supp, width = 4.0, height = 4.0, limitsize = FALSE)
+cat("wrote", supp, "\n")

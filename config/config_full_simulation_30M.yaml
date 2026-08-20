@@ -3,10 +3,11 @@
 # config_full_simulation.yaml. Edit that script, not this file.
 
 # Paper-ready simulation config: the default, full-depth simulation run.
-# 5 samples, 10M reads each, chr21, monorail_light backend (lean STAR plus
-# Python aggregator, so no Singularity image pulls and no whole-genome
-# reference download). The fastder parameter grid below is the one used for
-# the paper figures.
+# 10 samples covering all eight ASimulatoR event classes plus two mixtures, 10M
+# reads each, chr21 and chr19, monorail_light backend (lean STAR plus Python
+# aggregator, so no Singularity image pulls and no whole-genome reference
+# download). The fastder parameter grid below is the one used for the paper
+# figures.
 #
 # This is the 10M point of the depth sweep. The other depths are generated
 # from this file by scripts/make_sim_configs.py as config_full_simulation_5M

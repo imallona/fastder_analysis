@@ -24,6 +24,9 @@ rule compute_library_sizes:
         bigwig_dir=lambda wc: op.join(FASTDER_DIR, wc.scenario),
         script=op.join(WORKFLOW_DIR, "scripts", "compute_library_sizes.py"),
     threads: 1
+    resources:
+        mem_mb=2000,
+        runtime=60,
     conda:
         "../envs/megadepth_baseline.yaml"
     shell:
@@ -57,6 +60,11 @@ rule run_derfinder:
         min_length=lambda wc: (FASTDER_CFG.get("min_length") or [10])[0],
         script=op.join(WORKFLOW_DIR, "scripts", "run_derfinder.R"),
     threads: 1
+    resources:
+        # derfinder imports the coverage of a whole chromosome into R. Peak
+        # resident set was 3.8 GB in the first submission's benchmarks.
+        mem_mb=8000,
+        runtime=120,
     conda:
         "../envs/derfinder.yaml"
     shell:
@@ -93,6 +101,9 @@ rule run_megadepth_baseline:
         min_length=lambda wc: (FASTDER_CFG.get("min_length") or [10])[0],
         script=op.join(WORKFLOW_DIR, "scripts", "run_megadepth_baseline.py"),
     threads: 1
+    resources:
+        mem_mb=4000,
+        runtime=60,
     conda:
         "../envs/megadepth_baseline.yaml"
     shell:
@@ -136,6 +147,9 @@ rule run_grohmm:
         count_scale=lambda wc: (config.get("grohmm") or {}).get("count_scale", 100),
         script=op.join(WORKFLOW_DIR, "scripts", "run_grohmm.R"),
     threads: 1
+    resources:
+        mem_mb=8000,
+        runtime=120,
     conda:
         "../envs/grohmm.yaml"
     shell:

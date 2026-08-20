@@ -278,6 +278,19 @@ SCALING_CORES = FASTDER_CFG.get("scaling_cores") or []
 # the sweep measures fastder against itself on one fixed workload.
 SCALING_SCENARIO = FASTDER_CFG.get("scaling_scenario") or (SCENARIOS[0] if SCENARIOS else "")
 
+# Memory hints for the fastder rules, in MB. Both are requests, not limits: a
+# local run bounds concurrency with --resources mem_mb=N and a cluster run asks
+# the scheduler for this much. The numbers come from the peak resident set the
+# benchmark directives recorded for the first submission: under 2 GB on a
+# single chromosome, 15.5 GB median and 30 GB maximum genome-wide. One
+# worst-case number for both scopes would over-request every per-chromosome
+# run, so the request follows the analysed scope.
+FASTDER_MEM_MB = 8000 if FASTDER_CFG.get("chromosomes") else 48000
+# The scaling sweep runs the same workload at up to sixteen cores. Each parsing
+# thread holds one sample's intervals, so peak memory grows with the thread
+# count rather than staying at the single-core figure.
+FASTDER_SCALING_MEM_MB = 64000
+
 # Human reference download, keyed by chromosome scope. Configs that analyse
 # different chromosome sets get independent, cacheable reference folders
 # instead of clobbering one shared directory, and a chromosome-set change is

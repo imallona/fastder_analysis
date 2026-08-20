@@ -4,7 +4,6 @@ The grid decides which fastder runs exist and what each is called. An error
 here changes the benchmark without failing, so the collapsing behaviour is
 pinned below.
 """
-import pytest
 
 import param_grid as pg
 
@@ -101,3 +100,42 @@ class TestBuildCombos:
         ids = [pg.param_id(c) for c in combos]
         assert len(ids) == len(set(ids))
         assert len(ids) == 2 * 2 * 4 + 2 * 2
+
+
+class TestParseParamId:
+    """parse_param_id is the inverse used by every table that groups a results
+    file by the axis that moved, and workflow/scripts/figures/helpers.R matches
+    the same identifiers with regular expressions."""
+
+    def test_round_trips_every_combination_of_the_full_grid(self):
+        combos = pg.build_combos({"min_coverage": [0.01, 0.05],
+                                  "min_length": [10, 25],
+                                  "position_tolerance": [0, 5],
+                                  "min_junction_reads": [0, 20],
+                                  "no_stitch": [False, True]})
+        for combo in combos:
+            assert pg.parse_param_id(pg.param_id(combo)) == combo
+
+    def test_absent_parameter_is_absent_rather_than_zero(self):
+        """An id written before a parameter existed says nothing about it, which
+        is not the same as saying the parameter was zero."""
+        assert "min_junction_reads" not in pg.parse_param_id("mc0.05_ml10_pt5")
+        assert "no_stitch" not in pg.parse_param_id("mc0.05_ml10_pt5")
+
+    def test_switch_states_come_back_as_booleans(self):
+        assert pg.parse_param_id("mc0.05_ns1")["no_stitch"] is True
+        assert pg.parse_param_id("mc0.05_ns0")["no_stitch"] is False
+
+    def test_identifiers_match_the_patterns_the_r_panels_grep_for(self):
+        """helpers.R greps '(^|_)ns1(_|$)' for the ablation arm and reads the
+        junction filter from '(?<=mjr)[0-9]+'. Keep both sides in step."""
+        import re
+
+        unstitched = pg.param_id({"min_coverage": 0.05, "no_stitch": True})
+        stitched = pg.param_id({"min_coverage": 0.05, "no_stitch": False})
+        assert re.search(r"(^|_)ns1(_|$)", unstitched)
+        assert not re.search(r"(^|_)ns1(_|$)", stitched)
+
+        filtered = pg.param_id({"min_coverage": 0.05, "min_junction_reads": 20,
+                                "no_stitch": False})
+        assert re.search(r"(?<=mjr)[0-9]+", filtered).group(0) == "20"

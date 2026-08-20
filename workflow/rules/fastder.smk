@@ -100,6 +100,9 @@ rule extract_fastder_inputs:
         stranded_bw_dir=op.join(DATA_DIR, "stranded_bigwigs"),
         samples_tsv_script=op.join(WORKFLOW_DIR, "scripts", "create_bigwig_list.sh"),
         backend=BACKEND,
+    resources:
+        mem_mb=2000,
+        runtime=30,
     run:
         import shutil, gzip
 
@@ -264,6 +267,9 @@ rule match_chr_prefix:
         op.join(LOG_DIR, "match_chr_prefix_{scenario}.log")
     params:
         fastder_dir=lambda wc: op.join(FASTDER_DIR, wc.scenario),
+    resources:
+        mem_mb=2000,
+        runtime=30,
     conda:
         "../envs/base.yaml"
     shell:
@@ -311,6 +317,9 @@ rule bigwig_to_bedgraph:
         op.join(LOG_DIR, "bigwig_to_bedgraph_{scenario}.log")
     params:
         fastder_dir=lambda wc: op.join(FASTDER_DIR, wc.scenario),
+    resources:
+        mem_mb=4000,
+        runtime=120,
     conda:
         "../envs/ucsc_tools.yaml"
     shell:
@@ -352,6 +361,9 @@ rule build_fastder:
         fastder_src=op.join(WORKFLOW_DIR, "external", "fastder"),
         build_dir=str(FASTDER_BUILD_DIR),
     threads: config["cores"]
+    resources:
+        mem_mb=4000,
+        runtime=60,
     conda:
         "../envs/fastder_build.yaml"
     shell:
@@ -393,6 +405,9 @@ rule run_fastder:
             else ""
         ),
     threads: FASTDER_CORES
+    resources:
+        mem_mb=FASTDER_MEM_MB,
+        runtime=120,
     conda:
         "../envs/fastder_build.yaml"
     shell:
@@ -441,6 +456,9 @@ rule link_fastder_gtf:
         op.join(BENCH_DIR, "link_fastder_gtf", "{scenario}_{param_id}.tsv")
     log:
         op.join(LOG_DIR, "link_fastder_gtf", "{scenario}_{param_id}.log"),
+    resources:
+        mem_mb=1000,
+        runtime=10,
     conda:
         "../envs/base.yaml"
     shell:
@@ -479,6 +497,9 @@ rule run_fastder_scaling:
             else ""
         ),
     threads: lambda wc: int(wc.ncores)
+    resources:
+        mem_mb=FASTDER_SCALING_MEM_MB,
+        runtime=240,
     conda:
         "../envs/fastder_build.yaml"
     shell:

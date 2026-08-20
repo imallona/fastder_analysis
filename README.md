@@ -15,6 +15,8 @@ make submodules        # fetch the fastder and monorail-external submodules, onc
 
 There is a `Makefile` including `make help` (`sim`, `simulations`, `tdp43`, `tdp43-panel`, `gtex`, `gtex-comparison`, `gtex-pick`, `meta`, `all`, `smoke`, `dryrun`, `unlock`). Override defaults on the command line, e.g. `make sim CORES=24` (`ULIMIT_KB` caps per-process virtual memory at 100 GB).
 
+Add `EULER=1` to any target to submit its rules to the ETH Euler cluster instead of running them here, e.g. `make gtex-comparison EULER=1`. The cluster settings live in `profiles/euler/config.yaml` and the sbatch wrappers in `slurm/`; see `slurm/README.md`. Without `EULER=1` the workflow runs locally exactly as before.
+
 Each target wraps one command; to run a config directly, set `FASTDER_EVAL_CONFIG` (it fully replaces the default config, unlike Snakemake's deep-merging `--configfile`):
 
 ```

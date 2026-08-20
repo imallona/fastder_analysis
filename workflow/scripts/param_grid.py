@@ -9,6 +9,7 @@ true and omitted when false.
 """
 
 import itertools
+import re
 
 # Parameter name to (identifier abbreviation, CLI flag).
 PARAM_SPEC = {
@@ -65,6 +66,34 @@ def drop_ignored(combo):
     if not ignored:
         return combo
     return {k: v for k, v in combo.items() if k not in ignored}
+
+
+def parse_param_id(param_id):
+    """Recover a combination from its identifier.
+
+    The inverse of param_id() for every parameter in PARAM_SPEC, so a results
+    table carrying only param_id can still be grouped by the axis that moved.
+    Switches come back as booleans, values as float or int. Parameters absent
+    from the identifier are absent from the result, which is not the same as
+    being zero: an identifier written before a parameter existed says nothing
+    about it.
+
+    workflow/scripts/figures/helpers.R matches the same identifiers with
+    regular expressions; keep the two in step.
+    """
+    combo = {}
+    for name, (abbrev, _) in PARAM_SPEC.items():
+        match = re.search(rf"(?:^|_){abbrev}([0-9]*\.?[0-9]+)(?:_|$)", param_id)
+        if not match:
+            continue
+        raw = match.group(1)
+        if name in FLAG_PARAMS:
+            combo[name] = bool(int(float(raw)))
+        elif "." in raw:
+            combo[name] = float(raw)
+        else:
+            combo[name] = int(raw)
+    return combo
 
 
 def build_combos(axes_config):

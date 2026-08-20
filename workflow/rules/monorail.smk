@@ -30,6 +30,9 @@ rule pull_containers:
         op.join(BENCH_DIR, "pull_containers.tsv")
     log:
         op.join(LOG_DIR, "pull_containers.log")
+    resources:
+        mem_mb=4000,
+        runtime=120,
     conda:
         "../envs/base.yaml"
     shell:
@@ -48,6 +51,9 @@ rule download_monorail_refs:
         op.join(BENCH_DIR, "download_monorail_refs.tsv")
     params:
         ref_version=config["monorail"]["ref_version"],
+    resources:
+        mem_mb=4000,
+        runtime=240,
     conda:
         "../envs/base.yaml"
     shell:
@@ -83,6 +89,9 @@ rule pump:
         pump_script=op.join(MONORAIL_EXTERNAL, "singularity", "run_recount_pump.sh"),
         project_name=config["monorail"]["project_name"],
     threads: config["cores"]
+    resources:
+        mem_mb=32000,
+        runtime=720,
     run:
         os.makedirs(output[0], exist_ok=True)
         # asimulator and local both feed local FASTQ files to recount-pump;
@@ -149,6 +158,9 @@ rule unify:
         unify_script=op.join(MONORAIL_EXTERNAL, "singularity", "run_recount_unify.sh"),
         pump_parent=op.join(DATA_DIR, "pump"),
     threads: config["cores"]
+    resources:
+        mem_mb=32000,
+        runtime=720,
     run:
         os.makedirs(output[0], exist_ok=True)
 
@@ -209,6 +221,9 @@ rule generate_stranded_bigwigs:
                 config["monorail"]["ref_version"],
             )),
         chrom_sizes=lambda wc: op.join(DATA_DIR, "stranded_bigwigs", f"{wc.sample}.chrom.sizes"),
+    resources:
+        mem_mb=8000,
+        runtime=120,
     conda:
         "../envs/stranded_bigwig.yaml"
     shell:

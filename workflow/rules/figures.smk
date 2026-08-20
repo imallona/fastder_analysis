@@ -34,6 +34,9 @@ rule figure_schematics:
         op.join(FIG_DIR, "fig_gtex_scheme.pdf"),
     log:
         op.join(LOG_DIR, "figure_schematics.log"),
+    resources:
+        mem_mb=8000,
+        runtime=60,
     conda:
         "../envs/figures.yaml"
     shell:
@@ -51,6 +54,9 @@ rule figure_marker_loci:
         op.join(FIG_DIR, "marker_loci.csv"),
     log:
         op.join(LOG_DIR, "figure_marker_loci.log"),
+    resources:
+        mem_mb=8000,
+        runtime=60,
     shell:
         "bash {input.script} {FIG_RESULTS}/config_gtex_concordance/fastder "
         "{output} {input.reference} > {log} 2>&1"
@@ -67,6 +73,9 @@ rule figure_novel_exons:
         op.join(FIG_DIR, "novel_exons.csv"),
     log:
         op.join(LOG_DIR, "figure_novel_exons.log"),
+    resources:
+        mem_mb=8000,
+        runtime=60,
     conda:
         "../envs/figures.yaml"
     shell:
@@ -83,6 +92,9 @@ rule figure_main_1:
         op.join(FIG_DIR, "figure_main_1.pdf"),
     log:
         op.join(LOG_DIR, "figure_main_1.log"),
+    resources:
+        mem_mb=8000,
+        runtime=60,
     conda:
         "../envs/figures.yaml"
     shell:
@@ -97,16 +109,145 @@ rule figure_main_2:
         markers=op.join(FIG_DIR, "marker_loci.csv"),
         novel=op.join(FIG_DIR, "novel_exons.csv"),
     output:
-        op.join(FIG_DIR, "figure_main_2.pdf"),
+        composite=op.join(FIG_DIR, "figure_main_2.pdf"),
+        # The transcript-level panel, out of the composite but kept visible.
+        supp=op.join(FIG_DIR, "supp_gtex_transcript_precision.pdf"),
     log:
         op.join(LOG_DIR, "figure_main_2.log"),
+    resources:
+        mem_mb=8000,
+        runtime=60,
     conda:
         "../envs/figures.yaml"
     shell:
-        "{_fig_exports} Rscript {input.script} {output} > {log} 2>&1"
+        "{_fig_exports} Rscript {input.script} {output.composite} > {log} 2>&1"
+
+
+# Tidy tables for the revision's three new panels. The collectors read the
+# results and benchmark trees and write what the panels plot, so a number in a
+# figure can be traced without rerunning R.
+rule collect_ablation_table:
+    input:
+        script=op.join(WORKFLOW_DIR, "scripts", "collect_param_sweeps.py"),
+    output:
+        csv=op.join(FIG_DIR, "ablation.csv"),
+    log:
+        op.join(LOG_DIR, "collect_ablation_table.log"),
+    params:
+        results_root=FIG_RESULTS,
+    resources:
+        mem_mb=2000,
+        runtime=20,
+    conda:
+        "../envs/base.yaml"
+    shell:
+        """
+        python3 {input.script} --axis no_stitch \
+            --results-root {params.results_root} \
+            --out {output.csv} > {log} 2>&1
+        """
+
+
+rule collect_min_junction_reads_table:
+    input:
+        script=op.join(WORKFLOW_DIR, "scripts", "collect_param_sweeps.py"),
+    output:
+        csv=op.join(FIG_DIR, "min_junction_reads.csv"),
+    log:
+        op.join(LOG_DIR, "collect_min_junction_reads_table.log"),
+    params:
+        results_root=FIG_RESULTS,
+    resources:
+        mem_mb=2000,
+        runtime=20,
+    conda:
+        "../envs/base.yaml"
+    shell:
+        """
+        python3 {input.script} --axis min_junction_reads \
+            --results-root {params.results_root} \
+            --config-prefix config_min_junction_reads_sweep \
+            --out {output.csv} > {log} 2>&1
+        """
+
+
+# The sweep runs under whichever config declares fastder.scaling_cores. The
+# simulation config is the contrasting series, with its ceilings annotated on
+# the panel; the genome-wide one is the workload with headroom to show.
+rule collect_scaling_table:
+    input:
+        script=op.join(WORKFLOW_DIR, "scripts", "collect_scaling.py"),
+    output:
+        csv=op.join(FIG_DIR, "scaling.csv"),
+    log:
+        op.join(LOG_DIR, "collect_scaling_table.log"),
+    params:
+        bench_dir=op.join(WORKFLOW_DIR, "logs", "benchmarks",
+                          config.get("scaling_bench_config", "config_full_simulation")),
+    resources:
+        mem_mb=2000,
+        runtime=20,
+    conda:
+        "../envs/base.yaml"
+    shell:
+        """
+        python3 {input.script} --bench-dir {params.bench_dir} \
+            --out {output.csv} > {log} 2>&1
+        """
+
+
+rule figure_supp_revision:
+    input:
+        helpers=op.join(FIG_SCRIPTS, "helpers.R"),
+        script=op.join(FIG_SCRIPTS, "figure_supp_revision.R"),
+        ablation=op.join(FIG_DIR, "ablation.csv"),
+        junction_filter=op.join(FIG_DIR, "min_junction_reads.csv"),
+        scaling=op.join(FIG_DIR, "scaling.csv"),
+    output:
+        ablation=op.join(FIG_DIR, "supp_ablation.pdf"),
+        junction_filter=op.join(FIG_DIR, "supp_min_junction_reads.pdf"),
+        scaling=op.join(FIG_DIR, "supp_scaling.pdf"),
+    log:
+        op.join(LOG_DIR, "figure_supp_revision.log"),
+    params:
+        out_dir=FIG_DIR,
+    resources:
+        mem_mb=8000,
+        runtime=60,
+    conda:
+        "../envs/figures.yaml"
+    shell:
+        "{_fig_exports} Rscript {input.script} {params.out_dir} > {log} 2>&1"
+
+
+# Tool capability table, replacing the Figure 1 panels that plotted every tool
+# but fastder at zero. Its cells are read from the tool sources and the runner
+# scripts, so it depends on no results and runs anywhere.
+rule capability_table:
+    input:
+        script=op.join(FIG_SCRIPTS, "make_capability_table.py"),
+    output:
+        csv=op.join(FIG_DIR, "tool_capabilities.csv"),
+        tex=op.join(FIG_DIR, "tool_capabilities.tex"),
+    log:
+        op.join(LOG_DIR, "capability_table.log"),
+    params:
+        out_dir=FIG_DIR,
+    resources:
+        mem_mb=1000,
+        runtime=10,
+    conda:
+        "../envs/base.yaml"
+    shell:
+        "python3 {input.script} {params.out_dir} > {log} 2>&1"
 
 
 rule manuscript_figures:
     input:
         op.join(FIG_DIR, "figure_main_1.pdf"),
         op.join(FIG_DIR, "figure_main_2.pdf"),
+        op.join(FIG_DIR, "supp_gtex_transcript_precision.pdf"),
+        op.join(FIG_DIR, "tool_capabilities.tex"),
+        op.join(FIG_DIR, "supp_ablation.pdf"),
+        op.join(FIG_DIR, "supp_min_junction_reads.pdf"),
+        op.join(FIG_DIR, "supp_scaling.pdf"),

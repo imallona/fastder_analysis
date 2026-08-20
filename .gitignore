@@ -8,3 +8,10 @@ workflow/snakemake.run.log
 **/.snakemake/
 **/__pycache__/
 snakemake.*.log
+slurm/logs/*.out
+
+# Review and evaluation notes about our own work. They belong on the laptop,
+# not in a repo that ships with the paper.
+review*.md
+style_report*.md
+code_eval.md

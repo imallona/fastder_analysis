@@ -14,6 +14,45 @@ BASE_SIZE <- 9
 
 TOOLS <- c("fastder", "derfinder", "megadepth_baseline", "grohmm")
 
+# Tools scored on exon-level accuracy. groHMM is out: its HMM scans coverage
+# binned in 50 nt tiles, which cannot land on an exon boundary, so an exon
+# precision or boundary-distance-within-5bp number for it measures a task it
+# was not built for. It stays in the base-level panels, where it is the
+# strongest of the four, and in the boundary-distance CDF, where the 50 nt
+# binning shows up as a mechanism rather than as a failure.
+EXON_LEVEL_TOOLS <- setdiff(TOOLS, "grohmm")
+
+# Two grid axes are not accuracy settings: the ablation (--no-stitch) and the
+# junction read-support filter (--min-junction-reads). Aggregate panels average
+# over the grid, so folding either into the same mean moves the headline
+# numbers with nothing in the figure saying so. They keep the stitched,
+# unfiltered corner and the two axes get panels of their own.
+#
+# Identifiers come from workflow/scripts/param_grid.py, whose tests pin these
+# two patterns.
+is_no_stitch <- function(param_id) grepl("(^|_)ns1(_|$)", param_id)
+
+min_junction_reads_of <- function(param_id) {
+  v <- suppressWarnings(as.integer(str_extract(param_id, "(?<=mjr)[0-9]+")))
+  ifelse(is.na(v), 0L, v)
+}
+
+# Rows of the default configuration: stitched, no junction filter. An
+# identifier predating either axis carries neither component and is kept, since
+# those runs were stitched and unfiltered.
+default_grid <- function(df) {
+  df %>% filter(!is_no_stitch(param_id), min_junction_reads_of(param_id) == 0L)
+}
+
+# Each panel writes the data frame it drew next to the figure, so a number in
+# the manuscript can be traced without rerunning R.
+save_panel_data <- function(df, name, dir = FIG_DIR) {
+  if (is.null(dir) || !nzchar(dir)) return(invisible(df))
+  dir.create(dir, showWarnings = FALSE, recursive = TRUE)
+  readr::write_csv(df, file.path(dir, paste0(name, ".csv")))
+  invisible(df)
+}
+
 # Identical to the values in the fastder-evaluation reports, so figures match.
 tool_palette <- c(
   derfinder          = "#66C2A5",
@@ -157,8 +196,9 @@ load_depth_sweep <- function(file_name, root = RESULTS_ROOT) {
 # Panel: gffcompare sensitivity and precision against depth, exon and
 # transcript levels, averaged over samples and parameters. Verbatim from the
 # meta.Rmd sens_prec chunk, restyled to the shared clean theme.
-panel_depth <- function(which_levels = c("Transcript", "Exon")) {
-  summary_all <- load_depth_sweep("summary.csv")
+panel_depth <- function(which_levels = c("Transcript", "Exon"), tools = TOOLS) {
+  summary_all <- load_depth_sweep("summary.csv") %>%
+    filter(tool %in% tools) %>% default_grid()
   levels_long <- bind_rows(
     summary_all %>% transmute(tool, scenario, depth_M, level = "Transcript",
                               sensitivity = transcript_sens, precision = transcript_prec),
@@ -196,8 +236,9 @@ panel_depth <- function(which_levels = c("Transcript", "Exon")) {
 
 # Panel: fraction of exon boundaries within 5 bp of a reference boundary,
 # against depth. Verbatim from the meta.Rmd boundary chunk, restyled.
-panel_boundary <- function() {
-  distances_all <- load_depth_sweep("fuzzy_distances.csv")
+panel_boundary <- function(tools = TOOLS) {
+  distances_all <- load_depth_sweep("fuzzy_distances.csv") %>%
+    filter(tool %in% tools) %>% default_grid()
   b5 <- distances_all %>%
     mutate(distance = as.integer(distance)) %>%
     group_by(tool, scenario, depth_M, sample, param_id) %>%
@@ -236,6 +277,10 @@ extract_pt <- function(pid) {
 # Best parameter per tool by median Jaccard, matching baselines to fastder on
 # the shared mc (and pt for derfinder) axes; grohmm at its own best.
 best_pids <- function(jaccard) {
+  # Pick among default-configuration runs only. Otherwise an unstitched or
+  # junction-filtered run can win the Jaccard and become "fastder" in a panel
+  # that never says which configuration it drew.
+  jaccard <- default_grid(jaccard)
   best_fastder <- jaccard %>% filter(tool == "fastder") %>%
     mutate(jaccard = as.numeric(jaccard)) %>%
     group_by(param_id) %>% summarise(m = median(jaccard), .groups = "drop") %>%
@@ -566,4 +611,113 @@ panel_placeholder <- function(text) {
     theme_void() +
     theme(panel.border = element_rect(colour = "grey70", fill = NA,
                                       linetype = "dashed"))
+}
+
+# --- Revision panels: the two single-axis fastder sweeps and core scaling.
+# Each reads the tidy CSV written by the collector script of the same name, so
+# the figure and the table on disk cannot disagree. ---
+
+# Labels for the ablation arms. "off" and "on" would be ambiguous: what is
+# switched is junction integration, not an accuracy setting.
+ablation_labels <- c(`0` = "stitched", `1` = "--no-stitch")
+
+metric_labels <- c(exon_sens = "Exon sensitivity (%)",
+                   exon_prec = "Exon precision (%)",
+                   boundary_within_5bp = "Boundaries within 5 bp (%)")
+
+read_panel_csv <- function(path) {
+  if (!file.exists(path)) stop("no panel table at ", path)
+  read_csv(path, show_col_types = FALSE)
+}
+
+# Panel: junction integration on and off, against depth. Answers the ablation
+# the reviewer asked for. Boundary snapping has no arm of its own because the
+# snap coordinate is the junction recorded while chaining, so it cannot be
+# switched off independently.
+panel_ablation <- function(path = file.path(FIG_DIR, "ablation.csv")) {
+  d <- read_panel_csv(path) %>%
+    mutate(arm = factor(ablation_labels[as.character(no_stitch)],
+                        levels = unname(ablation_labels)),
+           metric = factor(metric, levels = names(metric_labels),
+                           labels = unname(metric_labels)),
+           scenario = relabel_scenario(scenario))
+  save_panel_data(d, "panel_ablation")
+  ggplot(d, aes(depth_M, value, colour = arm, shape = arm, linetype = arm)) +
+    geom_line(linewidth = 0.7) + geom_point(size = 2.4) +
+    scale_x_continuous(trans = "log10", breaks = sort(unique(d$depth_M))) +
+    scale_colour_manual(values = c("#FC8D62", "#7F7F7F"), name = NULL) +
+    scale_shape_manual(values = c(16, 1), name = NULL) +
+    scale_linetype_manual(values = c("solid", "dashed"), name = NULL) +
+    coord_cartesian(ylim = c(0, 100)) +
+    facet_grid(scenario ~ metric, labeller = labeller(scenario = label_wrap_gen(12))) +
+    labs(x = "Reads per sample (M)", y = "Percent") +
+    theme_pub_square() + theme(axis.text.x = element_text(angle = 45, hjust = 1),
+                               legend.position = "bottom")
+}
+
+# Panel: accuracy against the junction read-support threshold. 0 is the
+# published behaviour, in which no junction filter exists.
+panel_min_junction_reads <- function(path = file.path(FIG_DIR, "min_junction_reads.csv")) {
+  d <- read_panel_csv(path) %>%
+    mutate(metric = factor(metric, levels = names(metric_labels),
+                           labels = unname(metric_labels)),
+           scenario = relabel_scenario(scenario))
+  save_panel_data(d, "panel_min_junction_reads")
+  ggplot(d, aes(min_junction_reads, value, colour = scenario, shape = scenario)) +
+    geom_line(linewidth = 0.7) + geom_point(size = 2.4) +
+    scale_x_continuous(trans = "log1p", breaks = sort(unique(d$min_junction_reads))) +
+    scale_colour_manual(values = c("#FC8D62", "#66C2A5"), name = NULL) +
+    scale_shape_manual(values = c(16, 17), name = NULL) +
+    coord_cartesian(ylim = c(0, 100)) +
+    facet_wrap(~ metric) +
+    labs(x = "Minimum junction reads, summed over samples",
+         y = "Percent") +
+    theme_pub_square() + theme(legend.position = "bottom")
+}
+
+# Panel: wall time and peak memory against cores, on one fixed workload.
+#
+# The ceilings are annotated because an unexplained plateau reads as a
+# limitation a reviewer found, whereas a predicted one reads as understanding
+# the tool: parsing runs at most one thread per loaded sample, averaging
+# parallelises over chromosomes, and stitching is serial.
+panel_scaling <- function(path = file.path(FIG_DIR, "scaling.csv"),
+                          samples = NA_integer_, chromosomes = NA_integer_) {
+  # Empty peak_rss cells make readr type the column logical when every row is
+  # blank, which then clashes with wall_s in the bind below.
+  d <- read_panel_csv(path) %>% mutate(peak_rss_gb = as.numeric(peak_rss_gb))
+  save_panel_data(d, "panel_scaling")
+  # Wall time first: it is the claim, and memory is the cost of it.
+  metric_order <- c("Wall time (s)", "Peak resident memory (GiB)")
+  long <- bind_rows(
+    d %>% transmute(cores, value = wall_s, metric = metric_order[1]),
+    d %>% filter(!is.na(peak_rss_gb)) %>%
+      transmute(cores, value = peak_rss_gb, metric = metric_order[2])
+  ) %>% mutate(metric = factor(metric, levels = metric_order))
+  # Ceilings are annotated on the wall-time facet only, where they explain the
+  # plateau. The label sits inside the panel rather than at Inf, which ggplot
+  # clips away.
+  wall_top <- max(long$value[long$metric == metric_order[1]], na.rm = TRUE)
+  ceilings <- data.frame(
+    cores = c(samples, chromosomes),
+    metric = factor(metric_order[1], levels = metric_order),
+    value = wall_top,
+    label = c("parsing: one thread per sample",
+              "averaging: one thread per chromosome")
+  ) %>% filter(!is.na(cores))
+  p <- ggplot(long, aes(cores, value)) +
+    geom_line(linewidth = 0.7, colour = "#FC8D62") +
+    geom_point(size = 2.4, colour = "#FC8D62") +
+    scale_x_continuous(trans = "log2", breaks = sort(unique(long$cores))) +
+    facet_wrap(~ metric, scales = "free_y") +
+    labs(x = "Cores given to fastder", y = NULL) +
+    theme_pub_square()
+  if (nrow(ceilings) > 0) {
+    p <- p +
+      geom_vline(data = ceilings, aes(xintercept = cores),
+                 linetype = "dotted", colour = "#7F7F7F") +
+      geom_text(data = ceilings, aes(x = cores, y = value, label = label),
+                angle = 90, hjust = 1, vjust = -0.4, size = 2.1, colour = "#7F7F7F")
+  }
+  p
 }

@@ -31,6 +31,12 @@ rule run_asimulator:
         probs_as_freq=lambda wc: config["asimulator"]["probs_as_freq"],
         seed=config["seed"],
     threads: config["cores"]
+    resources:
+        mem_mb=32000,
+        # Ten samples over two chromosomes at the deepest sweep point. The
+        # runtime is generous on purpose: a simulation killed near the end
+        # costs more than an over-long reservation.
+        runtime=1440,
     container:
         "docker://biomedbigdata/asimulator"
     script:
@@ -58,6 +64,9 @@ rule make_scenario:
         op.join(LOG_DIR, "make_scenario", "{sample}_{scenario}.log"),
     params:
         script=op.join(WORKFLOW_DIR, "scripts", "make_scenario.py"),
+    resources:
+        mem_mb=4000,
+        runtime=30,
     conda:
         "../envs/base.yaml"
     shell:
