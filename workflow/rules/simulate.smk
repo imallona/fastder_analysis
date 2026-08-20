@@ -12,8 +12,8 @@ rule run_asimulator:
         # Explicit file outputs (rather than the parent directory) so snakemake
         # can chain make_scenario back to this rule via the FASTQ + GFF inputs.
         gff=op.join(ASIM_DIR, "{sample}", "splicing_variants.gff3"),
-        fq1=op.join(ASIM_DIR, "{sample}", "sample_01_1.fastq"),
-        fq2=op.join(ASIM_DIR, "{sample}", "sample_01_2.fastq"),
+        fq1=op.join(ASIM_DIR, "{sample}", "sample_01_1.fastq.gz"),
+        fq2=op.join(ASIM_DIR, "{sample}", "sample_01_2.fastq.gz"),
         meta=op.join(ASIM_DIR, "{sample}", "simulation_metadata.yaml"),
     benchmark:
         op.join(BENCH_DIR, "run_asimulator", "{sample}.tsv")
@@ -52,12 +52,17 @@ rule run_asimulator:
 rule make_scenario:
     input:
         gff=op.join(ASIM_DIR, "{sample}", "splicing_variants.gff3"),
-        fq1=op.join(ASIM_DIR, "{sample}", "sample_01_1.fastq"),
-        fq2=op.join(ASIM_DIR, "{sample}", "sample_01_2.fastq"),
+        fq1=op.join(ASIM_DIR, "{sample}", "sample_01_1.fastq.gz"),
+        fq2=op.join(ASIM_DIR, "{sample}", "sample_01_2.fastq.gz"),
     output:
         gff=op.join(ASIM_DIR, "{sample}", "{scenario}", "splicing_variants.gff3"),
-        fq1=op.join(ASIM_DIR, "{sample}", "{scenario}", "sample_01_1.fastq"),
-        fq2=op.join(ASIM_DIR, "{sample}", "{scenario}", "sample_01_2.fastq"),
+        # Deleted once the alignment has read them. template_and_variant is a
+        # link to the ASimulatoR reads and costs nothing; variant_only is a
+        # filtered copy, and at four depths those copies are hundreds of GB.
+        # Rebuilding them costs one make_scenario job. Pass --notemp to keep
+        # them.
+        fq1=temp(op.join(ASIM_DIR, "{sample}", "{scenario}", "sample_01_1.fastq.gz")),
+        fq2=temp(op.join(ASIM_DIR, "{sample}", "{scenario}", "sample_01_2.fastq.gz")),
     benchmark:
         op.join(BENCH_DIR, "make_scenario", "{sample}_{scenario}.tsv")
     log:

@@ -62,6 +62,18 @@ set-resources:
   run_megadepth_baseline:
     slurm_extra: "'--constraint=EPYC_7763'"
 
+  # Node-local scratch, in MB per node, requested with --tmp. Slurm reserves
+  # none by default, so a job writing into $TMPDIR shares whatever the node has
+  # left. ml_star_align holds STAR's scratch and the sort spill, roughly the
+  # size of the BAM twice over at the deepest sweep point; ml_star_index stages
+  # the fastas and the annotation there through mktemp.
+  # tests/test_euler_profile.py asserts every rule using node scratch asks for
+  # it.
+  ml_star_align:
+    slurm_extra: "'--tmp=20000'"
+  ml_star_index:
+    slurm_extra: "'--tmp=5000'"
+
 # Concurrent Slurm jobs. The GTEx runs fan out to 32 sub-groups. This caps the
 # job count; cores_used above caps the cores, which is the binding limit.
 jobs: 32

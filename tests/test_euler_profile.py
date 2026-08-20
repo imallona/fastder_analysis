@@ -108,3 +108,26 @@ def test_pinning_covers_exactly_the_timed_rules():
 
 def test_timed_rules_exist():
     assert set(rules_with_bodies()) >= TIMED_RULES
+
+
+def rules_using_node_scratch():
+    """Rules whose body writes to node-local scratch, directly or via mktemp."""
+    return {
+        name
+        for name, body in rules_with_bodies().items()
+        if any("TMPDIR" in line or "mktemp" in line for line in body)
+    }
+
+
+def rules_requesting_node_scratch():
+    return {
+        rule
+        for rule, resources in profile_set_resources().items()
+        if "--tmp=" in str(resources.get("slurm_extra", ""))
+    }
+
+
+def test_every_rule_using_node_scratch_requests_it():
+    """Slurm reserves none by default, so an unasked-for rule shares whatever
+    the node has left and fails only when a co-tenant fills the disk."""
+    assert rules_using_node_scratch() == rules_requesting_node_scratch()

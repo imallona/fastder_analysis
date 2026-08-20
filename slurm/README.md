@@ -10,7 +10,13 @@ The workflow itself knows nothing about Slurm. Rules declare `mem_mb` and `runti
 
 Conda environments go to `/cluster/project/platt/$USER/fastder-eval-envs` and the ASimulatoR image to `/cluster/project/platt/$USER/apptainer-cache`. Both are set in `common.sh` and can be overridden by exporting `CONDA_PREFIX_DIR` and `APPTAINER_CACHEDIR` before `sbatch`.
 
-Rough sizes: the GTEx runs need about 100 GB, dominated by 160 coverage BigWigs at about 124 MB each and one junction matrix per tissue at about 2.8 GB gzipped, stored decompressed. No rule uses `temp()`, so nothing is reclaimed as the run advances.
+Rough sizes: the GTEx runs need about 100 GB, dominated by 160 coverage BigWigs at about 124 MB each and one junction matrix per tissue at about 2.8 GB gzipped, stored decompressed.
+
+The simulation set is the heavy one. Measured on the first submission's run, five samples at 10M reads over chr21 produced 40 GB of FASTQ and 6.6 GB of alignments. The revision doubles the samples and runs four depths, so the same accounting gives roughly 680 GB of FASTQ and 110 GB of BAM. The reads are now stored gzipped, which takes the FASTQ side to about 170 GB.
+
+Most of that is now transient. The scenario FASTQ files and the sorted BAMs are `temp()`: Snakemake deletes each once the jobs reading it are done, so the peak follows the concurrency rather than the total, and what survives is the coverage BigWigs, the junction tables and the results. The ASimulatoR reads themselves are kept, since regenerating them costs a full simulation. `--notemp` keeps everything, at the cost of the full footprint.
+
+STAR's scratch and the samtools sort spill go to node-local disk through `$TMPDIR`, which is why `ml_star_align` and `ml_star_index` request `--tmp` in the profile. Only within-job temporaries can go there: anything one rule writes for another has to sit on shared storage, since the next job runs on a different node.
 
 ## First time on a new cluster
 

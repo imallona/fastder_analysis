@@ -78,8 +78,8 @@ def ml_star_fastq_input(wc):
         sample_cfg = config["monorail"]["local_samples"][wc.sample]
         return {"fq1": sample_cfg["fq1"], "fq2": sample_cfg["fq2"]}
     return {
-        "fq1": op.join(ASIM_DIR, wc.sample, wc.scenario, "sample_01_1.fastq"),
-        "fq2": op.join(ASIM_DIR, wc.sample, wc.scenario, "sample_01_2.fastq"),
+        "fq1": op.join(ASIM_DIR, wc.sample, wc.scenario, "sample_01_1.fastq.gz"),
+        "fq2": op.join(ASIM_DIR, wc.sample, wc.scenario, "sample_01_2.fastq.gz"),
     }
 
 
@@ -88,7 +88,12 @@ rule ml_star_align:
         unpack(ml_star_fastq_input),
         idx=[op.join(LIGHT_STAR_IDX, f) for f in STAR_IDX_FILES],
     output:
-        bam=op.join(LIGHT_DIR, "{scenario}", "{sample}", "Aligned.sortedByCoord.out.bam"),
+        # Read by ml_bam_to_bigwig and ml_emit_mm_rr, and by nothing after
+        # them. The coverage BigWig and the junction tables are what the tools
+        # consume, and they are two orders of magnitude smaller.
+        bam=temp(op.join(LIGHT_DIR, "{scenario}", "{sample}", "Aligned.sortedByCoord.out.bam")),
+        # Declared so it goes with the BAM instead of being left behind.
+        bai=temp(op.join(LIGHT_DIR, "{scenario}", "{sample}", "Aligned.sortedByCoord.out.bam.bai")),
         sj=op.join(LIGHT_DIR, "{scenario}", "{sample}", "SJ.out.tab"),
     benchmark:
         op.join(BENCH_DIR, "ml_star_align", "{sample}_{scenario}.tsv")
@@ -106,16 +111,26 @@ rule ml_star_align:
     shell:
         """
         mkdir -p {params.outprefix}
+        # STAR's scratch and the sort spill go to node-local disk when there is
+        # one. Both are written and deleted within this job, so putting them on
+        # shared storage costs space and metadata traffic for nothing. STAR
+        # creates outTmpDir itself and fails if it already exists.
+        scratch="${{TMPDIR:-{params.outprefix}}}/star_{wildcards.scenario}_{wildcards.sample}"
+        rm -rf "$scratch"
+        mkdir -p "$scratch"
         STAR --runMode alignReads \
             --genomeDir {params.idx_dir} \
             --readFilesIn {input.fq1} {input.fq2} \
+            --readFilesCommand zcat \
             --runThreadN {threads} \
             --outSAMtype BAM Unsorted \
             --outSAMstrandField intronMotif \
+            --outTmpDir "$scratch/STARtmp" \
             --outFileNamePrefix {params.outprefix} > {log} 2>&1
-        samtools sort -@ {threads} -o {output.bam} \
+        samtools sort -@ {threads} -T "$scratch/sort" -o {output.bam} \
             {params.outprefix}Aligned.out.bam >> {log} 2>&1
         rm {params.outprefix}Aligned.out.bam
+        rm -rf "$scratch"
         samtools index {output.bam} >> {log} 2>&1
         """
 
