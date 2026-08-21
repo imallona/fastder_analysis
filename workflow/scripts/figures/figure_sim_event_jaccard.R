@@ -9,9 +9,15 @@ out <- if (length(args) >= 1) args[[1]] else file.path(fig_dir, "fig_sim_event_j
 source(file.path(dirname(sub("--file=", "",
   grep("--file=", commandArgs(FALSE), value = TRUE))), "helpers.R"))
 
-as_event_levels <- c("es", "mes", "afe", "ale", "mixed")
+# Keyed by the sample names the configs use; an unlisted sample becomes NA.
+as_event_levels <- c("es", "mes", "ir", "a3", "a5", "mee", "afe", "ale",
+  "mixed", "mixed_terminal", "mixed_internal")
 as_event_labels <- c(es = "exon skipping (ES)", mes = "multiple exon skipping (MES)",
-  afe = "alternative first exon (AFE)", ale = "alternative last exon (ALE)", mixed = "mixed events")
+  ir = "intron retention (IR)", a3 = "alternative 3' site (A3)",
+  a5 = "alternative 5' site (A5)", mee = "mutually exclusive exons (MEE)",
+  afe = "alternative first exon (AFE)", ale = "alternative last exon (ALE)",
+  mixed = "mixed events", mixed_terminal = "mixed terminal",
+  mixed_internal = "mixed internal")
 label_as <- function(v) factor(v, levels = as_event_levels, labels = as_event_labels[as_event_levels])
 scenario_palette <- c("Reference and variant" = "#1b9e77", "Variant" = "#d95f02")
 parse_param_id <- function(d) d %>% mutate(
