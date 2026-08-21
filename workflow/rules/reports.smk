@@ -17,6 +17,9 @@ rule archive_reports:
         op.join(LOG_DIR, "archive_reports.log"),
     params:
         archive_root=op.join(RESULTS_DIR, "archive"),
+    resources:
+        mem_mb=2000,
+        runtime=30,
     conda:
         "../envs/base.yaml"
     shell:
@@ -79,6 +82,9 @@ rule render_summary_report:
     params:
         truth_gff=_REPORT_TRUTH,
         track_scenario=_REPORT_SCENARIO,
+    resources:
+        mem_mb=16000,
+        runtime=120,
     conda:
         "../envs/rmarkdown.yaml"
     shell:
@@ -110,10 +116,39 @@ rule render_summary_report:
 
 
 # 15. Render the Rmarkdown benchmarks report from logs/benchmarks/.
+# The machine the timings came from, recorded by the job itself.
+rule record_host_info:
+    output:
+        tsv=op.join(RESULTS_DIR, "host_info.tsv"),
+    log:
+        op.join(LOG_DIR, "record_host_info.log"),
+    resources:
+        mem_mb=1000,
+        runtime=10,
+    conda:
+        "../envs/base.yaml"
+    shell:
+        """
+        {{
+            printf 'field\tvalue\n'
+            printf 'hostname\t%s\n' "$(hostname)"
+            printf 'cpu_model\t%s\n' \
+                "$(lscpu | sed -n 's/^Model name:[[:space:]]*//p' | head -1)"
+            printf 'cpu_cores_total\t%s\n' "$(nproc --all)"
+            printf 'cpu_cores_available\t%s\n' "$(nproc)"
+            printf 'mem_total_kb\t%s\n' \
+                "$(awk '/^MemTotal:/ {{print $2}}' /proc/meminfo)"
+            printf 'slurm_job_id\t%s\n' "${{SLURM_JOB_ID:-none}}"
+            printf 'slurm_node\t%s\n' "${{SLURMD_NODENAME:-none}}"
+        }} > {output.tsv} 2> {log}
+        """
+
+
 rule render_benchmarks_report:
     input:
         summary=op.join(RESULTS_DIR, "summary.csv"),
         rmd=op.join(WORKFLOW_DIR, "reports", "benchmarks.Rmd"),
+        host_info=op.join(RESULTS_DIR, "host_info.tsv"),
     output:
         op.join(RESULTS_DIR, "benchmarks.html"),
     log:
@@ -121,6 +156,9 @@ rule render_benchmarks_report:
     params:
         bench_dir=BENCH_DIR,
         scenarios=",".join(SCENARIOS),
+    resources:
+        mem_mb=8000,
+        runtime=60,
     conda:
         "../envs/rmarkdown.yaml"
     shell:
@@ -129,7 +167,8 @@ rule render_benchmarks_report:
             input = '{input.rmd}',
             output_file = '$(realpath -m {output})',
             params = list(bench_dir = '$(realpath {params.bench_dir})',
-                          scenarios = '{params.scenarios}'),
+                          scenarios = '{params.scenarios}',
+                          host_info = '$(realpath {input.host_info})'),
             quiet = TRUE)" > {log} 2>&1
         """
 
@@ -161,6 +200,9 @@ rule recount3_report_manifest:
         manifest=op.join(RESULTS_DIR, "recount3_manifest.csv"),
     params:
         groups=R3_GROUPS,
+    resources:
+        mem_mb=2000,
+        runtime=30,
     run:
         import csv as _csv
 
@@ -208,6 +250,9 @@ rule render_recount3_report:
     params:
         study=R3_STUDY,
         reference_gtf=REF_ANNOTATION,
+    resources:
+        mem_mb=16000,
+        runtime=120,
     conda:
         "../envs/rmarkdown.yaml"
     shell:
@@ -246,6 +291,9 @@ rule render_gtex_report:
         # report reads the tissue from the part before the _<n> suffix.
         subgroups=lambda wc, input: ",".join(
             Path(g).parts[-3] for g in input.fastder_gtfs),
+    resources:
+        mem_mb=16000,
+        runtime=120,
     conda:
         "../envs/rmarkdown.yaml"
     shell:

@@ -23,6 +23,9 @@ rule ml_star_index:
     params:
         idx_dir=LIGHT_STAR_IDX,
     threads: config["cores"]
+    resources:
+        mem_mb=32000,
+        runtime=240,
     conda:
         "../envs/star.yaml"
     shell:
@@ -75,8 +78,8 @@ def ml_star_fastq_input(wc):
         sample_cfg = config["monorail"]["local_samples"][wc.sample]
         return {"fq1": sample_cfg["fq1"], "fq2": sample_cfg["fq2"]}
     return {
-        "fq1": op.join(ASIM_DIR, wc.sample, wc.scenario, "sample_01_1.fastq"),
-        "fq2": op.join(ASIM_DIR, wc.sample, wc.scenario, "sample_01_2.fastq"),
+        "fq1": op.join(ASIM_DIR, wc.sample, wc.scenario, "sample_01_1.fastq.gz"),
+        "fq2": op.join(ASIM_DIR, wc.sample, wc.scenario, "sample_01_2.fastq.gz"),
     }
 
 
@@ -85,7 +88,10 @@ rule ml_star_align:
         unpack(ml_star_fastq_input),
         idx=[op.join(LIGHT_STAR_IDX, f) for f in STAR_IDX_FILES],
     output:
-        bam=op.join(LIGHT_DIR, "{scenario}", "{sample}", "Aligned.sortedByCoord.out.bam"),
+        # Read by the bigwig and junction rules, and by nothing after.
+        bam=temp(op.join(LIGHT_DIR, "{scenario}", "{sample}", "Aligned.sortedByCoord.out.bam")),
+        # Declared so it goes with the BAM instead of being left behind.
+        bai=temp(op.join(LIGHT_DIR, "{scenario}", "{sample}", "Aligned.sortedByCoord.out.bam.bai")),
         sj=op.join(LIGHT_DIR, "{scenario}", "{sample}", "SJ.out.tab"),
     benchmark:
         op.join(BENCH_DIR, "ml_star_align", "{sample}_{scenario}.tsv")
@@ -95,21 +101,32 @@ rule ml_star_align:
         outprefix=lambda wc: op.join(LIGHT_DIR, wc.scenario, wc.sample) + "/",
         idx_dir=LIGHT_STAR_IDX,
     threads: config["cores"]
+    resources:
+        mem_mb=32000,
+        runtime=240,
     conda:
         "../envs/star.yaml"
     shell:
         """
         mkdir -p {params.outprefix}
+        # STAR scratch and sort spill on node-local disk; both die with the
+        # job. STAR creates outTmpDir itself and fails if it exists.
+        scratch="${{TMPDIR:-{params.outprefix}}}/star_{wildcards.scenario}_{wildcards.sample}"
+        rm -rf "$scratch"
+        mkdir -p "$scratch"
         STAR --runMode alignReads \
             --genomeDir {params.idx_dir} \
             --readFilesIn {input.fq1} {input.fq2} \
+            --readFilesCommand zcat \
             --runThreadN {threads} \
             --outSAMtype BAM Unsorted \
             --outSAMstrandField intronMotif \
+            --outTmpDir "$scratch/STARtmp" \
             --outFileNamePrefix {params.outprefix} > {log} 2>&1
-        samtools sort -@ {threads} -o {output.bam} \
+        samtools sort -@ {threads} -T "$scratch/sort" -o {output.bam} \
             {params.outprefix}Aligned.out.bam >> {log} 2>&1
         rm {params.outprefix}Aligned.out.bam
+        rm -rf "$scratch"
         samtools index {output.bam} >> {log} 2>&1
         """
 
@@ -139,6 +156,9 @@ rule ml_bam_to_bigwig:
         chrom_sizes=lambda wc: op.join(LIGHT_DIR, wc.scenario, f"{wc.sample}.chrom.sizes"),
         stranded=STRANDED,
         outdir=lambda wc: op.join(LIGHT_DIR, wc.scenario),
+    resources:
+        mem_mb=8000,
+        runtime=120,
     conda:
         "../envs/stranded_bigwig.yaml"
     shell:
@@ -190,6 +210,9 @@ rule ml_emit_mm_rr:
         samples=PUMP_SAMPLES,
         project=config["monorail"]["project_name"],
         emit_script=op.join(WORKFLOW_DIR, "scripts", "emit_lean_mm_rr.py"),
+    resources:
+        mem_mb=8000,
+        runtime=120,
     run:
         # Build paired --sample / --sj args
         sample_args = []

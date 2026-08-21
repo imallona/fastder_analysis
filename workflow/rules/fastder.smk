@@ -100,6 +100,9 @@ rule extract_fastder_inputs:
         stranded_bw_dir=op.join(DATA_DIR, "stranded_bigwigs"),
         samples_tsv_script=op.join(WORKFLOW_DIR, "scripts", "create_bigwig_list.sh"),
         backend=BACKEND,
+    resources:
+        mem_mb=2000,
+        runtime=30,
     run:
         import shutil, gzip
 
@@ -264,6 +267,9 @@ rule match_chr_prefix:
         op.join(LOG_DIR, "match_chr_prefix_{scenario}.log")
     params:
         fastder_dir=lambda wc: op.join(FASTDER_DIR, wc.scenario),
+    resources:
+        mem_mb=2000,
+        runtime=30,
     conda:
         "../envs/base.yaml"
     shell:
@@ -311,6 +317,9 @@ rule bigwig_to_bedgraph:
         op.join(LOG_DIR, "bigwig_to_bedgraph_{scenario}.log")
     params:
         fastder_dir=lambda wc: op.join(FASTDER_DIR, wc.scenario),
+    resources:
+        mem_mb=4000,
+        runtime=120,
     conda:
         "../envs/ucsc_tools.yaml"
     shell:
@@ -352,6 +361,9 @@ rule build_fastder:
         fastder_src=op.join(WORKFLOW_DIR, "external", "fastder"),
         build_dir=str(FASTDER_BUILD_DIR),
     threads: config["cores"]
+    resources:
+        mem_mb=4000,
+        runtime=60,
     conda:
         "../envs/fastder_build.yaml"
     shell:
@@ -392,7 +404,10 @@ rule run_fastder:
             if FASTDER_CFG.get("chromosomes")
             else ""
         ),
-    threads: config["cores"]
+    threads: FASTDER_CORES
+    resources:
+        mem_mb=FASTDER_MEM_MB,
+        runtime=120,
     conda:
         "../envs/fastder_build.yaml"
     shell:
@@ -441,10 +456,68 @@ rule link_fastder_gtf:
         op.join(BENCH_DIR, "link_fastder_gtf", "{scenario}_{param_id}.tsv")
     log:
         op.join(LOG_DIR, "link_fastder_gtf", "{scenario}_{param_id}.log"),
+    resources:
+        mem_mb=1000,
+        runtime=10,
     conda:
         "../envs/base.yaml"
     shell:
         """
         mkdir -p $(dirname {output.gtf})
         cp -f $(cat {input.gtf_path}) {output.gtf} 2> {log}
+        """
+
+
+# Scaling sweep: fastder against itself at several core counts, on one
+# scenario. Times how the two parallel stages behave rather than comparing
+# tools, so it is separate from run_fastder and from the cross-tool benchmark.
+#
+# Parsing parallelises up to the number of samples and averaging up to the
+# number of chromosomes, while stitching is serial. On a single-chromosome
+# workload the curve therefore flattens almost at once, so run this on a
+# genome-wide config.
+rule run_fastder_scaling:
+    input:
+        fastder_exe=op.join(FASTDER_BUILD_DIR, "fastder"),
+        extract_done=op.join(FASTDER_DIR, SCALING_SCENARIO, "extract.DONE"),
+    output:
+        done=touch(op.join(FASTDER_DIR, "scaling", "cores{ncores}.DONE")),
+    benchmark:
+        op.join(BENCH_DIR, "run_fastder_scaling", "cores{ncores}.tsv")
+    log:
+        op.join(LOG_DIR, "run_fastder_scaling", "cores{ncores}.log")
+    params:
+        fastder_dir=op.join(FASTDER_DIR, SCALING_SCENARIO),
+        run_dir=lambda wc: op.join(FASTDER_DIR, "scaling", f"cores{wc.ncores}"),
+        fastder_args=PARAM_CLI_ARGS[PARAM_IDS[0]],
+        stranded_arg="--stranded" if STRANDED else "",
+        chr_args=(
+            "--chr " + " ".join(str(c) for c in FASTDER_CFG["chromosomes"])
+            if FASTDER_CFG.get("chromosomes")
+            else ""
+        ),
+    threads: lambda wc: int(wc.ncores)
+    resources:
+        mem_mb=FASTDER_SCALING_MEM_MB,
+        runtime=240,
+    conda:
+        "../envs/fastder_build.yaml"
+    shell:
+        """
+        mkdir -p {params.run_dir}
+        rm -f {params.run_dir}/FASTDER_RESULT_*.gtf
+        for f in {params.fastder_dir}/*.bw \
+                  {params.fastder_dir}/*.MM \
+                  {params.fastder_dir}/*.RR \
+                  {params.fastder_dir}/*.csv; do
+            [ -e "$f" ] || continue
+            ln -sf "$f" {params.run_dir}/
+        done
+        {input.fastder_exe} \
+            --dir {params.run_dir} \
+            {params.stranded_arg} \
+            {params.fastder_args} \
+            --cores {wildcards.ncores} \
+            {params.chr_args} \
+            > {log} 2>&1
         """

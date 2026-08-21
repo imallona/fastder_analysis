@@ -44,20 +44,37 @@ suppressPackageStartupMessages({
   library(patchwork)
 })
 
-as_event_levels <- c("es", "mes", "afe", "ale", "mixed")
+# The ASimulatoR event classes, keyed by the sample names the configs use. A
+# sample with no entry becomes NA in every faceted plot and stops the heatmap
+# annotation. tests/test_as_event_levels.py keeps the three in step with the
+# configs. The mixtures are grey; the single-event classes carry the colour.
+as_event_levels <- c("es", "mes", "ir", "a3", "a5", "mee", "afe", "ale",
+                     "mixed", "mixed_terminal", "mixed_internal")
 as_event_labels <- c(
   es = "exon skip (ES)",
-  mes = "mutually exclusive (MES)",
+  mes = "multiple exon skip (MES)",
+  ir = "intron retention (IR)",
+  a3 = "alt 3' site (A3)",
+  a5 = "alt 5' site (A5)",
+  mee = "mutually exclusive (MEE)",
   afe = "alt first exon (AFE)",
   ale = "alt last exon (ALE)",
-  mixed = "mixed events"
+  mixed = "mixed events",
+  mixed_terminal = "mixed terminal",
+  mixed_internal = "mixed internal"
 )
 as_event_palette <- c(
   es = "#1b9e77",
   mes = "#d95f02",
+  ir = "#66a61e",
+  a3 = "#e6ab02",
+  a5 = "#a6761d",
+  mee = "#1f78b4",
   afe = "#7570b3",
   ale = "#e7298a",
-  mixed = "#666666"
+  mixed = "#666666",
+  mixed_terminal = "#333333",
+  mixed_internal = "#999999"
 )
 
 # Tool palette. Visual identity follows RColorBrewer Set2 so plots that
@@ -710,7 +727,7 @@ The sections below sweep fastder's parameter grid and facet by AS event class. T
 
 # Method performance across AS event types
 
-Each ASimulatoR sample carries one alternative-splicing event class: exon skipping (ES), mutually exclusive exons (MES), alternative first exon (AFE), alternative last exon (ALE), or a four-way mix.
+Each ASimulatoR sample carries one alternative-splicing event class: exon skipping (ES), multiple exon skipping (MES), intron retention (IR), alternative 3' site (A3), alternative 5' site (A5), mutually exclusive exons (MEE), alternative first exon (AFE), alternative last exon (ALE), or a mix. The mixtures are `mixed_terminal` over ES, MES, AFE and ALE, and `mixed_internal` over IR, A3, A5 and MEE.
 
 Each event class is run through two scenarios that differ in which transcripts contribute reads to the coverage track that fastder sees. In *template + variant* (ASimulatoR default) both the canonical transcript and the alternative form are simulated. An exon that the variant skips then still receives reads from the template and shows up as a coverage dip rather than a hard zero. In *variant only* the FASTQ is post-filtered to keep reads sourced from the alternative transcript, and the truth GFF is rewritten to remove templates. The alternative-splicing signal is then unambiguous: the skipped exon has zero coverage and the truth contains only the alternative isoform.
 

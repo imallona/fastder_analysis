@@ -4,7 +4,6 @@ import gzip
 import os
 import os.path as op
 import re
-import shutil
 import sys
 
 
@@ -96,11 +95,12 @@ def filter_fastq(fq_in, fq_out, template_ids):
     """ASimulatoR read headers look like @read<N>/<transcript_id>;mate1:...,
     so the originating transcript id sits between the first slash and the
     first semicolon (READ_HEADER_TX_RE captures it). Drop records whose
-    transcript id is a template. Output is uncompressed FASTQ to match
-    ASimulatoR's default output format."""
+    transcript id is a template. The output is compressed when its name says
+    so, matching whatever the simulator produced."""
     written = 0
     skipped = 0
-    with open(fq_out, "w") as out:
+    opener = gzip.open if fq_out.endswith(".gz") else open
+    with opener(fq_out, "wt") as out:
         for h, s, p, q in fastq_iter(fq_in):
             m = READ_HEADER_TX_RE.match(h)
             tx = m.group(1) if m else ""

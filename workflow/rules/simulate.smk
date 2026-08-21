@@ -12,8 +12,8 @@ rule run_asimulator:
         # Explicit file outputs (rather than the parent directory) so snakemake
         # can chain make_scenario back to this rule via the FASTQ + GFF inputs.
         gff=op.join(ASIM_DIR, "{sample}", "splicing_variants.gff3"),
-        fq1=op.join(ASIM_DIR, "{sample}", "sample_01_1.fastq"),
-        fq2=op.join(ASIM_DIR, "{sample}", "sample_01_2.fastq"),
+        fq1=op.join(ASIM_DIR, "{sample}", "sample_01_1.fastq.gz"),
+        fq2=op.join(ASIM_DIR, "{sample}", "sample_01_2.fastq.gz"),
         meta=op.join(ASIM_DIR, "{sample}", "simulation_metadata.yaml"),
     benchmark:
         op.join(BENCH_DIR, "run_asimulator", "{sample}.tsv")
@@ -31,6 +31,10 @@ rule run_asimulator:
         probs_as_freq=lambda wc: config["asimulator"]["probs_as_freq"],
         seed=config["seed"],
     threads: config["cores"]
+    resources:
+        mem_mb=32000,
+        # Generous: a simulation killed near the end costs more.
+        runtime=1440,
     container:
         "docker://biomedbigdata/asimulator"
     script:
@@ -46,18 +50,23 @@ rule run_asimulator:
 rule make_scenario:
     input:
         gff=op.join(ASIM_DIR, "{sample}", "splicing_variants.gff3"),
-        fq1=op.join(ASIM_DIR, "{sample}", "sample_01_1.fastq"),
-        fq2=op.join(ASIM_DIR, "{sample}", "sample_01_2.fastq"),
+        fq1=op.join(ASIM_DIR, "{sample}", "sample_01_1.fastq.gz"),
+        fq2=op.join(ASIM_DIR, "{sample}", "sample_01_2.fastq.gz"),
     output:
         gff=op.join(ASIM_DIR, "{sample}", "{scenario}", "splicing_variants.gff3"),
-        fq1=op.join(ASIM_DIR, "{sample}", "{scenario}", "sample_01_1.fastq"),
-        fq2=op.join(ASIM_DIR, "{sample}", "{scenario}", "sample_01_2.fastq"),
+        # Deleted once aligned. variant_only is a copy, hundreds of GB
+        # over four depths. --notemp keeps them.
+        fq1=temp(op.join(ASIM_DIR, "{sample}", "{scenario}", "sample_01_1.fastq.gz")),
+        fq2=temp(op.join(ASIM_DIR, "{sample}", "{scenario}", "sample_01_2.fastq.gz")),
     benchmark:
         op.join(BENCH_DIR, "make_scenario", "{sample}_{scenario}.tsv")
     log:
         op.join(LOG_DIR, "make_scenario", "{sample}_{scenario}.log"),
     params:
         script=op.join(WORKFLOW_DIR, "scripts", "make_scenario.py"),
+    resources:
+        mem_mb=4000,
+        runtime=30,
     conda:
         "../envs/base.yaml"
     shell:

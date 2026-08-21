@@ -24,7 +24,7 @@
 #   --uts         <-> groHMM UTS (variance of the untranscribed state; default 5).
 #   --window-size <-> groHMM's binning width; default 50 bp.
 #   --min-length  <-> post-filter on the called intervals (bp).
-#   --chromosomes <-> scope used for library_size and for window construction.
+#   --chromosomes <-> window construction; library_size covers the whole file.
 suppressPackageStartupMessages({
   library(optparse)
   library(groHMM)
@@ -47,7 +47,9 @@ opt_list <- list(
   make_option("--chromosomes", type = "character", default = NULL,
               help = "Space-separated list of chromosomes to analyse"),
   make_option("--count-scale", type = "integer", default = 100,
-              help = "Integer scale applied to mean CPM before HMM fit; controls dynamic range")
+              help = "Integer scale applied to mean CPM before HMM fit; controls dynamic range"),
+  make_option("--library-sizes", type = "character",
+              help = "TSV from compute_library_sizes.py: bigwig, sample, library_size")
 )
 parser <- OptionParser(option_list = opt_list)
 arg_strings <- commandArgs(trailingOnly = TRUE)
@@ -120,41 +122,25 @@ for (chrom in chroms) {
 }
 close(con); on.exit()
 
-# Per-sample, per-chromosome library size (Sum width * value) restricted to
-# the requested chromosomes, computed once per file with bigWigInfo. fastder
-# and run_derfinder.R both use this exact formula.
-compute_library_size_kent <- function(bw_path, target_chroms) {
-  raw <- system2("bigWigInfo", c("-chroms", bw_path), stdout = TRUE)
-  raw <- raw[grepl("^\\s+", raw)]
-  fields <- do.call(rbind, strsplit(trimws(raw), "\\s+"))
-  available_chroms <- fields[, 1]
-  keep <- intersect(target_chroms, available_chroms)
-  if (length(keep) == 0) return(0)
-  # bigWigAverageOverBed with a single per-chrom interval returns sum = sum of
-  # values inside the interval, which equals Sum width * value for that
-  # chromosome (after multiplication by interval width = 1 in bedGraph units).
-  # We use the per-chrom mean times chrom length to get the same number
-  # without writing a chrom-spanning BED.
-  total <- 0
-  for (chrom in keep) {
-    chrom_len <- as.integer(fields[match(chrom, available_chroms), 3])
-    bed <- tempfile(fileext = ".bed")
-    writeLines(sprintf("%s\t0\t%d\t%s", chrom, chrom_len, chrom), bed)
-    out <- system2("bigWigAverageOverBed", c(bw_path, bed, "/dev/stdout"),
-                   stdout = TRUE)
-    file.remove(bed)
-    if (length(out) == 0) next
-    parts <- strsplit(out, "\t", fixed = TRUE)[[1]]
-    # columns: name, size, covered, sum, mean0, mean
-    total <- total + as.numeric(parts[4])
+# Library sizes come from compute_library_sizes.py, which sums length * value
+# over the whole file for every BigWig. Reading them rather than recomputing
+# keeps this rule's wall time comparable to fastder's, which gets the same
+# number from the BigWig summary header at no cost.
+lib_size_table <- read.delim(opt$`library-sizes`, stringsAsFactors = FALSE)
+lib_size_by_path <- setNames(as.numeric(lib_size_table$library_size),
+                             normalizePath(lib_size_table$bigwig, mustWork = FALSE))
+
+lookup_library_size <- function(bw_path) {
+  key <- normalizePath(bw_path, mustWork = FALSE)
+  if (!key %in% names(lib_size_by_path)) {
+    stop("no library size for ", bw_path, " in ", opt$`library-sizes`)
   }
-  total
+  lib_size_by_path[[key]]
 }
 
-message("[run_grohmm] computing library sizes")
+message("[run_grohmm] reading library sizes")
 lib_sizes <- vapply(samples, function(files)
-  sum(vapply(files, compute_library_size_kent, numeric(1),
-             target_chroms = chroms)),
+  sum(vapply(files, lookup_library_size, numeric(1))),
   FUN.VALUE = numeric(1))
 cpm_factors <- lib_sizes / 1e6
 for (i in seq_along(samples)) {

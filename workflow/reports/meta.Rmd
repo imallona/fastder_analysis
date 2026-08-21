@@ -51,8 +51,20 @@ read_run <- function(dir_path, file_name) {
     mutate(depth_M = depth_of(basename(dir_path)))
 }
 
-summary_all <- bind_rows(lapply(run_dirs, read_run, "summary.csv"))
-distances_all <- bind_rows(lapply(run_dirs, read_run, "fuzzy_distances.csv"))
+# The fastder grid carries two axes that are not accuracy settings: the
+# junction-integration ablation (ns1) and the junction read-support filter
+# (mjr). Every chunk below averages over the grid, so leaving them in would
+# move the reported numbers with nothing in the plot saying so. They have their
+# own figures, built by scripts/collect_param_sweeps.py. Identifiers come from
+# scripts/param_grid.py, whose tests pin these two patterns.
+default_grid <- function(df) {
+  if (is.null(df) || nrow(df) == 0) return(df)
+  mjr <- suppressWarnings(as.integer(str_extract(df$param_id, "(?<=mjr)[0-9]+")))
+  df[!grepl("(^|_)ns1(_|$)", df$param_id) & (is.na(mjr) | mjr == 0L), ]
+}
+
+summary_all <- default_grid(bind_rows(lapply(run_dirs, read_run, "summary.csv")))
+distances_all <- default_grid(bind_rows(lapply(run_dirs, read_run, "fuzzy_distances.csv")))
 ```
 
 ```{r check}

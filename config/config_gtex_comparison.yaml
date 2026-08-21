@@ -289,6 +289,9 @@ fastder:
   stranded: false
   min_coverage: [1.0]
   chromosomes: ["chr19"]
+  # One core, matching the single thread the other three tools get. This is a
+  # cross-tool comparison run, so the resources have to match.
+  cores: 1
 
 gffcompare:
   reference_annotation: ""

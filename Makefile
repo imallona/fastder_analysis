@@ -7,8 +7,10 @@
 ##
 ## Usage:
 ##   make submodules         # fetch the fastder and monorail-external submodules
+##   make submodules-latest  # move them to the tip of the branch each tracks
 ##   make sim                # the 10M paper simulation run
 ##   make simulations        # the full depth sweep: 5M, 10M, 30M, 40M
+##   make mjr-sweep          # junction read-support sensitivity, reuses the 10M simulation
 ##   make tdp43              # TDP-43 recount3 showcase: STMN2, clean threshold
 ##   make tdp43-panel        # TDP-43 recount3 panel: 5 cryptic exons, low threshold
 ##   make gtex               # GTEx structural-concordance atlas (genome-wide, fastder only)
@@ -23,6 +25,14 @@
 ##   make all                # simulations, meta, both tdp43 runs, then gtex
 ##   make dryrun             # snakemake -n for the 10M simulation config
 ##   make unlock             # release a stale snakemake lock
+##   make envs               # build every conda environment without running anything
+##
+## Variables also accept EXTRA, appended to every snakemake call:
+##   make sim EXTRA=-n
+##
+## Cluster runs: add EULER=1 to any target above to submit its rules to Slurm
+## through profiles/euler. slurm/ holds sbatch wrappers that do this for the
+## revision's four run groups.
 ##
 ## Variables (override on the command line, e.g. make sim CORES=24):
 ##   CORES        snakemake --cores value (default 12)
@@ -36,14 +46,30 @@ ULIMIT_KB   ?= 104857600
 CONDA_ENV   ?= snakemake
 CONDA_INIT  ?= $(HOME)/miniconda3/bin/activate
 
+## EULER=1 sends every rule to Slurm, e.g. make gtex EULER=1.
+EULER ?=
+PROFILE_FLAG := $(if $(EULER),--profile $(CURDIR)/profiles/euler,)
+
+## Cores held at once on the cluster; the es_platt share is 208.
+EULER_CORE_BUDGET ?= 32
+RESOURCE_FLAG := $(if $(EULER),--resources cores_used=$(EULER_CORE_BUDGET),)
+
+## Conda env location. On Euler use project storage: $HOME caps inodes.
+CONDA_PREFIX_DIR ?=
+CONDA_PREFIX_FLAG := $(if $(CONDA_PREFIX_DIR),--conda-prefix $(CONDA_PREFIX_DIR),)
+
+## Extra snakemake flags, e.g. EXTRA=-n.
+EXTRA ?=
+
 WORKFLOW_DIR := workflow
 
-## Activate the snakemake env and cap per-process virtual memory at 100 GB.
-## snakemake's per-job shells inherit the ulimit, so every job is bounded.
-ACTIVATE := source $(CONDA_INIT) && conda activate $(CONDA_ENV) && \
-            ulimit -v $(ULIMIT_KB)
+## Activate the snakemake env, unless CONDA_INIT names nothing that exists: an
+## already activated environment is then used as it stands. Caps per-process
+## virtual memory at 100 GB, which per-job shells inherit.
+CONDA_ACTIVATE := $(if $(wildcard $(CONDA_INIT)),source $(CONDA_INIT) && conda activate $(CONDA_ENV) && ,)
+ACTIVATE := $(CONDA_ACTIVATE) ulimit -v $(ULIMIT_KB)
 
-SNAKEMAKE := snakemake --cores $(CORES) -p
+SNAKEMAKE := snakemake --cores $(CORES) -p $(PROFILE_FLAG) $(RESOURCE_FLAG) $(CONDA_PREFIX_FLAG) $(EXTRA)
 
 ## Run snakemake targets under one config. $(1) config file, $(2) targets.
 define snake
@@ -53,21 +79,24 @@ endef
 .DEFAULT_GOAL := help
 .PHONY: help all submodules sim simulations sim-5m sim-30m sim-40m tdp43 \
         tdp43-panel gtex gtex-comparison gtex-smoke gtex-pick meta reports \
-        composites figures smoke dryrun unlock
+        composites figures smoke dryrun unlock envs mjr-sweep submodules-latest
 
 help:
-	@echo "Targets: submodules sim simulations sim-5m sim-30m sim-40m tdp43 tdp43-panel gtex gtex-comparison gtex-smoke gtex-pick meta reports composites figures smoke all dryrun unlock"
-	@echo "Variables: CORES=$(CORES) ULIMIT_KB=$(ULIMIT_KB) CONDA_ENV=$(CONDA_ENV)"
+	@echo "Targets: submodules submodules-latest sim simulations sim-5m sim-30m sim-40m mjr-sweep tdp43 tdp43-panel gtex gtex-comparison gtex-smoke gtex-pick meta reports composites figures smoke all dryrun unlock envs"
+	@echo "Variables: CORES=$(CORES) ULIMIT_KB=$(ULIMIT_KB) CONDA_ENV=$(CONDA_ENV) EULER=$(EULER) EULER_CORE_BUDGET=$(EULER_CORE_BUDGET) CONDA_PREFIX_DIR=$(CONDA_PREFIX_DIR)"
 
 ## meta only needs the simulation results, so it runs before the tdp43 runs:
 ## a tdp43 failure then cannot block the cross-depth report.
 all: simulations meta tdp43 tdp43-panel gtex gtex-comparison figures
 
-## Populate the git submodules. workflow/external/fastder must hold the fastder
-## sources for the build_fastder rule to find a CMakeLists.txt; a plain
-## git clone leaves the submodules empty. Idempotent, safe to re-run.
+## Submodules at their recorded commits. A clone leaves them empty.
 submodules:
 	git submodule update --init --recursive
+
+## Move the fastder pin to the tip of revision. monorail-external stays put.
+submodules-latest:
+	git submodule update --init --remote workflow/external/fastder
+	git submodule status --recursive
 
 simulations: sim sim-5m sim-30m sim-40m
 
@@ -89,6 +118,12 @@ sim-30m:
 sim-40m:
 	cd $(WORKFLOW_DIR) && bash -c '$(ACTIVATE) && \
 	  FASTDER_EVAL_CONFIG=../config/config_full_simulation_40M.yaml \
+	  $(SNAKEMAKE) --use-conda --use-singularity'
+
+## min_junction_reads sweep, fastder alone. Reuses the 10M data, so run after sim.
+mjr-sweep:
+	cd $(WORKFLOW_DIR) && bash -c '$(ACTIVATE) && \
+	  FASTDER_EVAL_CONFIG=../config/config_min_junction_reads_sweep.yaml \
 	  $(SNAKEMAKE) --use-conda --use-singularity'
 
 ## TDP-43 recount3 showcase: a clean single threshold that isolates the STMN2
@@ -201,3 +236,11 @@ dryrun:
 
 unlock:
 	cd $(WORKFLOW_DIR) && bash -c '$(ACTIVATE) && snakemake --unlock'
+
+## Build one config's conda envs, on a login node: the proxy is shared.
+CONFIG ?= config_full_simulation.yaml
+
+envs:
+	cd $(WORKFLOW_DIR) && bash -c '$(ACTIVATE) && \
+	  FASTDER_EVAL_CONFIG=../config/$(CONFIG) \
+	  $(SNAKEMAKE) --use-conda --use-singularity --conda-create-envs-only'

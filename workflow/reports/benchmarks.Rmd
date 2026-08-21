@@ -8,6 +8,7 @@ output:
 params:
   bench_dir: NULL
   scenarios: ""
+  host_info: NULL
 ---
 
 ```{r setup, include=FALSE}
@@ -158,7 +159,19 @@ df$param_id <- str_extract(df$wildcards, "mc[0-9.]+(?:_[a-z]+[0-9.]+)*")
 
 `r bench_dir` (`r length(files)` files).
 
-`max_rss` comes from snakemake's benchmark TSVs. It is the per-process peak resident set size in MiB, sampled by snakemake every 10 s. Multi-process rules report the parent only, so high-fan-out runs (derfinder loading per-sample BigWigs at once) may under-report.
+`max_rss` comes from snakemake's benchmark TSVs. It is the per-process peak resident set size in MiB. Snakemake samples every 0.5 s for the first 30 samples and every 30 s after that, so a rule finishing inside the first sample can have a wall clock and no memory figure. Multi-process rules report the parent only, so high-fan-out runs (derfinder loading per-sample BigWigs at once) may under-report.
+
+## Benchmark machine
+
+A wall clock is only interpretable next to the machine that produced it, and on a cluster that machine is whichever node the scheduler picked. `record_host_info` writes it during the run.
+
+```{r host}
+if (!is.null(params$host_info) && nzchar(params$host_info) && file.exists(params$host_info)) {
+  knitr::kable(read_tsv(params$host_info, show_col_types = FALSE), format = "html")
+} else {
+  cat("No host_info.tsv passed to this report.\n")
+}
+```
 
 ```{r table, results = "asis"}
 cat('<details><summary>Click to expand the full per-invocation table</summary>\n\n')

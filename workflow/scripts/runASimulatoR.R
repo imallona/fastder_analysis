@@ -51,6 +51,14 @@ simulate_alternative_splicing(
 # The staged reference is scratch; drop it once the simulation has succeeded.
 unlink(input_dir, recursive = TRUE)
 
+# ASimulatoR writes plain FASTQ. At four depths over ten samples that is some
+# 400 GB, against about 100 GB compressed, and STAR reads gzip directly.
+fastqs <- list.files(outdir, pattern = "\\.fastq$", full.names = TRUE)
+for (fastq in fastqs) {
+  status <- system2("gzip", c("-f", shQuote(fastq)))
+  if (status != 0) stop("gzip failed on ", fastq)
+}
+
 # Save metadata (written after successful simulation only)
 library(yaml)
 
