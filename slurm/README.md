@@ -44,9 +44,9 @@ sbatch slurm/03_tdp43.sh         # showcase and panel
 
 Each is one driver job holding snakemake. `--signal=B:TERM@300` gives it five minutes to stop cleanly before the wall clock, so it writes its metadata instead of leaving a stale lock. If a driver is killed outright, `make unlock` clears the lock.
 
-## Why the timed rules are pinned
+## CPU pin and core budget
 
-`run_fastder`, `run_fastder_scaling`, `run_derfinder`, `run_grohmm` and `run_megadepth_baseline` are the rules whose wall clock is reported in the paper. `profiles/euler/config.yaml` gives them `--constraint=EPYC_7763`.
+`run_fastder`, `run_fastder_scaling`, `run_derfinder`, `run_grohmm` and `run_megadepth_baseline` are the rules whose wall clock is reported in the paper. `profiles/euler/config.yaml` gives them `constraint: EPYC_7763`, which the plugin submits as `-C EPYC_7763`.
 
 Euler's normal partitions mix EPYC 9654, 7742, 7H12 and 7763, and a single-core wall clock measured on one generation is not comparable with the same run on another. EPYC_7763 has 246 nodes, so availability is good.
 

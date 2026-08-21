@@ -28,6 +28,8 @@ default-resources:
 # 7742, 7H12 and 7763, and a timing on one is not comparable with another.
 # Not exclusive: that would book 128 cores per job. Co-tenancy can inflate a
 # wall clock, which Methods states. test_euler_profile.py pins this set.
+# The pin is the constraint resource. Plugin 2.7.1 sets --constraint itself
+# and refuses it in slurm_extra.
 set-resources:
   build_fastder:
     mem_mb_per_cpu: 1000
@@ -72,19 +74,19 @@ set-resources:
   run_asimulator:
     mem_mb_per_cpu: 2700
   run_derfinder:
-    slurm_extra: "'--constraint=EPYC_7763'"
+    constraint: EPYC_7763
     mem_mb_per_cpu: 8000
   run_fastder:
-    slurm_extra: "'--constraint=EPYC_7763'"
+    constraint: EPYC_7763
     mem_mb_per_cpu: 8000
   run_fastder_scaling:
-    slurm_extra: "'--constraint=EPYC_7763'"
+    constraint: EPYC_7763
     mem_mb_per_cpu: 8000
   run_grohmm:
-    slurm_extra: "'--constraint=EPYC_7763'"
+    constraint: EPYC_7763
     mem_mb_per_cpu: 8000
   run_megadepth_baseline:
-    slurm_extra: "'--constraint=EPYC_7763'"
+    constraint: EPYC_7763
   unify:
     mem_mb_per_cpu: 2700
 

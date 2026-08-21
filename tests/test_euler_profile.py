@@ -18,6 +18,12 @@ PROFILE = ROOT / "profiles" / "euler" / "config.yaml"
 
 RULE_HEADER = re.compile(r"^(?:rule|checkpoint)\s+(\w+):")
 
+# Options the Slurm executor plugin sets itself, from its validation.py.
+PLUGIN_MANAGED = re.compile(
+    r"--(constraint|mem|mem-per-cpu|time|partition|account|cpus-per-task"
+    r"|ntasks|nodes|clusters|qos|gres|gpus|job-name|output|error|export)[=\s]"
+)
+
 # The rules whose wall clock reaches the manuscript.
 TIMED_RULES = {
     "run_fastder",
@@ -72,8 +78,14 @@ def test_every_executing_rule_declares_memory_and_runtime():
 def test_timed_rules_are_pinned_to_one_cpu_model():
     pinned = profile_set_resources()
     for rule in TIMED_RULES:
-        extra = str(pinned.get(rule, {}).get("slurm_extra", ""))
-        assert "--constraint=" in extra, rule
+        assert pinned.get(rule, {}).get("constraint"), rule
+
+
+def test_slurm_extra_carries_no_plugin_managed_option():
+    """The plugin raises on these instead of submitting the job."""
+    for rule, resources in profile_set_resources().items():
+        extra = str(resources.get("slurm_extra", ""))
+        assert not PLUGIN_MANAGED.search(extra), (rule, extra)
 
 
 def test_timed_rules_do_not_take_whole_nodes():
@@ -86,9 +98,9 @@ def test_timed_rules_do_not_take_whole_nodes():
 def test_all_pinned_rules_use_the_same_model():
     """Two tools timed on different CPU models cannot be compared."""
     models = {
-        model
+        str(resources["constraint"])
         for resources in profile_set_resources().values()
-        for model in re.findall(r"--constraint=(\S+)", str(resources.get("slurm_extra", "")))
+        if resources.get("constraint")
     }
     assert len(models) == 1, models
 
@@ -98,7 +110,7 @@ def test_pinning_covers_exactly_the_timed_rules():
     pinned = {
         rule
         for rule, resources in profile_set_resources().items()
-        if "--constraint=" in str(resources.get("slurm_extra", ""))
+        if resources.get("constraint")
     }
     assert pinned == TIMED_RULES
 

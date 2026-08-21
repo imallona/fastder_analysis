@@ -60,6 +60,7 @@
 - `record_host_info` reads MemTotal with awk. The sed version tripped a Python SyntaxWarning on every run.
 - Run paths live in `slurm/site.env`, sourced by `common.sh`. Conda environments and the image cache go to project storage. That is NFS; scratch is Lustre, which handles many small files badly. `sbatch` exports the submitting shell, so an activated environment carries over.
 - The probe reads the plugin version from package metadata. Plugin 2.7.1 exposes no `__version__`.
+- The CPU pin of the timed rules is the `constraint` resource. Plugin 2.7.1 sets `--constraint` itself and refuses it in `slurm_extra`. Every `run_fastder` and `run_fastder_scaling` submission of job 11304206 failed on that. `sbatch` still gets `-C EPYC_7763`.
 - The sbatch wrappers populate the submodules themselves. A clone leaves them empty. `build_fastder` then has no sources. `make submodules-latest` moves a pin deliberately.
 - The sbatch wrappers source `common.sh` correctly. Slurm copies the script to a spool directory. `$0` pointed there, not at the repo. Job 11285331 died after seven seconds. `SLURM_SUBMIT_DIR` locates the repo now. `common.sh` also checks its prerequisites first.
 - `ml_star_align` writes scratch to `$TMPDIR`. STAR temp and sort spill move there. The Euler profile requests `--tmp` for both rules.
