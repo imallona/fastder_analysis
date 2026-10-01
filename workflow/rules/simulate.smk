@@ -29,7 +29,7 @@ rule run_asimulator:
         multi_events_per_exon=lambda wc: config["asimulator"]["multi_events_per_exon"],
         strand_specific=lambda wc: config["asimulator"]["strand_specific"],
         probs_as_freq=lambda wc: config["asimulator"]["probs_as_freq"],
-        seed=config["seed"],
+        seed=lambda wc: data_layout.sample_seed(config["seed"], ASIM_SAMPLES, wc.sample),
     threads: config["cores"]
     resources:
         mem_mb=32000,

@@ -20,6 +20,17 @@ def reads_key(design, seed):
     return f"depth_{depth}_seed_{seed}_{digest}"
 
 
+def sample_seed(run_seed, samples, sample):
+    """Seed of one simulated sample.
+
+    Under one shared seed the simulator draws the same genes and expression
+    levels for every sample, so samples differ only by event class. Each
+    sample gets its own seed, spaced so that runs under consecutive run seeds
+    never share one.
+    """
+    return int(run_seed) * 1000 + list(samples).index(sample)
+
+
 def index_key(ref_scope, annotated):
     """Key of a STAR index: its chromosomes, and whether it holds the annotation."""
     return ref_scope if annotated else f"{ref_scope}_unannotated"
