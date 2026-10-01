@@ -64,6 +64,7 @@
 - `tests/test_make_scenario.py`, covering the compressed round trip.
 - `config_klim_2019_tdp43_recount3_ladder.yaml` and rule `collect_threshold_range`. fastder runs over a ladder of `min_coverage` values. `threshold_range_summary.csv` gives the separating range per cryptic exon locus. The loci moved to `config/tdp43_cryptic_exons.tsv`, with a source per row. Run it with `make tdp43-ladder`.
 - The TDP-43 ladder runs twelve thresholds, from 0.0002 to 1.0 CPM. `threshold_range_counts.csv` counts the loci separating the groups at each and flags the threshold with the most.
+- TDP-43 thresholds come from the ladder. The showcase runs at 0.05 CPM, was 1.0. The panel runs at 0.005 CPM, was 0.02.
 
 ### Fixed
 

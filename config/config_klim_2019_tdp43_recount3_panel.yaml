@@ -18,10 +18,10 @@
 # This is the panel config: a single low threshold that emits the wider
 # cryptic exon panel (STMN2, HDGFL2, ELAVL3, CELF5, KCNQ2). Those loci were
 # picked from knockdown-specific novel splice junctions in the recount3
-# junction matrix. Only STMN2 is well above the intronic noise floor; the
-# others sit at the floor in coverage and are recovered because their splice
-# junctions are clean. The companion config_klim_2019_tdp43_recount3.yaml is
-# the showcase run, a clean threshold that isolates STMN2 alone.
+# junction matrix. The threshold is the one at which most of them separate
+# knockdown from control on the ladder config. The companion
+# config_klim_2019_tdp43_recount3.yaml is the showcase run, at a threshold
+# where STMN2 alone separates.
 #
 # Run with:
 #   FASTDER_EVAL_CONFIG=../config/config_klim_2019_tdp43_recount3_panel.yaml \
@@ -59,12 +59,10 @@ recount3:
 
 fastder:
   stranded: false
-  # Panel run: a single low threshold, no sweep. min_coverage is in CPM. Set
-  # low (0.02) so the weak cryptic exons (HDGFL2, ELAVL3, CELF5, KCNQ2), which
-  # sit at the intronic noise floor in coverage, are still emitted. At this
-  # threshold the calls include noise; the cryptic exons are read out from the
-  # report via the knockdown-specific junctions and the near-zero control.
-  min_coverage: [0.02]
+  # Panel run: one threshold, no sweep. min_coverage is in CPM. On the ladder
+  # config 0.005 separates the most loci (STMN2, HDGFL2, ELAVL3). CELF5
+  # separates from 0.0005 to 0.002 only, and KCNQ2 at no threshold.
+  min_coverage: [0.005]
   # Tighten the stitching gate so a low-coverage cryptic exon is not absorbed
   # into a wide block with a neighbouring high-coverage constitutive exon. The
   # gate compares the running stitched coverage to the candidate; a value of
