@@ -112,15 +112,15 @@ rule recount3_group_junctions:
         idf=lambda wc: op.join(R3_DIR, "junctions", f"{R3_GROUP_STUDY[wc.scenario]}.ALL.ID"),
         metadata=lambda wc: op.join(R3_DIR, f"{R3_GROUP_STUDY[wc.scenario]}.recount_project.tsv"),
     output:
-        rr=op.join(R3_DIR, "{scenario}", "junctions.ALL.RR"),
-        mm=op.join(R3_DIR, "{scenario}", "junctions.ALL.MM"),
-        samples_tsv=op.join(R3_DIR, "{scenario}", "junctions.ALL.samples.tsv"),
+        rr=op.join(R3_GROUP_DIR, "{scenario}", "junctions.ALL.RR"),
+        mm=op.join(R3_GROUP_DIR, "{scenario}", "junctions.ALL.MM"),
+        samples_tsv=op.join(R3_GROUP_DIR, "{scenario}", "junctions.ALL.samples.tsv"),
     log:
         op.join(LOG_DIR, "recount3", "group_junctions_{scenario}.log"),
     benchmark:
         op.join(BENCH_DIR, "recount3", "group_junctions_{scenario}.tsv")
     params:
-        out_prefix=lambda wc: op.join(R3_DIR, wc.scenario, "junctions.ALL"),
+        out_prefix=lambda wc: op.join(R3_GROUP_DIR, wc.scenario, "junctions.ALL"),
         study=lambda wc: R3_GROUP_STUDY[wc.scenario],
         sample_args=lambda wc: " ".join(
             f"--sample {s}" for s in R3_GROUPS[wc.scenario]

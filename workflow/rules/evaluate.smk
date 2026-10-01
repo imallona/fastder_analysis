@@ -8,7 +8,7 @@
 rule run_gffcompare:
     input:
         chr_prefix_done=op.join(FASTDER_DIR, "{scenario}", "match_chr_prefix.DONE"),
-        gtf=op.join(DATA_DIR, "tools", "{tool}", "{scenario}", "{param_id}", "output.gtf"),
+        gtf=op.join(TOOLS_DIR, "{tool}", "{scenario}", "{param_id}", "output.gtf"),
     output:
         stats=op.join(RESULTS_DIR, "{tool}", "{scenario}", "{sample}", "{param_id}", "gffcompare.stats"),
     benchmark:
@@ -126,7 +126,7 @@ rule collect_chain_stats:
 rule eval_fuzzy_metrics:
     input:
         chr_prefix_done=op.join(FASTDER_DIR, "{scenario}", "match_chr_prefix.DONE"),
-        gtf=op.join(DATA_DIR, "tools", "{tool}", "{scenario}", "{param_id}", "output.gtf"),
+        gtf=op.join(TOOLS_DIR, "{tool}", "{scenario}", "{param_id}", "output.gtf"),
     output:
         jaccard=op.join(RESULTS_DIR, "{tool}", "{scenario}", "{sample}", "{param_id}", "fuzzy_jaccard.csv"),
         distances=op.join(RESULTS_DIR, "{tool}", "{scenario}", "{sample}", "{param_id}", "fuzzy_distances.csv"),

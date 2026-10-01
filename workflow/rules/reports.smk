@@ -48,7 +48,7 @@ def _report_tool_gtf(tool):
     def _f(wildcards):
         if tool not in PARAM_IDS_BY_TOOL:
             return []
-        return op.join(DATA_DIR, "tools", tool, _REPORT_SCENARIO,
+        return op.join(TOOLS_DIR, tool, _REPORT_SCENARIO,
                        PARAM_IDS_BY_TOOL[tool][0], "output.gtf")
     return _f
 
@@ -182,7 +182,7 @@ def _manifest_tool_gtfs(tool):
     def _f(wildcards):
         if tool not in PARAM_IDS_BY_TOOL:
             return []
-        return expand(op.join(DATA_DIR, "tools", tool, "{scenario}",
+        return expand(op.join(TOOLS_DIR, tool, "{scenario}",
                               PARAM_IDS_BY_TOOL[tool][0], "output.gtf"),
                       scenario=SCENARIOS)
     return _f
@@ -275,7 +275,7 @@ rule render_recount3_report:
 rule render_gtex_report:
     input:
         fastder_gtfs=expand(
-            op.join(DATA_DIR, "tools", "fastder", "{scenario}",
+            op.join(TOOLS_DIR, "fastder", "{scenario}",
                     PARAM_IDS_BY_TOOL["fastder"][0], "output.gtf"),
             scenario=SCENARIOS),
         reference_gtf=(REF_GTF if BACKEND == "recount3" else []),
@@ -287,7 +287,7 @@ rule render_gtex_report:
     params:
         reference_gtf=REF_ANNOTATION,
         # Sub-group name per fastder GTF, in input order. The GTF path
-        # component data/tools/fastder/{scenario}/... is the sub-group; the
+        # component {scenario} of each fastder GTF path is the sub-group; the
         # report reads the tissue from the part before the _<n> suffix.
         subgroups=lambda wc, input: ",".join(
             Path(g).parts[-3] for g in input.fastder_gtfs),

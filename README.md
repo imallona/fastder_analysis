@@ -64,7 +64,7 @@ Our Snakemake workflow uses config files to define run properties.
 
 ## Tool comparison and params
 
-`derfinder` (Bioconductor caller, `--cutoff`, `--min-length`, `--maxregiongap`; `workflow/scripts/run_derfinder.R`) and `megadepth_baseline` (thresholded segmenter, one transcript per run of bases at or above `--cutoff`, no stitching; `workflow/scripts/run_megadepth_baseline.py`) consume the same BigWigs. `grohmm` (HMM segmenter over 50 bp windows, `LtProbB`, `UTS`; `workflow/scripts/run_grohmm.R`) reads them too, with its own grid under `grohmm:`. Each tool writes `data/tools/{tool}/{scenario}/{param_id}/output.gtf`, graded against the same truth set (simulated GFF, or the Ensembl annotation for real data).
+`derfinder` (Bioconductor caller, `--cutoff`, `--min-length`, `--maxregiongap`; `workflow/scripts/run_derfinder.R`) and `megadepth_baseline` (thresholded segmenter, one transcript per run of bases at or above `--cutoff`, no stitching; `workflow/scripts/run_megadepth_baseline.py`) consume the same BigWigs. `grohmm` (HMM segmenter over 50 bp windows, `LtProbB`, `UTS`; `workflow/scripts/run_grohmm.R`) reads them too, with its own grid under `grohmm:`. Each tool writes `data/tools/<config>/{tool}/{scenario}/{param_id}/output.gtf`, graded against the same truth set (simulated GFF, or the Ensembl annotation for real data).
 
 Shared swept parameters:
 

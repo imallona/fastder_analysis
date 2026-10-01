@@ -47,7 +47,7 @@ rule run_derfinder:
         chr_prefix_done=op.join(FASTDER_DIR, "{scenario}", "match_chr_prefix.DONE"),
         library_sizes=op.join(FASTDER_DIR, "{scenario}", "library_sizes.tsv"),
     output:
-        gtf=op.join(DATA_DIR, "tools", "derfinder", "{scenario}", "{param_id}", "output.gtf"),
+        gtf=op.join(TOOLS_DIR, "derfinder", "{scenario}", "{param_id}", "output.gtf"),
     benchmark:
         op.join(BENCH_DIR, "run_derfinder", "{scenario}_{param_id}.tsv")
     log:
@@ -88,7 +88,7 @@ rule run_megadepth_baseline:
         chr_prefix_done=op.join(FASTDER_DIR, "{scenario}", "match_chr_prefix.DONE"),
         library_sizes=op.join(FASTDER_DIR, "{scenario}", "library_sizes.tsv"),
     output:
-        gtf=op.join(DATA_DIR, "tools", "megadepth_baseline", "{scenario}", "{param_id}", "output.gtf"),
+        gtf=op.join(TOOLS_DIR, "megadepth_baseline", "{scenario}", "{param_id}", "output.gtf"),
     benchmark:
         op.join(BENCH_DIR, "run_megadepth_baseline", "{scenario}_{param_id}.tsv")
     log:
@@ -131,7 +131,7 @@ rule run_grohmm:
         chr_prefix_done=op.join(FASTDER_DIR, "{scenario}", "match_chr_prefix.DONE"),
         library_sizes=op.join(FASTDER_DIR, "{scenario}", "library_sizes.tsv"),
     output:
-        gtf=op.join(DATA_DIR, "tools", "grohmm", "{scenario}", "{param_id}", "output.gtf"),
+        gtf=op.join(TOOLS_DIR, "grohmm", "{scenario}", "{param_id}", "output.gtf"),
     benchmark:
         op.join(BENCH_DIR, "run_grohmm", "{scenario}_{param_id}.tsv")
     log:
