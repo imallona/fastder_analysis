@@ -139,3 +139,14 @@ class TestParseParamId:
         filtered = pg.param_id({"min_coverage": 0.05, "min_junction_reads": 20,
                                 "no_stitch": False})
         assert re.search(r"(?<=mjr)[0-9]+", filtered).group(0) == "20"
+
+
+def test_stitched_at_defaults_is_one_corner_of_the_grid():
+    combos = pg.build_combos({"min_coverage": [0.01, 0.05], "min_length": [10, 25],
+                              "position_tolerance": [0, 5], "no_stitch": [False, True]})
+    reference = [pg.param_id(c) for c in combos if pg.stitched_at_defaults(c)]
+    assert reference == ["mc0.05_ml10_pt5_ns0"]
+
+
+def test_an_unstitched_run_is_not_the_reference():
+    assert not pg.stitched_at_defaults({"min_coverage": 0.05, "no_stitch": True})

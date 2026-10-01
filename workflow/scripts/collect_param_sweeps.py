@@ -6,6 +6,10 @@ STAR index, with or without the annotation, for annotated_index. Accuracy
 comes from summary.csv, boundary distances from fuzzy_distances.csv, averaged
 over the samples of a scenario.
 
+The ablation has a third configuration, tool fastder_split: the stitched run
+with every exon as its own record. It is graded per sample under
+<run>/fastder_split and appears in neither summary file.
+
 Usage:
     python collect_param_sweeps.py --axis no_stitch --results-root <dir> --out <csv>
     python collect_param_sweeps.py --axis min_junction_reads --results-root <dir> --out <csv>
@@ -17,15 +21,14 @@ import os
 import os.path as op
 import re
 from collections import defaultdict
+from glob import glob
 
-from param_grid import parse_param_id
-
-# Shipped defaults, from cpp/main.cpp. A row is comparable only if every axis
-# but the swept one sits here.
-DEFAULTS = {"min_coverage": 0.05, "min_length": 10, "position_tolerance": 5,
-            "min_junction_reads": 0}
+from param_grid import comparable, parse_param_id
+from parse_gffcompare import parse as parse_gffcompare_stats
 
 BOUNDARY_WINDOW_BP = 5
+
+SPLIT_TOOL = "fastder_split"
 
 # The two alignments of the 10M reads, by whether the index held the annotation.
 ANNOTATION_RUNS = ((1, "config_full_simulation"), (0, "config_unannotated_alignment"))
@@ -52,20 +55,6 @@ def simulation_run_dirs(results_root, prefix="config_full_simulation"):
         return []
     return sorted(op.join(results_root, name) for name in os.listdir(results_root)
                   if name.startswith(prefix) and op.isdir(op.join(results_root, name)))
-
-
-def comparable(combo, axis):
-    """True when every parameter but the swept axis is at its default.
-
-    --no-stitch makes position_tolerance inert, so an unstitched identifier
-    omits it. Absence is accepted; a different value is not.
-    """
-    for name, default in DEFAULTS.items():
-        if name == axis:
-            continue
-        if name in combo and combo[name] != default:
-            return False
-    return True
 
 
 def axis_value(combo, axis):
@@ -115,9 +104,37 @@ def boundary_rows(run_dir, axis, tool):
         key = (row["scenario"], axis_value(combo, axis), "boundary_within_5bp")
         counts = hits[key]
         counts[1] += 1
-        if abs(int(raw)) <= BOUNDARY_WINDOW_BP:
-            counts[0] += 1
+        counts[0] += within_window(raw)
     return {key: [100.0 * hit / total] for key, (hit, total) in hits.items() if total}
+
+
+def within_window(distance):
+    return abs(int(distance)) <= BOUNDARY_WINDOW_BP
+
+
+def split_chain_rows(run_dir):
+    """Exon accuracy and boundary share of the split-chain runs, per scenario."""
+    out = defaultdict(list)
+    hits = defaultdict(lambda: [0, 0])
+    graded = op.join(run_dir, SPLIT_TOOL, "*", "*", "*")
+    for stats in sorted(glob(op.join(graded, "gffcompare.stats"))):
+        scenario = stats.split(os.sep)[-4]
+        parsed = parse_gffcompare_stats(stats)
+        for metric in ("exon_sens", "exon_prec"):
+            if metric in parsed:
+                out[(scenario, False, metric)].append(parsed[metric])
+    for distances in sorted(glob(op.join(graded, "fuzzy_distances.csv"))):
+        scenario = distances.split(os.sep)[-4]
+        counts = hits[(scenario, False, "boundary_within_5bp")]
+        for row in read_rows(distances):
+            if row.get("distance") in (None, ""):
+                continue
+            counts[1] += 1
+            counts[0] += within_window(row["distance"])
+    for key, (hit, total) in hits.items():
+        if total:
+            out[key] = [100.0 * hit / total]
+    return out
 
 
 def collect(results_root, axis, tool="fastder", prefix="config_full_simulation"):
@@ -129,18 +146,22 @@ def collect(results_root, axis, tool="fastder", prefix="config_full_simulation")
         gathered = accuracy_rows(run_dir, axis, tool)
         for key, values in boundary_rows(run_dir, axis, tool).items():
             gathered[key].extend(values)
-        ordered = sorted(gathered.items(), key=lambda kv: (kv[0][0], float(kv[0][1]), kv[0][2]))
-        for (scenario, value, metric), values in ordered:
-            rows.append({
-                "depth_M": depth,
-                "replicate": replicate,
-                "scenario": scenario,
-                "tool": tool,
-                axis: int(value) if isinstance(value, bool) else value,
-                "metric": metric,
-                "value": sum(values) / len(values),
-                "n": len(values),
-            })
+        by_tool = [(tool, gathered)]
+        if axis == "no_stitch":
+            by_tool.append((SPLIT_TOOL, split_chain_rows(run_dir)))
+        for name, found in by_tool:
+            ordered = sorted(found.items(), key=lambda kv: (kv[0][0], float(kv[0][1]), kv[0][2]))
+            for (scenario, value, metric), values in ordered:
+                rows.append({
+                    "depth_M": depth,
+                    "replicate": replicate,
+                    "scenario": scenario,
+                    "tool": name,
+                    axis: int(value) if isinstance(value, bool) else value,
+                    "metric": metric,
+                    "value": sum(values) / len(values),
+                    "n": len(values),
+                })
     return rows
 
 

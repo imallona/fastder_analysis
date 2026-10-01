@@ -468,6 +468,25 @@ rule link_fastder_gtf:
         """
 
 
+# The fastder GTF with every exon as its own record. Exon edges stay where
+# stitching put them; the records carry no structure.
+rule split_fastder_chains:
+    input:
+        gtf=op.join(TOOLS_DIR, "fastder", "{scenario}", "{param_id}", "output.gtf"),
+        script=op.join(WORKFLOW_DIR, "scripts", "split_chains.py"),
+    output:
+        gtf=op.join(TOOLS_DIR, SPLIT_TOOL, "{scenario}", "{param_id}", "output.gtf"),
+    log:
+        op.join(LOG_DIR, "split_fastder_chains", "{scenario}_{param_id}.log"),
+    resources:
+        mem_mb=1000,
+        runtime=10,
+    conda:
+        "../envs/base.yaml"
+    shell:
+        "python3 {input.script} --gtf {input.gtf} --out {output.gtf} > {log} 2>&1"
+
+
 # Scaling sweep: fastder against itself at several core counts, on one
 # scenario. Times how the two parallel stages behave rather than comparing
 # tools, so it is separate from run_fastder and from the cross-tool benchmark.

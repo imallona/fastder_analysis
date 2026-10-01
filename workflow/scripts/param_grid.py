@@ -32,6 +32,30 @@ IGNORED_WHEN_SET = {
 }
 
 
+# Shipped defaults, from cpp/main.cpp.
+DEFAULTS = {"min_coverage": 0.05, "min_length": 10, "position_tolerance": 5,
+            "min_junction_reads": 0}
+
+
+def comparable(combo, axis):
+    """True when every parameter but the swept axis is at its default.
+
+    --no-stitch makes position_tolerance inert, so an unstitched identifier
+    omits it. Absence is accepted; a different value is not.
+    """
+    for name, default in DEFAULTS.items():
+        if name == axis:
+            continue
+        if name in combo and combo[name] != default:
+            return False
+    return True
+
+
+def stitched_at_defaults(combo):
+    """The run the ablation compares against: stitching on, all else default."""
+    return comparable(combo, "no_stitch") and not combo.get("no_stitch")
+
+
 def param_id(combo):
     """Short, directory-safe identifier for a parameter combination."""
     parts = [f"{PARAM_SPEC[k][0]}{int(bool(v)) if k in FLAG_PARAMS else v}"

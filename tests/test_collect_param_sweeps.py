@@ -191,3 +191,39 @@ def test_the_unannotated_run_stays_out_of_the_depth_tables(tmp_path):
     values = [r["value"] for r in collect(str(tmp_path), "no_stitch")
               if r["metric"] == "exon_sens"]
     assert values == [60.0]
+
+
+def make_split_sample(run_dir, scenario, sample, sens, prec, distances):
+    """What gffcompare and eval_fuzzy write for one split-chain sample."""
+    graded = run_dir / "fastder_split" / scenario / sample / "mc0.05_ml10_pt5_ns0"
+    graded.mkdir(parents=True)
+    (graded / "gffcompare.stats").write_text(
+        "#-----------------| Sensitivity | Precision  |\n"
+        f"        Exon level:    {sens}     |    {prec}    |\n")
+    write_rows(graded / "fuzzy_distances.csv", ["scenario", "sample", "param_id", "distance"],
+               [{"scenario": scenario, "sample": sample,
+                 "param_id": "mc0.05_ml10_pt5_ns0", "distance": d} for d in distances])
+
+
+def test_ablation_has_three_configurations(tmp_path):
+    run_dir = make_run(tmp_path, "config_full_simulation", [
+        summary_row("mc0.05_ml10_pt5_ns0", 60, 62),
+        summary_row("mc0.05_ml10_ns1", 50, 52),
+    ])
+    make_split_sample(run_dir, "variant_only", "es", 58.0, 61.0, (0, 3, 40, 40))
+    make_split_sample(run_dir, "variant_only", "ir", 54.0, 59.0, (0, 0))
+    rows = collect(str(tmp_path), "no_stitch")
+    sens = {(r["tool"], r["no_stitch"]): r["value"] for r in rows if r["metric"] == "exon_sens"}
+    assert sens == {("fastder", 0): 60.0, ("fastder", 1): 50.0, ("fastder_split", 0): 56.0}
+    boundary = [r for r in rows
+                if r["tool"] == "fastder_split" and r["metric"] == "boundary_within_5bp"]
+    assert boundary[0]["value"] == pytest.approx(100.0 * 4 / 6)
+
+
+def test_other_sweeps_carry_no_split_rows(tmp_path):
+    run_dir = make_run(tmp_path, "config_min_junction_reads_sweep",
+                       [summary_row("mc0.05_ml10_pt5_mjr0_ns0", 60, 62)])
+    make_split_sample(run_dir, "variant_only", "es", 58.0, 61.0, (0,))
+    rows = collect(str(tmp_path), "min_junction_reads",
+                   prefix="config_min_junction_reads_sweep")
+    assert {r["tool"] for r in rows} == {"fastder"}
