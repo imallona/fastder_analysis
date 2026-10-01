@@ -45,6 +45,7 @@
 - `tests/test_euler_profile.py`, checking the profile against the rules. Every executing rule declares memory and runtime. The CPU pin covers exactly the timed rules. Rules using node scratch request `--tmp`.
 - `scripts/collect_param_sweeps.py` and `scripts/collect_scaling.py`. They write `ablation.csv`, `min_junction_reads.csv` and `scaling.csv`. Panels plot these rather than recomputing.
 - `param_grid.parse_param_id()`, the inverse of `param_id()`. A results table can be grouped by axis.
+- `scripts/collect_reported_numbers.py` and rule `collect_reported_numbers`. One CSV holds every quoted value with its config and source file. `reported_numbers.tex` defines `\reported{name}` per value. A listed config without results fails the rule.
 - `scripts/figures/figure_supp_revision.R` and rule `figure_supp_revision`. It writes `supp_ablation.pdf`, `supp_min_junction_reads.pdf` and `supp_scaling.pdf`. SVGs go with them. Each panel saves its data as `panel_<name>.csv`.
 - The scaling panel annotates its ceilings. Parsing runs one thread per loaded sample. Averaging runs one thread per chromosome. Stitching is serial.
 - `tests/test_collect_param_sweeps.py` and `tests/test_collect_scaling.py`. `test_param_grid.py` gained identifier round-trip tests. They pin the patterns `helpers.R` greps for.

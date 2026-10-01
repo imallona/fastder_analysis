@@ -258,6 +258,46 @@ rule capability_table:
         "python3 {input.script} {params.out_dir} > {log} 2>&1"
 
 
+# Every value the text quotes, from the configs behind the paper. A config
+# listed here whose results are missing fails the rule.
+REPORTED_SIMULATIONS = ["config_full_simulation", "config_full_simulation_rep2",
+                        "config_full_simulation_rep3", "config_full_simulation_5M",
+                        "config_full_simulation_30M", "config_full_simulation_40M"]
+REPORTED_RUNTIMES = ["config_gtex_comparison", "config_gtex_concordance"]
+
+
+rule collect_reported_numbers:
+    input:
+        script=op.join(WORKFLOW_DIR, "scripts", "collect_reported_numbers.py"),
+    output:
+        csv=op.join(FIG_DIR, "reported_numbers.csv"),
+        tex=op.join(FIG_DIR, "reported_numbers.tex"),
+    log:
+        op.join(LOG_DIR, "collect_reported_numbers.log"),
+    params:
+        results_root=FIG_RESULTS,
+        bench_root=op.join(WORKFLOW_DIR, "logs", "benchmarks"),
+        simulations=" ".join(REPORTED_SIMULATIONS),
+        runtimes=" ".join(REPORTED_RUNTIMES),
+    resources:
+        mem_mb=4000,
+        runtime=60,
+    conda:
+        "../envs/base.yaml"
+    shell:
+        """
+        python3 {input.script} \
+            --results-root {params.results_root} --bench-root {params.bench_root} \
+            --simulation {params.simulations} \
+            --comparison config_gtex_comparison \
+            --runtime {params.runtimes} \
+            --threshold-range config_klim_2019_tdp43_recount3_ladder \
+            --junction-filter config_min_junction_reads_sweep \
+            --unannotated config_unannotated_alignment \
+            --out-csv {output.csv} --out-tex {output.tex} > {log} 2>&1
+        """
+
+
 rule manuscript_figures:
     input:
         op.join(FIG_DIR, "figure_main_1.pdf"),
@@ -268,3 +308,4 @@ rule manuscript_figures:
         op.join(FIG_DIR, "supp_min_junction_reads.pdf"),
         op.join(FIG_DIR, "supp_scaling.pdf"),
         op.join(FIG_DIR, "annotation.csv"),
+        op.join(FIG_DIR, "reported_numbers.tex"),
