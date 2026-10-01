@@ -32,18 +32,20 @@ IGNORED_WHEN_SET = {
 }
 
 
-# Shipped defaults, from cpp/main.cpp.
-DEFAULTS = {"min_coverage": 0.05, "min_length": 10, "position_tolerance": 5,
-            "min_junction_reads": 0}
+# Point the comparisons are made at: fastder's shipped defaults from
+# cpp/main.cpp, except min_coverage, which ships as 0.05 CPM and is set here to
+# the threshold with the best exon-level F1 on config_threshold_ladder.
+REFERENCE = {"min_coverage": 0.005, "min_length": 10, "position_tolerance": 5,
+             "min_junction_reads": 0}
 
 
 def comparable(combo, axis):
-    """True when every parameter but the swept axis is at its default.
+    """True when every parameter but the swept axis is at the reference point.
 
     --no-stitch makes position_tolerance inert, so an unstitched identifier
     omits it. Absence is accepted; a different value is not.
     """
-    for name, default in DEFAULTS.items():
+    for name, default in REFERENCE.items():
         if name == axis:
             continue
         if name in combo and combo[name] != default:
@@ -51,8 +53,8 @@ def comparable(combo, axis):
     return True
 
 
-def stitched_at_defaults(combo):
-    """The run the ablation compares against: stitching on, all else default."""
+def stitched_at_reference(combo):
+    """The run the comparisons use: stitching on, all else at the reference point."""
     return comparable(combo, "no_stitch") and not combo.get("no_stitch")
 
 

@@ -76,8 +76,8 @@ tools: [fastder]
 
 fastder:
   stranded: false
-  # Held at the shipped defaults so the filter is the only axis.
-  min_coverage: [0.05]
+  # Held at the reference point so the filter is the only axis.
+  min_coverage: [0.005]
   min_length: [10]
   position_tolerance: [5]
   no_stitch: [false]

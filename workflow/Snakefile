@@ -359,10 +359,10 @@ PARAM_CLI_ARGS = {_param_id(c): _fastder_cli_args(c) for c in _PARAM_COMBOS}
 # For the summary CSV: the explicit params for each run
 PARAM_DICT = {_param_id(c): c for c in _PARAM_COMBOS}
 
-# Runs the split-chain configuration is built from: stitched, at the shipped
-# defaults. Empty unless the config sweeps no_stitch.
+# Runs the split-chain configuration is built from: stitched, at the reference
+# point. Empty unless the config sweeps no_stitch.
 SPLIT_PARAM_IDS = (
-    [pid for pid, combo in PARAM_DICT.items() if param_grid.stitched_at_defaults(combo)]
+    [pid for pid, combo in PARAM_DICT.items() if param_grid.stitched_at_reference(combo)]
     if "fastder" in TOOLS and any(combo.get("no_stitch") for combo in _PARAM_COMBOS)
     else [])
 

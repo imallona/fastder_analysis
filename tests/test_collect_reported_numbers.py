@@ -12,14 +12,14 @@ import pytest
 from collect_reported_numbers import (
     benchmark_medians,
     collect,
-    default_params,
+    reference_params,
     run_label,
     tex_value,
     write_csv,
     write_tex,
 )
 
-FASTDER = "mc0.05_ml10_pt5_ns0"
+FASTDER = "mc0.005_ml10_pt5_ns0"
 SCENARIO = "variant_only"
 
 
@@ -41,19 +41,19 @@ def make_run(results_root, config="config_full_simulation"):
     write_rows(run_dir / "summary.csv", [
         row("fastder", FASTDER, "es", exon_prec=60, exon_sens=40, base_prec=90, base_sens=""),
         row("fastder", FASTDER, "ir", exon_prec=50, exon_sens=30, base_prec=92, base_sens=""),
-        row("fastder", "mc0.05_ml10_ns1", "es", exon_prec=1, exon_sens=1, base_prec=1, base_sens=""),
+        row("fastder", "mc0.005_ml10_ns1", "es", exon_prec=1, exon_sens=1, base_prec=1, base_sens=""),
         row("fastder", "mc0.01_ml10_pt5_ns0", "es", exon_prec=2, exon_sens=2, base_prec=2,
             base_sens=""),
-        row("derfinder", "mc0.05_pt5", "es", exon_prec=55, exon_sens=41, base_prec=96,
+        row("derfinder", "mc0.005_pt5", "es", exon_prec=55, exon_sens=41, base_prec=96,
             base_sens=""),
-        row("derfinder", "mc0.05_pt20", "es", exon_prec=3, exon_sens=3, base_prec=3, base_sens=""),
+        row("derfinder", "mc0.005_pt20", "es", exon_prec=3, exon_sens=3, base_prec=3, base_sens=""),
         row("grohmm", "lp-25_uts15", "es", exon_prec=0.2, exon_sens=0.1, base_prec=74,
             base_sens=""),
         row("grohmm", "lp-200_uts10", "es", exon_prec=9, exon_sens=9, base_prec=9, base_sens=""),
     ])
     write_rows(run_dir / "fuzzy_jaccard.csv", [
         row("fastder", FASTDER, jaccard=0.2), row("fastder", FASTDER, jaccard=0.4),
-        row("fastder", FASTDER, jaccard=0.9), row("fastder", "mc0.05_ml10_ns1", jaccard=1.0),
+        row("fastder", FASTDER, jaccard=0.9), row("fastder", "mc0.005_ml10_ns1", jaccard=1.0),
         row("grohmm", "lp-25_uts15", jaccard=0.5), row("grohmm", "lp-200_uts10", jaccard=0.1),
     ])
     write_rows(run_dir / "fuzzy_distances.csv", [
@@ -103,9 +103,9 @@ def test_run_label_names_depth_and_replicate():
 
 
 def test_default_parameters_per_tool(tree):
-    params = default_params(str(tree[0] / "config_full_simulation"))
-    assert params == {"fastder": FASTDER, "derfinder": "mc0.05_pt5",
-                      "megadepth_baseline": "mc0.05", "grohmm": "lp-25_uts15"}
+    params = reference_params(str(tree[0] / "config_full_simulation"))
+    assert params == {"fastder": FASTDER, "derfinder": "mc0.005_pt5",
+                      "megadepth_baseline": "mc0.005", "grohmm": "lp-25_uts15"}
 
 
 def test_accuracy_is_the_mean_over_samples_at_the_defaults(tree):
@@ -212,7 +212,7 @@ def test_ablation_junction_filter_and_annotation(tree):
     sweep = results / "config_min_junction_reads_sweep"
     write_rows(sweep / "summary.csv", [
         {"tool": "fastder", "scenario": SCENARIO, "sample": "es",
-         "param_id": f"mc0.05_ml10_pt5_mjr{v}_ns0", "exon_prec": 60 + v, "exon_sens": 40}
+         "param_id": f"mc0.005_ml10_pt5_mjr{v}_ns0", "exon_prec": 60 + v, "exon_sens": 40}
         for v in (0, 5)])
     write_rows(results / "config_unannotated_alignment" / "summary.csv", [
         {"tool": "fastder", "scenario": SCENARIO, "sample": "es", "param_id": FASTDER,

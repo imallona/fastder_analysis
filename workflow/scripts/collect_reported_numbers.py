@@ -5,8 +5,8 @@ per value: name, value, unit, config and source file. A TeX file defines one
 macro per row, read as \\reported{<name>}. A config that is listed and has a
 file missing is an error; nothing is written blank.
 
-Tools are read at their default parameters: fastder stitched at its shipped
-defaults, derfinder and the megadepth baseline at the same coverage threshold,
+Tools are read at the reference point of param_grid.py: fastder stitched,
+derfinder and the megadepth baseline at the same coverage threshold,
 groHMM at the combination with the highest median Jaccard in that config.
 Values are means over the samples of a scenario unless the name says median.
 
@@ -27,7 +27,7 @@ from statistics import mean, median
 
 import collect_param_sweeps as sweeps
 from collect_param_sweeps import depth_of, replicate_of
-from param_grid import DEFAULTS, parse_param_id, stitched_at_defaults
+from param_grid import REFERENCE, parse_param_id, stitched_at_reference
 
 TOOLS = ["fastder", "derfinder", "megadepth_baseline", "grohmm"]
 TIMED_RULES = {tool: f"run_{tool}" for tool in TOOLS}
@@ -60,19 +60,19 @@ def run_label(config):
     return f"sim.{depth_of(config)}M{suffix}"
 
 
-def default_params(run_dir):
+def reference_params(run_dir):
     """Parameter identifier per tool, as the text compares them."""
     fastder, grohmm_jaccard = None, defaultdict(list)
     for row in read_rows(op.join(run_dir, "fuzzy_jaccard.csv")):
         tool, param_id = row["tool"], row["param_id"]
-        if tool == "fastder" and fastder is None and stitched_at_defaults(parse_param_id(param_id)):
+        if tool == "fastder" and fastder is None and stitched_at_reference(parse_param_id(param_id)):
             fastder = param_id
         elif tool == "grohmm":
             grohmm_jaccard[param_id].append(float(row["jaccard"]))
-    coverage = DEFAULTS["min_coverage"]
+    coverage = REFERENCE["min_coverage"]
     params = {
         "fastder": fastder,
-        "derfinder": f"mc{coverage}_pt{DEFAULTS['position_tolerance']}",
+        "derfinder": f"mc{coverage}_pt{REFERENCE['position_tolerance']}",
         "megadepth_baseline": f"mc{coverage}",
     }
     if grohmm_jaccard:
@@ -80,7 +80,7 @@ def default_params(run_dir):
     return {tool: param_id for tool, param_id in params.items() if param_id}
 
 
-def at_defaults(rows, params):
+def at_reference(rows, params):
     for row in rows:
         if params.get(row["tool"]) == row["param_id"]:
             yield row
@@ -92,7 +92,7 @@ def accuracy(config, run_dir, params):
     source = op.join(run_dir, "summary.csv")
     values = defaultdict(list)
     per_sample = {}
-    for row in at_defaults(read_rows(source), params):
+    for row in at_reference(read_rows(source), params):
         for level in LEVELS:
             for side in ("sens", "prec"):
                 raw = row.get(f"{level}_{side}")
@@ -114,7 +114,7 @@ def overlap(config, run_dir, params):
     """Median exonic Jaccard of a reference transcript's best call."""
     source = op.join(run_dir, "fuzzy_jaccard.csv")
     values = defaultdict(list)
-    for row in at_defaults(read_rows(source), params):
+    for row in at_reference(read_rows(source), params):
         values[(row["scenario"], row["tool"])].append(float(row["jaccard"]))
     label = run_label(config)
     return [number(f"{label}.{scenario}.{tool}.jaccard_median", median(found), "jaccard",
@@ -128,7 +128,7 @@ def boundaries(config, run_dir, params):
     source = op.join(run_dir, "fuzzy_distances.csv")
     hits = defaultdict(lambda: [0, 0])
     distances = defaultdict(list)
-    for row in at_defaults(read_rows(source), params):
+    for row in at_reference(read_rows(source), params):
         if row["distance"] in (None, ""):
             continue
         distance = abs(int(row["distance"]))
@@ -152,7 +152,7 @@ def boundaries(config, run_dir, params):
 def locus_recall(config, run_dir, params):
     source = op.join(run_dir, "fuzzy_locus_recall.csv")
     values = defaultdict(list)
-    for row in at_defaults(read_rows(source), params):
+    for row in at_reference(read_rows(source), params):
         if abs(float(row["threshold"]) - LOCUS_RECALL_THRESHOLD) < 1e-9:
             values[(row["scenario"], row["tool"])].append(100.0 * float(row["recall"]))
     label = run_label(config)
@@ -166,7 +166,7 @@ def strand(config, run_dir, params):
     reference transcript, the share on its strand."""
     source = op.join(run_dir, "fuzzy_strand.csv")
     counts = defaultdict(lambda: defaultdict(int))
-    for row in at_defaults(read_rows(source), params):
+    for row in at_reference(read_rows(source), params):
         if row["tool"] == "fastder":
             counts[row["scenario"]][row["category"]] += int(row["n_fastder_transcripts"])
     label = run_label(config)
@@ -292,7 +292,7 @@ def junction_filter(results_root, config):
 
 
 def annotation(results_root, annotated_config, unannotated_config):
-    """fastder at its defaults on the annotated and the unannotated alignment."""
+    """fastder at the reference point on the annotated and the unannotated alignment."""
     require_run(results_root, unannotated_config)
     runs = ((1, annotated_config), (0, unannotated_config))
     return [number(f"annotation.{row['scenario']}."
@@ -309,7 +309,7 @@ def collect(results_root, bench_root, simulations, comparison_config=None,
     numbers = []
     for config in simulations:
         run_dir = op.join(results_root, config)
-        params = default_params(run_dir)
+        params = reference_params(run_dir)
         for section in (accuracy, overlap, boundaries, locus_recall, strand):
             numbers += section(config, run_dir, params)
         numbers += runtime(config, op.join(bench_root, config), run_label(config))
