@@ -15,6 +15,7 @@
 ##   make sim-unannotated    # the 10M reads aligned without the annotation, fastder alone
 ##   make tdp43              # TDP-43 recount3 showcase: STMN2, clean threshold
 ##   make tdp43-panel        # TDP-43 recount3 panel: 5 cryptic exons, low threshold
+##   make tdp43-ladder       # TDP-43 recount3 over a ladder of thresholds, fastder alone
 ##   make gtex               # GTEx structural-concordance atlas (genome-wide, fastder only)
 ##   make gtex-comparison    # GTEx tool comparison (chr19, all three tools)
 ##   make gtex-smoke         # reduced GTEx run, 12 BigWigs, to validate the path
@@ -117,16 +118,16 @@ endef
 
 .DEFAULT_GOAL := help
 .PHONY: help all submodules sim simulations sim-5m sim-30m sim-40m sim-replicates sim-unannotated tdp43 \
-        tdp43-panel gtex gtex-comparison gtex-smoke gtex-pick meta reports \
+        tdp43-panel tdp43-ladder gtex gtex-comparison gtex-smoke gtex-pick meta reports \
         composites figures smoke dryrun unlock envs mjr-sweep submodules-latest
 
 help:
-	@echo "Targets: submodules submodules-latest sim simulations sim-5m sim-30m sim-40m sim-replicates sim-unannotated mjr-sweep tdp43 tdp43-panel gtex gtex-comparison gtex-smoke gtex-pick meta reports composites figures smoke all dryrun unlock envs"
+	@echo "Targets: submodules submodules-latest sim simulations sim-5m sim-30m sim-40m sim-replicates sim-unannotated mjr-sweep tdp43 tdp43-panel tdp43-ladder gtex gtex-comparison gtex-smoke gtex-pick meta reports composites figures smoke all dryrun unlock envs"
 	@echo "Variables: CORES=$(CORES) ULIMIT_KB=$(ULIMIT_KB) CONDA_ENV=$(CONDA_ENV) EULER=$(EULER) EULER_CORE_BUDGET=$(EULER_CORE_BUDGET) CONDA_PREFIX_DIR=$(CONDA_PREFIX_DIR)"
 
 ## meta only needs the simulation results, so it runs before the tdp43 runs:
 ## a tdp43 failure then cannot block the cross-depth report.
-all: simulations sim-replicates sim-unannotated meta tdp43 tdp43-panel gtex gtex-comparison figures
+all: simulations sim-replicates sim-unannotated meta tdp43 tdp43-panel tdp43-ladder gtex gtex-comparison figures
 
 ## Submodules at their recorded commits. A clone leaves them empty.
 submodules:
@@ -175,6 +176,11 @@ tdp43:
 ## exon panel (STMN2, HDGFL2, ELAVL3, CELF5, KCNQ2), recovered via junctions.
 tdp43-panel:
 	$(call run,config_klim_2019_tdp43_recount3_panel.yaml,--use-conda)
+
+## TDP-43 recount3 ladder: fastder at every threshold of a ladder, and the
+## range over which each cryptic exon locus separates knockdown from control.
+tdp43-ladder:
+	$(call run,config_klim_2019_tdp43_recount3_ladder.yaml,--use-conda)
 
 ## GTEx structural-concordance atlas: fastder run genome-wide, once per tissue
 ## sub-group over the recount3 gtex data source, then the per-sub-group

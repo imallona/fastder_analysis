@@ -48,6 +48,7 @@ Our Snakemake workflow uses config files to define run properties.
 - `config_min_junction_reads_sweep.yaml`: the 10M simulated data, fastder alone at its defaults, `min_junction_reads` over 0, 1, 2, 5, 10, 20. Written by the same script.
 - `config_klim_2019_tdp43_recount3.yaml`: TDP-43 knockdown vs control, motor-neuron RNA-seq (SRP166282, GSE121569), chr8/19/20. Showcase: 1.0 CPM isolates the STMN2 cryptic exon.
 - `config_klim_2019_tdp43_recount3_panel.yaml`: same data at 0.02 CPM so the wider panel (STMN2, HDGFL2, ELAVL3, CELF5, KCNQ2) is emitted. Only STMN2 clears the noise floor; the other four are recovered through knockdown-specific junctions. No single threshold serves both, so the example runs twice.
+- `config_klim_2019_tdp43_recount3_ladder.yaml`: same data, fastder alone over a ladder of `min_coverage` values (`make tdp43-ladder`). `threshold_range_summary.csv` gives, per cryptic exon locus, the lowest and highest threshold at which a region is called in knockdown and not in control. The loci are in `config/tdp43_cryptic_exons.tsv`, with their source.
 - `config_gtex_concordance.yaml`: fastder genome-wide on four GTEx tissues, eight sub-groups each. Clustering the 32 sub-group catalogs shows region shape carries tissue identity. `tools: [fastder]`.
 - `config_gtex_comparison.yaml`: the same sub-groups on chr19 with all four tools.
 - `config_local.yaml`, `config_quick(_light).yaml`, `config_medium_light.yaml`, `config.yaml`: local FASTQ and small chr21 smoke/dev runs.
@@ -66,6 +67,7 @@ Our Snakemake workflow uses config files to define run properties.
 - `monorail.annotated_index`: `false` builds the monorail_light STAR index without `--sjdbGTFfile`. Default `true`.
 - `monorail.local_samples` / `monorail.sra_samples`: for the `local` / `sra` sources.
 - `recount3.data_source`, `study_acc`, `groups`: each group becomes one scenario, either a sample list under a shared `study_acc` or a `{study, samples}` map.
+- `threshold_range.loci`, `case`, `control`: a loci table and two scenario names. Adds `threshold_range.csv` to the run.
 - `gffcompare.reference_annotation`: truth-set annotation for real data; empty uses the downloaded reference.
 
 ## Tool comparison and params
