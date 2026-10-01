@@ -79,7 +79,9 @@ fastder:
   # site. pt0 is NOT a no-stitching corner: Integrator::within_threshold reduces
   # to exact coordinate equality at 0, so chains still form wherever an ER edge
   # lands exactly on a splice site. Use --no-stitch to turn stitching off.
-  min_coverage: [0.01, 0.05]
+  # 0.005 CPM is the reference threshold, chosen on config_threshold_ladder;
+  # 0.05 is the value fastder ships with.
+  min_coverage: [0.005, 0.05]
   min_length: [10, 25]
   position_tolerance: [0, 5, 10, 20]
   # chr21 is small and gene-poor; chr19 is the most gene-dense chromosome and
