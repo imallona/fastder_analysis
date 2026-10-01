@@ -61,8 +61,9 @@ read_run <- function(dir_path, file_name) {
 }
 
 # Mean, lowest and highest replicate of a value already averaged per replicate.
+# A replicate with no value is left out.
 across_replicates <- function(df, ...) {
-  df %>% group_by(...) %>%
+  df %>% filter(!is.na(value)) %>% group_by(...) %>%
     summarise(low = min(value), high = max(value), value = mean(value),
               .groups = "drop")
 }
