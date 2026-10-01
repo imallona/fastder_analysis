@@ -13,6 +13,7 @@
 ##   make sim-replicates     # two further draws of the 10M simulation
 ##   make mjr-sweep          # junction read-support sensitivity, reuses the 10M simulation
 ##   make sim-unannotated    # the 10M reads aligned without the annotation, fastder alone
+##   make threshold-ladder   # the 10M reads over a ladder of coverage thresholds
 ##   make tdp43              # TDP-43 recount3 showcase: STMN2, clean threshold
 ##   make tdp43-panel        # TDP-43 recount3 panel: 5 cryptic exons, low threshold
 ##   make tdp43-ladder       # TDP-43 recount3 over a ladder of thresholds, fastder alone
@@ -123,12 +124,12 @@ cd $(WORKFLOW_DIR) && bash -c '$(ACTIVATE) && FASTDER_EVAL_CONFIG=../config/$(1)
 endef
 
 .DEFAULT_GOAL := help
-.PHONY: help all submodules sim simulations sim-5m sim-30m sim-40m sim-replicates sim-unannotated tdp43 \
+.PHONY: help all submodules sim simulations sim-5m sim-30m sim-40m sim-replicates sim-unannotated threshold-ladder tdp43 \
         tdp43-panel tdp43-ladder gtex gtex-comparison gtex-smoke gtex-pick meta reports \
         composites figures smoke dryrun unlock envs mjr-sweep submodules-latest
 
 help:
-	@echo "Targets: submodules submodules-latest sim simulations sim-5m sim-30m sim-40m sim-replicates sim-unannotated mjr-sweep tdp43 tdp43-panel tdp43-ladder gtex gtex-comparison gtex-smoke gtex-pick meta reports composites figures smoke all dryrun unlock envs"
+	@echo "Targets: submodules submodules-latest sim simulations sim-5m sim-30m sim-40m sim-replicates sim-unannotated threshold-ladder mjr-sweep tdp43 tdp43-panel tdp43-ladder gtex gtex-comparison gtex-smoke gtex-pick meta reports composites figures smoke all dryrun unlock envs"
 	@echo "Variables: CORES=$(CORES) ULIMIT_KB=$(ULIMIT_KB) CONDA_ENV=$(CONDA_ENV) EULER=$(EULER) EULER_CORE_BUDGET=$(EULER_CORE_BUDGET) CONDA_PREFIX_DIR=$(CONDA_PREFIX_DIR)"
 
 ## meta only needs the simulation results, so it runs before the tdp43 runs:
@@ -167,6 +168,12 @@ sim-replicates:
 ## Reuses the simulated reads, so run after sim.
 sim-unannotated:
 	$(call run,config_unannotated_alignment.yaml,--use-conda --use-singularity)
+
+## Coverage threshold ladder for fastder, derfinder and the megadepth baseline.
+## Reuses the simulated reads, so run after sim. threshold_choice.csv names
+## the threshold with the best exon-level F1.
+threshold-ladder:
+	$(call run,config_threshold_ladder.yaml,--use-conda --use-singularity)
 
 ## min_junction_reads sweep, fastder alone. Reuses the 10M data, so run after sim.
 mjr-sweep:

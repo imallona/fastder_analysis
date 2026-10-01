@@ -215,6 +215,28 @@ rule render_benchmarks_report:
         """
 
 
+# The coverage threshold with the best exon-level F1 over a ladder run.
+rule choose_threshold:
+    input:
+        script=op.join(WORKFLOW_DIR, "scripts", "choose_threshold.py"),
+        summary=op.join(RESULTS_DIR, "summary.csv"),
+    output:
+        ladder=op.join(RESULTS_DIR, "threshold_ladder.csv"),
+        choice=op.join(RESULTS_DIR, "threshold_choice.csv"),
+    log:
+        op.join(LOG_DIR, "choose_threshold.log"),
+    resources:
+        mem_mb=2000,
+        runtime=10,
+    conda:
+        "../envs/base.yaml"
+    shell:
+        """
+        python3 {input.script} --summary {input.summary} \
+            --out-ladder {output.ladder} --out-choice {output.choice} > {log} 2>&1
+        """
+
+
 # Thresholds at which the case scenario has a called region at each locus and
 # the control scenario has none.
 rule collect_threshold_range:
