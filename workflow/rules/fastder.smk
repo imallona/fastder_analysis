@@ -391,7 +391,7 @@ rule run_fastder:
         gtf_path=op.join(FASTDER_DIR, "{scenario}", "run_fastder_{param_id}.gtf_path"),
         done=touch(op.join(FASTDER_DIR, "{scenario}", "run_fastder_{param_id}.DONE")),
     benchmark:
-        op.join(BENCH_DIR, "run_fastder", "{scenario}_{param_id}.tsv")
+        repeat(op.join(BENCH_DIR, "run_fastder", "{scenario}_{param_id}.tsv"), BENCHMARK_REPEATS)
     log:
         op.join(LOG_DIR, "run_fastder", "{scenario}_{param_id}.log")
     params:
@@ -483,7 +483,7 @@ rule run_fastder_scaling:
     output:
         done=touch(op.join(FASTDER_DIR, "scaling", "cores{ncores}.DONE")),
     benchmark:
-        op.join(BENCH_DIR, "run_fastder_scaling", "cores{ncores}.tsv")
+        repeat(op.join(BENCH_DIR, "run_fastder_scaling", "cores{ncores}.tsv"), BENCHMARK_REPEATS)
     log:
         op.join(LOG_DIR, "run_fastder_scaling", "cores{ncores}.log")
     params:

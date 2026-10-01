@@ -15,20 +15,22 @@ BENCH_COLUMNS = ["s", "h:m:s", "max_rss", "max_vms", "max_uss", "max_pss",
                  "io_in", "io_out", "mean_load", "cpu_time"]
 
 
-def write_benchmark(path, wall_s, max_rss):
+def write_benchmark(path, *repeats):
+    """One row per repeat, each a (wall_s, max_rss) pair."""
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w", newline="") as fh:
         writer = csv.DictWriter(fh, fieldnames=BENCH_COLUMNS, delimiter="\t")
         writer.writeheader()
-        writer.writerow({"s": wall_s, "h:m:s": "0:00:10", "max_rss": max_rss,
-                         "max_vms": "", "max_uss": "", "max_pss": "",
-                         "io_in": "", "io_out": "", "mean_load": "", "cpu_time": ""})
+        for wall_s, max_rss in repeats:
+            writer.writerow({"s": wall_s, "h:m:s": "0:00:10", "max_rss": max_rss,
+                             "max_vms": "", "max_uss": "", "max_pss": "",
+                             "io_in": "", "io_out": "", "mean_load": "", "cpu_time": ""})
 
 
 def make_sweep(tmp_path, points):
     for cores, wall_s, max_rss in points:
         write_benchmark(tmp_path / "run_fastder_scaling" / f"cores{cores}.tsv",
-                        wall_s, max_rss)
+                        (wall_s, max_rss))
     return tmp_path
 
 
@@ -56,6 +58,21 @@ def test_an_unsampled_run_has_no_memory_rather_than_zero(tmp_path):
     assert row["wall_s"] == pytest.approx(2.0)
 
 
+def test_repeats_are_reported_by_their_median(tmp_path):
+    write_benchmark(tmp_path / "run_fastder_scaling" / "cores2.tsv",
+                    (9.0, 2048), (3.0, 1024), (4.0, 4096))
+    row = collect(str(tmp_path))[0]
+    assert row["wall_s"] == pytest.approx(4.0)
+    assert row["peak_rss_gb"] == pytest.approx(2.0)
+    assert row["repeats"] == 3
+
+
+def test_memory_median_skips_unsampled_repeats(tmp_path):
+    write_benchmark(tmp_path / "run_fastder_scaling" / "cores2.tsv",
+                    (2.0, ""), (2.0, 1024), (2.0, 3072))
+    assert collect(str(tmp_path))[0]["peak_rss_gb"] == pytest.approx(2.0)
+
+
 def test_speedup_is_against_the_single_core_point(tmp_path):
     make_sweep(tmp_path, [(1, 100.0, 4096), (4, 25.0, 6144)])
     rows = add_speedup(collect(str(tmp_path)))
@@ -76,7 +93,7 @@ def test_written_csv_carries_every_column(tmp_path):
     write_csv(add_speedup(collect(str(tmp_path))), out)
     with open(out) as fh:
         header = next(csv.reader(fh))
-    assert header == ["cores", "wall_s", "peak_rss_gb", "speedup"]
+    assert header == ["cores", "wall_s", "peak_rss_gb", "repeats", "speedup"]
 
 
 def test_missing_sweep_is_not_an_error(tmp_path):

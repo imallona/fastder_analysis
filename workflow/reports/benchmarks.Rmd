@@ -80,6 +80,13 @@ files <- list.files(bench_dir, pattern = "\\.tsv$", recursive = TRUE, full.names
 if (length(files) == 0) {
   stop("no .tsv benchmark files found under ", bench_dir)
 }
+# A benchmark file has one row per repeat of the job.
+median_over_repeats <- function(d) {
+  d %>% summarise(s = median(as.numeric(s), na.rm = TRUE),
+                  max_rss = median(as.numeric(max_rss), na.rm = TRUE),
+                  repeats = n())
+}
+
 parse_one <- function(path) {
   rel <- sub(paste0(bench_dir, .Platform$file.sep), "", path)
   parts <- strsplit(rel, .Platform$file.sep, fixed = TRUE)[[1]]
@@ -90,7 +97,7 @@ parse_one <- function(path) {
     rule <- parts[1]
     wc   <- sub("\\.tsv$", "", paste(parts[-1], collapse = "_"))
   }
-  d <- read_tsv(path, show_col_types = FALSE)
+  d <- median_over_repeats(read_tsv(path, show_col_types = FALSE))
   d$rule <- rule
   d$wildcards <- wc
   d
@@ -159,7 +166,7 @@ df$param_id <- str_extract(df$wildcards, "mc[0-9.]+(?:_[a-z]+[0-9.]+)*")
 
 `r bench_dir` (`r length(files)` files).
 
-`max_rss` comes from snakemake's benchmark TSVs. It is the per-process peak resident set size in MiB. Snakemake samples every 0.5 s for the first 30 samples and every 30 s after that, so a rule finishing inside the first sample can have a wall clock and no memory figure. Multi-process rules report the parent only, so high-fan-out runs (derfinder loading per-sample BigWigs at once) may under-report.
+`max_rss` comes from snakemake's benchmark TSVs. It is the per-process peak resident set size in MiB. Snakemake samples every 0.5 s for the first 30 samples and every 30 s after that, so a rule finishing inside the first sample can have a wall clock and no memory figure. A job repeated through `benchmark_repeats` is reported by the median over its repeats. Multi-process rules report the parent only, so high-fan-out runs (derfinder loading per-sample BigWigs at once) may under-report.
 
 ## Benchmark machine
 
@@ -176,7 +183,7 @@ if (!is.null(params$host_info) && nzchar(params$host_info) && file.exists(params
 ```{r table, results = "asis"}
 cat('<details><summary>Click to expand the full per-invocation table</summary>\n\n')
 cat(knitr::kable(
-  df %>% select(rule, wildcards, wall_s, max_rss_mb) %>% arrange(rule, wildcards),
+  df %>% select(rule, wildcards, repeats, wall_s, max_rss_mb) %>% arrange(rule, wildcards),
   digits = 1, format = "html"
 ))
 cat('\n\n</details>\n\n')
