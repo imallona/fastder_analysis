@@ -161,11 +161,10 @@ panel_speed <- function(bench_dir) {
     theme_pub_square()
 }
 
-# Results tree to read. Defaults to the local mirror; the snakemake rule sets
-# FASTDER_RESULTS_ROOT to the workflow results directory for a barbara rerun.
-RESULTS_ROOT <- Sys.getenv("FASTDER_RESULTS_ROOT",
-                           "/home/imallona/src/writing_fastder/barbara_results/results")
-FIG_DIR <- Sys.getenv("FASTDER_FIG_DIR", "/home/imallona/src/writing_fastder/figures")
+# Results tree to read. The snakemake rules set both variables; the defaults
+# are the workflow's own directories, relative to workflow/.
+RESULTS_ROOT <- Sys.getenv("FASTDER_RESULTS_ROOT", "results")
+FIG_DIR <- Sys.getenv("FASTDER_FIG_DIR", file.path("results", "figures"))
 
 # Read one CSV from every config_full_simulation* run, stamping the depth and
 # the replicate its name encodes (the base config is 10M, replicate 1). Mirrors

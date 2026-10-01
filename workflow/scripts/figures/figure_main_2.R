@@ -8,7 +8,7 @@
 
 args <- commandArgs(trailingOnly = TRUE)
 out <- if (length(args) >= 1) args[[1]] else "figure_main_2.pdf"
-fig_dir <- Sys.getenv("FASTDER_FIG_DIR", "/home/imallona/src/writing_fastder/figures")
+fig_dir <- Sys.getenv("FASTDER_FIG_DIR", file.path("results", "figures"))
 TDP <- "config_klim_2019_tdp43_recount3"
 GTX <- "config_gtex_comparison"
 

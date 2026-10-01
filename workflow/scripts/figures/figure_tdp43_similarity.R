@@ -1,9 +1,9 @@
 # TDP-43 knockdown vs control structural similarity: exonic base-pair Jaccard of
 # the fastder ER segmentations (2x2).
-# Needs the per-group gffcompare.annotated.gtf pulled from barbara.
+# Needs the per-group gffcompare.annotated.gtf of the TDP-43 runs.
 
 args <- commandArgs(trailingOnly = TRUE)
-fig_dir <- Sys.getenv("FASTDER_FIG_DIR", "/home/imallona/src/writing_fastder/figures")
+fig_dir <- Sys.getenv("FASTDER_FIG_DIR", file.path("results", "figures"))
 out <- if (length(args) >= 1) args[[1]] else file.path(fig_dir, "fig_tdp43_similarity.pdf")
 
 source(file.path(dirname(sub("--file=", "",

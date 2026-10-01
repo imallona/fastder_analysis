@@ -297,7 +297,7 @@ SCALING_SCENARIO = FASTDER_CFG.get("scaling_scenario") or (SCENARIOS[0] if SCENA
 # loci. Needs loci (a TSV with ce_start and ce_end), case and control.
 THRESHOLD_RANGE = config.get("threshold_range") or {}
 
-# Memory requests in MB, from the first submission's peak resident sets:
+# Memory requests in MB, from the peak resident sets of earlier runs:
 # under 2 GB per chromosome, 30 GB at most genome-wide.
 FASTDER_MEM_MB = 8000 if FASTDER_CFG.get("chromosomes") else 48000
 # Each parsing thread holds one sample, so memory grows with cores.
