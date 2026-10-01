@@ -51,6 +51,7 @@ Our Snakemake workflow uses config files to define run properties.
 - `config_klim_2019_tdp43_recount3_panel.yaml`: same data at 0.02 CPM so the wider panel (STMN2, HDGFL2, ELAVL3, CELF5, KCNQ2) is emitted. Only STMN2 clears the noise floor; the other four are recovered through knockdown-specific junctions. No single threshold serves both, so the example runs twice.
 - `config_klim_2019_tdp43_recount3_ladder.yaml`: same data, fastder alone over a ladder of `min_coverage` values (`make tdp43-ladder`). `threshold_range_summary.csv` gives, per cryptic exon locus, the lowest and highest threshold at which a region is called in knockdown and not in control. The loci are in `config/tdp43_cryptic_exons.tsv`, with their source.
 - `config_gtex_concordance.yaml`: fastder genome-wide on four GTEx tissues, eight sub-groups each. Clustering the 32 sub-group catalogs shows region shape carries tissue identity. `tools: [fastder]`.
+- `config_gtex_threshold_ladder.yaml`: the first sub-group of each tissue on chr19, three tools over ten `min_coverage` values (`make gtex-threshold-ladder`). `threshold_choice.csv` flags the threshold with the best exon-level F1 against the annotation. Written by `workflow/scripts/make_gtex_ladder_config.py`.
 - `config_gtex_comparison.yaml`: the same sub-groups on chr19 with all four tools.
 - `config_local.yaml`, `config_quick(_light).yaml`, `config_medium_light.yaml`, `config.yaml`: local FASTQ and small chr21 smoke/dev runs.
 
