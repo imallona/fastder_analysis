@@ -493,9 +493,11 @@ panel_tdp43_jaccard <- function(csv = TDP43_JACCARD_CSV) {
 # gffcompare level: "exon" or "transcript".
 panel_gtexcmp_precision <- function(config = GTEXCMP, level = "exon") {
   col <- if (level == "transcript") "transcript_prec" else "exon_prec"
+  # groHMM is left out at the exon level, as in the simulation panels.
+  tools <- if (level == "exon") EXON_LEVEL_TOOLS else TOOLS
   d <- read_result(config, "summary.csv") %>%
     group_by(tool) %>% summarise(prec = median(.data[[col]], na.rm = TRUE), .groups = "drop") %>%
-    filter(tool %in% TOOLS)
+    filter(tool %in% tools)
   ggplot(d, aes(reorder(tool, -prec), prec, fill = tool)) +
     geom_col(width = 0.45) +
     scale_fill_manual(values = tool_palette, guide = "none") +

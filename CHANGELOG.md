@@ -10,6 +10,7 @@
 - Local runs make three passes: inputs, timed rules, the rest. Timed rules run one job at a time. Their inputs are read once first, except on a dry run.
 - `run_fastder` takes threads from `FASTDER_CORES`. `fastder.cores` sets it. `config["cores"]` is the fallback.
 - Main Figure 1 drops two panels. Both plotted three tools at zero. groHMM leaves the exon accuracy and boundary panels. Its 50 nt binning cannot place exon boundaries. groHMM stays in the CDF and base-level panels. The figure runs A to F. Manuscript panel citations must move.
+- The GTEx exon precision panel leaves groHMM out, as the simulation exon panels do.
 - Main Figure 2 drops the transcript-level panel. That level measures isoform reconstruction. No tool in the comparison attempts it. It now writes `supp_gtex_transcript_precision.pdf` instead. Nothing is deleted, so no number disappears. The figure runs A to J.
 - `config_full_simulation.yaml`: `fastder.cores` is 1.
 - `config_full_simulation.yaml`: chromosomes are chr21 and chr19. It was chr21 alone.
