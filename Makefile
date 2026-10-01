@@ -20,6 +20,7 @@
 ##   make gtex               # GTEx structural-concordance atlas (genome-wide, fastder only)
 ##   make gtex-comparison    # GTEx tool comparison (chr19, all three tools)
 ##   make gtex-smoke         # reduced GTEx run, 12 BigWigs, to validate the path
+##   make gtex-threshold-ladder  # one sub-group per tissue over a ladder of coverage thresholds
 ##   make gtex-pick          # rewrite the gtex configs to cover the configured tissue set (BLOOD BRAIN HEART MUSCLE LIVER LUNG TESTIS ADIPOSE_TISSUE by default)
 ##   make meta               # render the depth-sweep report (after the runs)
 ##   make reports            # re-render the figure-feeding reports (PDFs included)
@@ -125,11 +126,11 @@ endef
 
 .DEFAULT_GOAL := help
 .PHONY: help all submodules sim simulations sim-5m sim-30m sim-40m sim-replicates sim-unannotated threshold-ladder tdp43 \
-        tdp43-panel tdp43-ladder gtex gtex-comparison gtex-smoke gtex-pick meta reports \
+        tdp43-panel tdp43-ladder gtex gtex-comparison gtex-smoke gtex-threshold-ladder gtex-pick meta reports \
         composites figures smoke dryrun unlock envs mjr-sweep submodules-latest
 
 help:
-	@echo "Targets: submodules submodules-latest sim simulations sim-5m sim-30m sim-40m sim-replicates sim-unannotated threshold-ladder mjr-sweep tdp43 tdp43-panel tdp43-ladder gtex gtex-comparison gtex-smoke gtex-pick meta reports composites figures smoke all dryrun unlock envs"
+	@echo "Targets: submodules submodules-latest sim simulations sim-5m sim-30m sim-40m sim-replicates sim-unannotated threshold-ladder mjr-sweep tdp43 tdp43-panel tdp43-ladder gtex gtex-comparison gtex-smoke gtex-threshold-ladder gtex-pick meta reports composites figures smoke all dryrun unlock envs"
 	@echo "Variables: CORES=$(CORES) ULIMIT_KB=$(ULIMIT_KB) CONDA_ENV=$(CONDA_ENV) EULER=$(EULER) EULER_CORE_BUDGET=$(EULER_CORE_BUDGET) CONDA_PREFIX_DIR=$(CONDA_PREFIX_DIR)"
 
 ## meta only needs the simulation results, so it runs before the tdp43 runs:
@@ -212,6 +213,12 @@ gtex-comparison:
 ## whole gtex path cheaply; run it before make gtex to validate.
 gtex-smoke:
 	$(call run,config_gtex_smoke.yaml,--use-conda)
+
+## GTEx coverage threshold ladder: one sub-group per tissue, chr19, three
+## tools. threshold_choice.csv names the threshold with the best exon-level F1
+## against the annotation.
+gtex-threshold-ladder:
+	$(call run,config_gtex_threshold_ladder.yaml,--use-conda)
 
 ## Rewrite the recount3.groups block of both GTEx configs to cover the
 ## listed tissues. Existing tissues keep their sample IDs exactly (so
