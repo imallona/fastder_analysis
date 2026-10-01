@@ -49,7 +49,7 @@ rule run_derfinder:
     output:
         gtf=op.join(TOOLS_DIR, "derfinder", "{scenario}", "{param_id}", "output.gtf"),
     benchmark:
-        op.join(BENCH_DIR, "run_derfinder", "{scenario}_{param_id}.tsv")
+        repeat(op.join(BENCH_DIR, "run_derfinder", "{scenario}_{param_id}.tsv"), BENCHMARK_REPEATS)
     log:
         op.join(LOG_DIR, "run_derfinder", "{scenario}_{param_id}.log"),
     params:
@@ -90,7 +90,7 @@ rule run_megadepth_baseline:
     output:
         gtf=op.join(TOOLS_DIR, "megadepth_baseline", "{scenario}", "{param_id}", "output.gtf"),
     benchmark:
-        op.join(BENCH_DIR, "run_megadepth_baseline", "{scenario}_{param_id}.tsv")
+        repeat(op.join(BENCH_DIR, "run_megadepth_baseline", "{scenario}_{param_id}.tsv"), BENCHMARK_REPEATS)
     log:
         op.join(LOG_DIR, "run_megadepth_baseline", "{scenario}_{param_id}.log"),
     params:
@@ -133,7 +133,7 @@ rule run_grohmm:
     output:
         gtf=op.join(TOOLS_DIR, "grohmm", "{scenario}", "{param_id}", "output.gtf"),
     benchmark:
-        op.join(BENCH_DIR, "run_grohmm", "{scenario}_{param_id}.tsv")
+        repeat(op.join(BENCH_DIR, "run_grohmm", "{scenario}_{param_id}.tsv"), BENCHMARK_REPEATS)
     log:
         op.join(LOG_DIR, "run_grohmm", "{scenario}_{param_id}.log"),
     params:

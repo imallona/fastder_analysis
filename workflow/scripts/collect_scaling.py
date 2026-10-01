@@ -1,8 +1,9 @@
 """Tidy table for the core scaling sweep.
 
-run_fastder_scaling writes one benchmark TSV per core count. Memory is
-reported next to wall time: each parsing thread holds one sample, so cores are
-traded against memory.
+run_fastder_scaling writes one benchmark TSV per core count, with one row per
+repeat; each core count is reported by its median. Memory is reported next to
+wall time: each parsing thread holds one sample, so cores are traded against
+memory.
 
 Usage:
     python collect_scaling.py --bench-dir <dir> --out <csv>
@@ -12,6 +13,7 @@ import csv
 import os.path as op
 import re
 from glob import glob
+from statistics import median
 
 MB_PER_GB = 1024.0
 
@@ -36,33 +38,34 @@ def collect(bench_dir):
         cores = cores_of(path)
         if cores is None:
             continue
-        for record in read_benchmark(path):
-            wall = record.get("s")
-            rss = record.get("max_rss")
-            if wall in (None, ""):
-                continue
-            rows.append({
-                "cores": cores,
-                "wall_s": float(wall),
-                # max_rss is in MB and is empty for a run that finished inside
-                # the first sampling interval.
-                "peak_rss_gb": float(rss) / MB_PER_GB if rss not in (None, "", "-") else "",
-            })
+        records = read_benchmark(path)
+        walls = [float(r["s"]) for r in records if r.get("s") not in (None, "")]
+        # max_rss is in MB and is empty for a run that finished inside the
+        # first sampling interval.
+        rss = [float(r["max_rss"]) for r in records
+               if r.get("max_rss") not in (None, "", "-")]
+        if not walls:
+            continue
+        rows.append({
+            "cores": cores,
+            "wall_s": median(walls),
+            "peak_rss_gb": median(rss) / MB_PER_GB if rss else "",
+            "repeats": len(walls),
+        })
     rows.sort(key=lambda r: r["cores"])
     return rows
 
 
 def add_speedup(rows):
     """Speedup against the single-core point, when there is one."""
-    single = [r["wall_s"] for r in rows if r["cores"] == 1]
-    baseline = min(single) if single else None
+    baseline = next((r["wall_s"] for r in rows if r["cores"] == 1), None)
     for row in rows:
         row["speedup"] = baseline / row["wall_s"] if baseline and row["wall_s"] else ""
     return rows
 
 
 def write_csv(rows, path):
-    columns = ["cores", "wall_s", "peak_rss_gb", "speedup"]
+    columns = ["cores", "wall_s", "peak_rss_gb", "repeats", "speedup"]
     with open(path, "w", newline="") as fh:
         writer = csv.DictWriter(fh, fieldnames=columns)
         writer.writeheader()

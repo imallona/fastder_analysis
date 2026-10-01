@@ -123,7 +123,10 @@ load_benchmarks <- function(bench_dir) {
     rel <- sub(paste0(bench_dir, .Platform$file.sep), "", path)
     parts <- strsplit(rel, .Platform$file.sep, fixed = TRUE)[[1]]
     rule <- parts[1]
-    d <- read_tsv(path, show_col_types = FALSE)
+    # One row per repeat of the job; keep the median.
+    d <- read_tsv(path, show_col_types = FALSE) %>%
+      summarise(s = median(as.numeric(s), na.rm = TRUE),
+                max_rss = median(as.numeric(max_rss), na.rm = TRUE))
     d$rule <- rule
     d
   }

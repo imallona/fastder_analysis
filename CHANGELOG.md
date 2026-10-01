@@ -28,6 +28,7 @@
 - Grid support for `min_junction_reads` (`mjr`) and `no_stitch` (`ns`). `no_stitch` is a switch. The flag is passed only when true.
 - `config_full_simulation.yaml`: `no_stitch: [false, true]`.
 - Rule `run_fastder_scaling`, timing fastder at each core count. It reads `fastder.scaling_cores` and `fastder.scaling_scenario`. An empty `scaling_cores` leaves it out.
+- `benchmark_repeats`, default 1, repeats each timed job. Reports and `scaling.csv` use the median. The simulation and GTEx configs set 3.
 - `config_gtex_concordance.yaml`: `scaling_cores: [1, 2, 4, 8, 16]`.
 - `config_full_simulation.yaml`: `scaling_cores: [1, 2, 4, 8, 16]`. It contrasts with the genome-wide sweep. Parsing saturates at ten samples. Averaging saturates at two chromosomes. `make_sim_configs.py` drops the key from depth configs.
 - Every executing rule declares `mem_mb` and `runtime`. Both bound concurrency locally through `--resources`. Both become scheduler requests on a cluster. The fastder rules size their request by scope. Benchmarks peaked under 2 GB per chromosome. They peaked at 30 GB genome-wide.

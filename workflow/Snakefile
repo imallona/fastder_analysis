@@ -27,6 +27,9 @@ LOG_DIR = op.join(WORKFLOW_DIR, "logs")
 # second config does not overwrite the first config's benchmark TSVs.
 BENCH_DIR = op.join(LOG_DIR, "benchmarks", CONFIG_BASENAME)
 
+# Times each timed rule runs. The readers take the median over its repeats.
+BENCHMARK_REPEATS = int(config.get("benchmark_repeats", 1))
+
 # Monorail
 MONORAIL_EXTERNAL = op.join(WORKFLOW_DIR, "external", "monorail-external")
 MONORAIL_REF_DIR = op.join(DATA_DIR, "monorail_refs")
