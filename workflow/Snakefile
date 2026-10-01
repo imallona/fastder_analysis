@@ -472,6 +472,8 @@ rule all:
         op.join(RESULTS_DIR, "truth_chain_stats.csv"),
         op.join(RESULTS_DIR, "tool_versions.csv"),
         *([op.join(RESULTS_DIR, "threshold_range.csv")] if THRESHOLD_RANGE else []),
+        *([op.join(RESULTS_DIR, "threshold_choice.csv")]
+          if config.get("threshold_choice") else []),
         # The recount3 backend adds a report comparing the sample groups.
         # The gtex data source gets the structural-concordance report
         # instead, which compares the per-tissue expressed-region catalogs.
