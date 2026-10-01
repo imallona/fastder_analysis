@@ -10,6 +10,7 @@
 ##   make submodules-latest  # move them to the tip of the branch each tracks
 ##   make sim                # the 10M paper simulation run
 ##   make simulations        # the full depth sweep: 5M, 10M, 30M, 40M
+##   make sim-replicates     # two further draws of the 10M simulation
 ##   make mjr-sweep          # junction read-support sensitivity, reuses the 10M simulation
 ##   make tdp43              # TDP-43 recount3 showcase: STMN2, clean threshold
 ##   make tdp43-panel        # TDP-43 recount3 panel: 5 cryptic exons, low threshold
@@ -22,7 +23,7 @@
 ##   make composites         # assemble the two composite figures
 ##   make figures            # reports then composites
 ##   make smoke              # quick 2-sample smoke test
-##   make all                # simulations, meta, both tdp43 runs, then gtex
+##   make all                # simulations, replicates, meta, both tdp43 runs, then gtex
 ##   make dryrun             # snakemake -n for the 10M simulation config
 ##   make unlock             # release a stale snakemake lock
 ##   make envs               # build every conda environment without running anything
@@ -114,17 +115,17 @@ cd $(WORKFLOW_DIR) && bash -c '$(ACTIVATE) && FASTDER_EVAL_CONFIG=../config/$(1)
 endef
 
 .DEFAULT_GOAL := help
-.PHONY: help all submodules sim simulations sim-5m sim-30m sim-40m tdp43 \
+.PHONY: help all submodules sim simulations sim-5m sim-30m sim-40m sim-replicates tdp43 \
         tdp43-panel gtex gtex-comparison gtex-smoke gtex-pick meta reports \
         composites figures smoke dryrun unlock envs mjr-sweep submodules-latest
 
 help:
-	@echo "Targets: submodules submodules-latest sim simulations sim-5m sim-30m sim-40m mjr-sweep tdp43 tdp43-panel gtex gtex-comparison gtex-smoke gtex-pick meta reports composites figures smoke all dryrun unlock envs"
+	@echo "Targets: submodules submodules-latest sim simulations sim-5m sim-30m sim-40m sim-replicates mjr-sweep tdp43 tdp43-panel gtex gtex-comparison gtex-smoke gtex-pick meta reports composites figures smoke all dryrun unlock envs"
 	@echo "Variables: CORES=$(CORES) ULIMIT_KB=$(ULIMIT_KB) CONDA_ENV=$(CONDA_ENV) EULER=$(EULER) EULER_CORE_BUDGET=$(EULER_CORE_BUDGET) CONDA_PREFIX_DIR=$(CONDA_PREFIX_DIR)"
 
 ## meta only needs the simulation results, so it runs before the tdp43 runs:
 ## a tdp43 failure then cannot block the cross-depth report.
-all: simulations meta tdp43 tdp43-panel gtex gtex-comparison figures
+all: simulations sim-replicates meta tdp43 tdp43-panel gtex gtex-comparison figures
 
 ## Submodules at their recorded commits. A clone leaves them empty.
 submodules:
@@ -148,6 +149,11 @@ sim-30m:
 
 sim-40m:
 	$(call run,config_full_simulation_40M.yaml,--use-conda --use-singularity)
+
+## The 10M simulation drawn again under other seeds.
+sim-replicates:
+	$(call run,config_full_simulation_rep2.yaml,--use-conda --use-singularity)
+	$(call run,config_full_simulation_rep3.yaml,--use-conda --use-singularity)
 
 ## min_junction_reads sweep, fastder alone. Reuses the 10M data, so run after sim.
 mjr-sweep:

@@ -14,6 +14,7 @@ from collect_param_sweeps import (
     collect,
     comparable,
     depth_of,
+    replicate_of,
     write_csv,
 )
 from param_grid import param_id, parse_param_id
@@ -46,6 +47,23 @@ def summary_row(param, sens, prec, scenario="variant_only", tool="fastder"):
 def test_depth_of_reads_the_suffix_and_defaults_to_ten():
     assert depth_of("/x/config_full_simulation_40M") == 40
     assert depth_of("/x/config_full_simulation") == 10
+
+
+def test_replicate_of_reads_the_suffix_and_defaults_to_one():
+    assert replicate_of("/x/config_full_simulation_rep3") == 3
+    assert replicate_of("/x/config_full_simulation") == 1
+    assert depth_of("/x/config_full_simulation_rep3") == 10
+
+
+def test_replicates_stay_separate_rows(tmp_path):
+    make_run(tmp_path, "config_full_simulation",
+             [summary_row("mc0.05_ml10_pt5_ns0", 60, 62)])
+    make_run(tmp_path, "config_full_simulation_rep2",
+             [summary_row("mc0.05_ml10_pt5_ns0", 70, 72)])
+    rows = collect(str(tmp_path), "no_stitch")
+    by_replicate = {r["replicate"]: r["value"] for r in rows if r["metric"] == "exon_sens"}
+    assert by_replicate == {1: 60.0, 2: 70.0}
+    assert {r["depth_M"] for r in rows} == {10}
 
 
 def test_absent_axis_means_the_published_behaviour():
@@ -120,7 +138,7 @@ def test_written_csv_has_the_axis_as_a_column(tmp_path):
     write_csv(rows, out, "no_stitch")
     with open(out) as fh:
         header = next(csv.reader(fh))
-    assert header == ["depth_M", "scenario", "tool", "no_stitch", "metric", "value", "n"]
+    assert header == ["depth_M", "replicate", "scenario", "tool", "no_stitch", "metric", "value", "n"]
 
 
 def test_missing_results_directory_is_not_an_error(tmp_path):

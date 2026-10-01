@@ -31,7 +31,9 @@ tool_palette <- c(
 This report stitches the per-depth simulation runs into one view. Each run is
 a separate config (`config_full_simulation.yaml` for 10M reads,
 `config_full_simulation_<N>M.yaml` for the others) with its own results
-directory. The figures show how detection scales with sequencing depth.
+directory. The figures show how detection scales with sequencing depth. A depth
+drawn more than once (`config_full_simulation_rep<N>.yaml`) is shown by its
+mean, with a bar from the lowest to the highest replicate.
 
 ```{r load}
 root <- params$results_root
@@ -44,11 +46,25 @@ depth_of <- function(dir_name) {
   if (is.na(m)) 10L else as.integer(m)
 }
 
+# The base config is replicate 1; the _rep<N> variants name theirs.
+replicate_of <- function(dir_name) {
+  m <- str_match(dir_name, "_rep([0-9]+)$")[, 2]
+  if (is.na(m)) 1L else as.integer(m)
+}
+
 read_run <- function(dir_path, file_name) {
   path <- file.path(dir_path, file_name)
   if (!file.exists(path)) return(NULL)
   read_csv(path, show_col_types = FALSE) %>%
-    mutate(depth_M = depth_of(basename(dir_path)))
+    mutate(depth_M = depth_of(basename(dir_path)),
+           replicate = replicate_of(basename(dir_path)))
+}
+
+# Mean, lowest and highest replicate of a value already averaged per replicate.
+across_replicates <- function(df, ...) {
+  df %>% group_by(...) %>%
+    summarise(low = min(value), high = max(value), value = mean(value),
+              .groups = "drop")
 }
 
 # The fastder grid carries two axes that are not accuracy settings: the
@@ -73,8 +89,9 @@ if (is.null(summary_all) || nrow(summary_all) == 0) {
   config_full_simulation configs first (see the Makefile).")
 }
 knitr::kable(
-  summary_all %>% distinct(depth_M) %>% arrange(depth_M),
-  caption = "Sequencing depths found", col.names = "depth (M reads/sample)")
+  summary_all %>% distinct(depth_M, replicate) %>% count(depth_M, name = "replicates"),
+  caption = "Sequencing depths found",
+  col.names = c("depth (M reads/sample)", "replicates"))
 ```
 
 ## Sensitivity and precision versus depth
@@ -84,18 +101,20 @@ and parameter combinations, line per tool, faceted by scenario.
 
 ```{r sens_prec}
 levels_long <- bind_rows(
-  summary_all %>% transmute(tool, scenario, depth_M, level = "Transcript",
+  summary_all %>% transmute(tool, scenario, depth_M, replicate, level = "Transcript",
                             sensitivity = transcript_sens,
                             precision = transcript_prec),
-  summary_all %>% transmute(tool, scenario, depth_M, level = "Exon",
+  summary_all %>% transmute(tool, scenario, depth_M, replicate, level = "Exon",
                             sensitivity = exon_sens, precision = exon_prec)
 ) %>%
   pivot_longer(c(sensitivity, precision),
                names_to = "metric", values_to = "value") %>%
-  group_by(tool, scenario, depth_M, level, metric) %>%
-  summarise(value = mean(value, na.rm = TRUE), .groups = "drop")
+  group_by(tool, scenario, depth_M, replicate, level, metric) %>%
+  summarise(value = mean(value, na.rm = TRUE), .groups = "drop") %>%
+  across_replicates(tool, scenario, depth_M, level, metric)
 
 ggplot(levels_long, aes(x = depth_M, y = value, colour = tool, shape = tool)) +
+  geom_linerange(aes(ymin = low, ymax = high), show.legend = FALSE) +
   geom_line(linewidth = 0.7) +
   geom_point(size = 2.4) +
   scale_x_continuous(trans = "log10", breaks = sort(unique(levels_long$depth_M))) +
@@ -117,11 +136,14 @@ averaged across samples and parameter combinations.
 if (!is.null(distances_all) && nrow(distances_all) > 0) {
   b5 <- distances_all %>%
     mutate(distance = as.integer(distance)) %>%
-    group_by(tool, scenario, depth_M, sample, param_id) %>%
+    group_by(tool, scenario, depth_M, replicate, sample, param_id) %>%
     summarise(pct = mean(abs(distance) <= 5) * 100, .groups = "drop") %>%
-    group_by(tool, scenario, depth_M) %>%
-    summarise(pct = mean(pct), .groups = "drop")
+    group_by(tool, scenario, depth_M, replicate) %>%
+    summarise(value = mean(pct), .groups = "drop") %>%
+    across_replicates(tool, scenario, depth_M) %>%
+    rename(pct = value)
   ggplot(b5, aes(x = depth_M, y = pct, colour = tool, shape = tool)) +
+    geom_linerange(aes(ymin = low, ymax = high), show.legend = FALSE) +
     geom_line(linewidth = 0.7) +
     geom_point(size = 2.4) +
     scale_x_continuous(trans = "log10", breaks = sort(unique(b5$depth_M))) +

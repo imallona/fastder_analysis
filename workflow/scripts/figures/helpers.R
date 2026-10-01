@@ -626,7 +626,11 @@ panel_ablation <- function(path = file.path(FIG_DIR, "ablation.csv")) {
                            labels = unname(metric_labels)),
            scenario = relabel_scenario(scenario))
   save_panel_data(d, "panel_ablation")
+  # Mean over replicates; the bar spans them where a depth has several.
+  d <- d %>% group_by(depth_M, scenario, arm, metric) %>%
+    summarise(low = min(value), high = max(value), value = mean(value), .groups = "drop")
   ggplot(d, aes(depth_M, value, colour = arm, shape = arm, linetype = arm)) +
+    geom_linerange(aes(ymin = low, ymax = high), linetype = "solid", show.legend = FALSE) +
     geom_line(linewidth = 0.7) + geom_point(size = 2.4) +
     scale_x_continuous(trans = "log10", breaks = sort(unique(d$depth_M))) +
     scale_colour_manual(values = c("#FC8D62", "#7F7F7F"), name = NULL) +
@@ -646,6 +650,8 @@ panel_min_junction_reads <- function(path = file.path(FIG_DIR, "min_junction_rea
                            labels = unname(metric_labels)),
            scenario = relabel_scenario(scenario))
   save_panel_data(d, "panel_min_junction_reads")
+  d <- d %>% group_by(min_junction_reads, scenario, metric) %>%
+    summarise(value = mean(value), .groups = "drop")
   ggplot(d, aes(min_junction_reads, value, colour = scenario, shape = scenario)) +
     geom_line(linewidth = 0.7) + geom_point(size = 2.4) +
     scale_x_continuous(trans = "log1p", breaks = sort(unique(d$min_junction_reads))) +
