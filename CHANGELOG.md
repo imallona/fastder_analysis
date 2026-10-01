@@ -57,6 +57,7 @@
 
 ### Fixed
 
+- The timed pass uses Snakemake's greedy scheduler. The default one ran its solver on about eight cores while a tool was being timed.
 - Simulated reads are stored gzipped. `runASimulatoR.R` compresses them after the simulation. `make_scenario.py` writes its filtered copy compressed. STAR reads them with `--readFilesCommand zcat`. Plain FASTQ was about 680 GB. Compressed it is about 170 GB. Uncompressed reads on disk will re-simulate.
 - Scenario FASTQ files and sorted BAMs are `temp()`. Nothing was reclaimed as the DAG advanced. The BAMs held 110 GB too. BigWigs, junction tables and results survive. ASimulatoR reads stay, being costly to regenerate.
 - Tool inputs and outputs are kept per config, under `data/fastder/<config>` and `data/tools/<config>`. Alignments are keyed by read depth and chromosome scope. Configs sharing both reuse them. A second config no longer overwrites the first. `make dryrun` plans with the flags of a run.

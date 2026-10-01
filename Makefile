@@ -93,11 +93,14 @@ if [ -d data/fastder/$(basename $(1)) ]; then \
 endef
 
 ## The timed rules, one job at a time: every job of this pass books the one
-## timed slot. A dry run reads nothing. $(1) config file, $(2) snakemake flags.
+## timed slot. The greedy scheduler is used because the default one runs its
+## solver on every core while a job is being timed. A dry run reads nothing.
+## $(1) config file, $(2) snakemake flags.
 define timed_pass
 $(if $(filter -n --dry-run --dryrun,$(EXTRA)),,$(call warm_inputs,$(1))) \
   snakemake --cores $(TIMED_CORES) -p $(CONDA_PREFIX_FLAG) $(EXTRA) $(2) \
-    --until $(TIMED_RULES) --default-resources timed=1 --resources timed=1
+    --until $(TIMED_RULES) --scheduler greedy \
+    --default-resources timed=1 --resources timed=1
 endef
 
 ## Run one config. Locally in three passes, so that no timed job shares the
