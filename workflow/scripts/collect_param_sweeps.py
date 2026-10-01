@@ -1,13 +1,15 @@
-"""Tidy tables for the two single-axis fastder sweeps.
+"""Tidy tables for the single-axis fastder comparisons.
 
 Every parameter stays at its shipped default while one axis moves: --no-stitch
-for the ablation, --min-junction-reads for the read-support sweep. Accuracy
+for the ablation, --min-junction-reads for the read-support sweep, and the
+STAR index, with or without the annotation, for annotated_index. Accuracy
 comes from summary.csv, boundary distances from fuzzy_distances.csv, averaged
 over the samples of a scenario.
 
 Usage:
     python collect_param_sweeps.py --axis no_stitch --results-root <dir> --out <csv>
     python collect_param_sweeps.py --axis min_junction_reads --results-root <dir> --out <csv>
+    python collect_param_sweeps.py --axis annotated_index --results-root <dir> --out <csv>
 """
 import argparse
 import csv
@@ -24,6 +26,9 @@ DEFAULTS = {"min_coverage": 0.05, "min_length": 10, "position_tolerance": 5,
             "min_junction_reads": 0}
 
 BOUNDARY_WINDOW_BP = 5
+
+# The two alignments of the 10M reads, by whether the index held the annotation.
+ANNOTATION_RUNS = ((1, "config_full_simulation"), (0, "config_unannotated_alignment"))
 
 
 def depth_of(run_dir):
@@ -139,6 +144,30 @@ def collect(results_root, axis, tool="fastder", prefix="config_full_simulation")
     return rows
 
 
+def collect_annotation(results_root, tool="fastder", runs=ANNOTATION_RUNS):
+    """One row per alignment, scenario and metric, stitched runs at the defaults."""
+    rows = []
+    for annotated, name in runs:
+        run_dir = op.join(results_root, name)
+        gathered = accuracy_rows(run_dir, "no_stitch", tool)
+        for key, values in boundary_rows(run_dir, "no_stitch", tool).items():
+            gathered[key].extend(values)
+        for (scenario, unstitched, metric), values in sorted(gathered.items()):
+            if unstitched:
+                continue
+            rows.append({
+                "depth_M": depth_of(run_dir),
+                "replicate": replicate_of(run_dir),
+                "scenario": scenario,
+                "tool": tool,
+                "annotated_index": annotated,
+                "metric": metric,
+                "value": sum(values) / len(values),
+                "n": len(values),
+            })
+    return rows
+
+
 def write_csv(rows, path, axis):
     columns = ["depth_M", "replicate", "scenario", "tool", axis, "metric", "value", "n"]
     with open(path, "w", newline="") as fh:
@@ -150,7 +179,7 @@ def write_csv(rows, path, axis):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--axis", required=True,
-                        choices=["no_stitch", "min_junction_reads"])
+                        choices=["no_stitch", "min_junction_reads", "annotated_index"])
     parser.add_argument("--results-root", required=True,
                         help="workflow/results, holding one directory per config")
     parser.add_argument("--config-prefix", default="config_full_simulation",
@@ -158,7 +187,10 @@ def main():
     parser.add_argument("--out", required=True)
     args = parser.parse_args()
 
-    rows = collect(args.results_root, args.axis, prefix=args.config_prefix)
+    if args.axis == "annotated_index":
+        rows = collect_annotation(args.results_root)
+    else:
+        rows = collect(args.results_root, args.axis, prefix=args.config_prefix)
     write_csv(rows, args.out, args.axis)
     print(f"wrote {len(rows)} rows to {args.out}")
 

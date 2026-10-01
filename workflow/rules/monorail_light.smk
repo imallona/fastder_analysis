@@ -22,6 +22,7 @@ rule ml_star_index:
         op.join(LOG_DIR, "ml_star_index.log"),
     params:
         idx_dir=LIGHT_STAR_IDX,
+        annotated=ANNOTATED_INDEX,
     threads: config["cores"]
     resources:
         mem_mb=32000,
@@ -55,11 +56,14 @@ rule ml_star_index:
         # genomeSAindexNbases must be tuned down for small genomes (STAR manual).
         genome_size=$(cat "${{fastas[@]}}" | awk '!/^>/{{tot+=length($0)}} END{{print tot}}')
         sa=$(python3 -c "import math; print(min(14, int(math.log2($genome_size)/2 - 1)))")
+        sjdb=()
+        if [ "{params.annotated}" = "True" ]; then
+            sjdb=(--sjdbGTFfile "$tmpdir/annotation.gtf" --sjdbOverhang 100)
+        fi
         STAR --runMode genomeGenerate \
             --genomeDir {params.idx_dir} \
             --genomeFastaFiles "${{fastas[@]}}" \
-            --sjdbGTFfile "$tmpdir/annotation.gtf" \
-            --sjdbOverhang 100 \
+            "${{sjdb[@]}}" \
             --genomeSAindexNbases "$sa" \
             --runThreadN {threads} > {log} 2>&1
         rm -rf "$tmpdir"

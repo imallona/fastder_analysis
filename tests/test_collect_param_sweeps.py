@@ -12,6 +12,7 @@ import pytest
 from collect_param_sweeps import (
     axis_value,
     collect,
+    collect_annotation,
     comparable,
     depth_of,
     replicate_of,
@@ -166,3 +167,27 @@ def test_the_swept_axis_is_free_to_move(tmp_path):
     by_value = {r["min_junction_reads"]: r["value"]
                 for r in rows if r["metric"] == "exon_sens"}
     assert by_value == {0: 60.0, 20: 40.0}
+
+
+def test_annotation_table_compares_the_two_alignments_at_the_defaults(tmp_path):
+    make_run(tmp_path, "config_full_simulation", [
+        summary_row("mc0.05_ml10_pt5_ns0", 60, 62),
+        summary_row("mc0.05_ml10_ns1", 50, 52),
+        summary_row("mc0.01_ml10_pt5_ns0", 10, 10),
+    ])
+    make_run(tmp_path, "config_unannotated_alignment",
+             [summary_row("mc0.05_ml10_pt5_ns0", 55, 61)])
+    rows = collect_annotation(str(tmp_path))
+    by_key = {(r["annotated_index"], r["metric"]): r["value"] for r in rows}
+    assert by_key == {(1, "exon_sens"): 60.0, (1, "exon_prec"): 62.0,
+                      (0, "exon_sens"): 55.0, (0, "exon_prec"): 61.0}
+
+
+def test_the_unannotated_run_stays_out_of_the_depth_tables(tmp_path):
+    make_run(tmp_path, "config_full_simulation",
+             [summary_row("mc0.05_ml10_pt5_ns0", 60, 62)])
+    make_run(tmp_path, "config_unannotated_alignment",
+             [summary_row("mc0.05_ml10_pt5_ns0", 10, 10)])
+    values = [r["value"] for r in collect(str(tmp_path), "no_stitch")
+              if r["metric"] == "exon_sens"]
+    assert values == [60.0]
