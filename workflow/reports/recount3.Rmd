@@ -49,13 +49,12 @@ case. The others are weaker and are clearest as a called region rather than
 as a coverage peak.
 
 This dataset is analysed by two runs that differ only in the `min_coverage`
-threshold. The showcase run (`config_klim_2019_tdp43_recount3.yaml`) uses a
-clean 1.0 CPM threshold that isolates STMN2, the one cryptic exon well above
-the intronic noise floor. The panel run
-(`config_klim_2019_tdp43_recount3_panel.yaml`) uses a low 0.02 CPM threshold
-so the weaker cryptic exons are emitted too, at the cost of noise. This
-report renders for whichever run produced it; see the README section "TDP-43
-cryptic exons: showcase and panel" for the rationale.
+threshold. The showcase run (`config_klim_2019_tdp43_recount3.yaml`) uses
+0.05 CPM, where the STMN2 cryptic exon alone separates knockdown from
+control. The panel run (`config_klim_2019_tdp43_recount3_panel.yaml`) uses
+0.005 CPM, where the most loci separate. Both values come from the ladder run
+(`config_klim_2019_tdp43_recount3_ladder.yaml`). This report renders for
+whichever run produced it.
 
 ```{r load-manifest}
 manifest <- read.csv(params$manifest_csv, stringsAsFactors = FALSE)
