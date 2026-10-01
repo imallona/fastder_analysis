@@ -43,9 +43,9 @@ tools: [fastder]
 
 fastder:
   stranded: false
-  # min_coverage in CPM, in 1-2-5 steps over three decades. The showcase and
-  # panel configs each use one value from inside this range.
-  min_coverage: [0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1.0, 2.0]
+  # min_coverage in CPM, in 1-2-5 steps. The showcase and panel configs each
+  # use one value from inside this range.
+  min_coverage: [0.0002, 0.0005, 0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1.0]
   # The panel config's stitching gate, and fastder's default, which is
   # effectively open. Each gets its own range.
   coverage_tolerance: [1.0, 1000.0]

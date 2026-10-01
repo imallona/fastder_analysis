@@ -250,6 +250,7 @@ rule collect_threshold_range:
     output:
         table=op.join(RESULTS_DIR, "threshold_range.csv"),
         summary=op.join(RESULTS_DIR, "threshold_range_summary.csv"),
+        counts=op.join(RESULTS_DIR, "threshold_range_counts.csv"),
     log:
         op.join(LOG_DIR, "collect_threshold_range.log"),
     params:
@@ -264,7 +265,8 @@ rule collect_threshold_range:
         """
         python3 {input.script} --loci {input.loci} \
             --case {params.case} --control {params.control} \
-            --out {output.table} --out-summary {output.summary} > {log} 2>&1
+            --out {output.table} --out-summary {output.summary} \
+            --out-counts {output.counts} > {log} 2>&1
         """
 
 
