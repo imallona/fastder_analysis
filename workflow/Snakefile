@@ -209,9 +209,14 @@ for _t in TOOLS:
 
 # Wildcard constraints keep snakemake from matching path components against
 # unrelated wildcards (e.g. {sample} swallowing a scenario subdir).
+# The stitched fastder output with every exon as its own record: the third
+# configuration of the junction-integration ablation. It is graded like a
+# tool but is not in TOOLS, so no report or summary table includes it.
+SPLIT_TOOL = "fastder_split"
+
 wildcard_constraints:
     scenario="(" + "|".join(SCENARIOS) + ")",
-    tool="(" + "|".join(TOOLS) + ")",
+    tool="(" + "|".join([*TOOLS, SPLIT_TOOL]) + ")",
     sample="[^/]+",
     param_id="[^/]+",
 
@@ -345,6 +350,13 @@ PARAM_CLI_ARGS = {_param_id(c): _fastder_cli_args(c) for c in _PARAM_COMBOS}
 # For the summary CSV: the explicit params for each run
 PARAM_DICT = {_param_id(c): c for c in _PARAM_COMBOS}
 
+# Runs the split-chain configuration is built from: stitched, at the shipped
+# defaults. Empty unless the config sweeps no_stitch.
+SPLIT_PARAM_IDS = (
+    [pid for pid, combo in PARAM_DICT.items() if param_grid.stitched_at_defaults(combo)]
+    if "fastder" in TOOLS and any(combo.get("no_stitch") for combo in _PARAM_COMBOS)
+    else [])
+
 # Per-tool param grids. fastder sweeps the full cross-product above.
 # megadepth_baseline shares the min_coverage axis only (its other tunable
 # is min_length, which we pin to fastder.min_length[0] for symmetry).
@@ -457,5 +469,10 @@ rule all:
           else [op.join(RESULTS_DIR, "recount3.html")]
           if BACKEND == "recount3" else []),
         *[op.join(FASTDER_DIR, "scaling", f"cores{n}.DONE") for n in SCALING_CORES],
+        *[op.join(RESULTS_DIR, SPLIT_TOOL, scenario, sample, pid, graded)
+          for scenario in SCENARIOS
+          for sample in SAMPLES_BY_SCENARIO[scenario]
+          for pid in SPLIT_PARAM_IDS
+          for graded in ("gffcompare.stats", "fuzzy_distances.csv")],
         op.join(RESULTS_DIR, "archive.DONE"),
     default_target: True

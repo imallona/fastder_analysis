@@ -623,8 +623,10 @@ panel_placeholder <- function(text) {
 
 # --- Revision panels. Each reads the CSV its collector wrote. ---
 
-# Junction integration is what is switched, not an accuracy setting.
-ablation_labels <- c(`0` = "stitched", `1` = "--no-stitch")
+# Junction integration is what is switched, not an accuracy setting. The split
+# configuration is the stitched run with every exon as its own record.
+ablation_labels <- c(stitched = "stitched", split = "stitched, exons split",
+                     unstitched = "--no-stitch")
 
 metric_labels <- c(exon_sens = "Exon sensitivity (%)",
                    exon_prec = "Exon precision (%)",
@@ -635,12 +637,13 @@ read_panel_csv <- function(path) {
   read_csv(path, show_col_types = FALSE)
 }
 
-# Panel: junction integration on and off, against depth. Snapping has no arm:
-# the snap coordinate comes from chaining.
+# Panel: the three ablation configurations against depth.
 panel_ablation <- function(path = file.path(FIG_DIR, "ablation.csv")) {
   d <- read_panel_csv(path) %>%
-    mutate(arm = factor(ablation_labels[as.character(no_stitch)],
-                        levels = unname(ablation_labels)),
+    mutate(arm = case_when(tool == "fastder_split" ~ "split",
+                           no_stitch == 1 ~ "unstitched",
+                           TRUE ~ "stitched"),
+           arm = factor(ablation_labels[arm], levels = unname(ablation_labels)),
            metric = factor(metric, levels = names(metric_labels),
                            labels = unname(metric_labels)),
            scenario = relabel_scenario(scenario))
@@ -651,9 +654,9 @@ panel_ablation <- function(path = file.path(FIG_DIR, "ablation.csv")) {
     geom_linerange(aes(ymin = low, ymax = high), linetype = "solid", show.legend = FALSE) +
     geom_line(linewidth = 0.7) + geom_point(size = 2.4) +
     scale_x_continuous(trans = "log10", breaks = sort(unique(d$depth_M))) +
-    scale_colour_manual(values = c("#FC8D62", "#7F7F7F"), name = NULL) +
-    scale_shape_manual(values = c(16, 1), name = NULL) +
-    scale_linetype_manual(values = c("solid", "dashed"), name = NULL) +
+    scale_colour_manual(values = c("#FC8D62", "#8DA0CB", "#7F7F7F"), name = NULL) +
+    scale_shape_manual(values = c(16, 17, 1), name = NULL) +
+    scale_linetype_manual(values = c("solid", "dotted", "dashed"), name = NULL) +
     coord_cartesian(ylim = c(0, 100)) +
     facet_grid(scenario ~ metric, labeller = labeller(scenario = label_wrap_gen(12))) +
     labs(x = "Reads per sample (M)", y = "Percent") +

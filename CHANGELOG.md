@@ -26,6 +26,7 @@
 
 - `workflow/scripts/compute_library_sizes.py` and rule `compute_library_sizes`. Each scenario gets a `library_sizes.tsv`.
 - Grid support for `min_junction_reads` (`mjr`) and `no_stitch` (`ns`). `no_stitch` is a switch. The flag is passed only when true.
+- `scripts/split_chains.py` and rule `split_fastder_chains`. The stitched default run is rewritten one exon per record and graded as `fastder_split`. `ablation.csv` and `supp_ablation.pdf` gain it as a third configuration. Only configs sweeping `no_stitch` build it.
 - `config_full_simulation.yaml`: `no_stitch: [false, true]`.
 - Rule `run_fastder_scaling`, timing fastder at each core count. It reads `fastder.scaling_cores` and `fastder.scaling_scenario`. An empty `scaling_cores` leaves it out.
 - `benchmark_repeats`, default 1, repeats each timed job. Reports and `scaling.csv` use the median. The simulation and GTEx configs set 3.
