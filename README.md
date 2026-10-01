@@ -64,6 +64,7 @@ Our Snakemake workflow uses config files to define run properties.
 - `fastder.stranded`: unstranded `all.bw` vs per-strand `plus`/`minus.bw`. Not supported by the recount3 backend.
 - `tools`: subset of `fastder`, `derfinder`, `megadepth_baseline`, `grohmm`. Omit to run all four.
 - `asimulator.*` (when `pump_source: asimulator`): `seq_depth`, `samples` (sample to event-mix map), `probs_as_freq`, `strand_specific`.
+- `seed`: the run seed. Sample number i of `asimulator.samples`, from 0, is simulated under `seed * 1000 + i`.
 - `monorail.annotated_index`: `false` builds the monorail_light STAR index without `--sjdbGTFfile`. Default `true`.
 - `monorail.local_samples` / `monorail.sra_samples`: for the `local` / `sra` sources.
 - `recount3.data_source`, `study_acc`, `groups`: each group becomes one scenario, either a sample list under a shared `study_acc` or a `{study, samples}` map.

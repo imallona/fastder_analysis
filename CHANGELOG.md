@@ -16,6 +16,7 @@
 - `config_full_simulation.yaml`: `fastder.cores` is 1.
 - `config_full_simulation.yaml`: chromosomes are chr21 and chr19. It was chr21 alone.
 - `config_full_simulation.yaml`: ten samples per scenario. All eight ASimulatoR event classes run. It was five over four classes. Added `ir`, `a3`, `a5`, `mee` and a mixture.
+- Each simulated sample has its own seed, the run seed times 1000 plus the sample's position. Under one shared seed the samples of a run drew the same genes and expression levels.
 - `config_gtex_comparison.yaml`: `fastder.cores` is 1.
 - Corrected the `position_tolerance` comment in `config_full_simulation.yaml`. `pt0` needs exact agreement between edge and junction. It does not disable stitching.
 - The runtime panel's axis reads wall time per run. One run covers all samples of a scenario.

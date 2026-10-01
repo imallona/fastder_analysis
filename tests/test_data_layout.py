@@ -8,7 +8,7 @@ directories.
 import re
 from pathlib import Path
 
-from data_layout import alignment_key, index_key, reads_key
+from data_layout import alignment_key, index_key, reads_key, sample_seed
 
 RULES_DIR = Path(__file__).resolve().parents[1] / "workflow" / "rules"
 
@@ -62,6 +62,19 @@ def test_an_unannotated_index_separates_alignments():
 
 def test_local_input_is_kept_per_config():
     assert alignment_key("config_local", "local", None, 10, "chr21") == "config_local"
+
+
+def test_every_sample_of_a_run_has_its_own_seed():
+    samples = ["es", "mes", "ir"]
+    seeds = [sample_seed(10, samples, sample) for sample in samples]
+    assert seeds == [10000, 10001, 10002]
+
+
+def test_runs_under_consecutive_seeds_share_no_sample_seed():
+    samples = [f"s{i}" for i in range(10)]
+    first = {sample_seed(10, samples, s) for s in samples}
+    second = {sample_seed(11, samples, s) for s in samples}
+    assert not first & second
 
 
 def test_no_rule_writes_a_scenario_into_a_shared_directory():
