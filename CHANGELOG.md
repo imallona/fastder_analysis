@@ -16,6 +16,7 @@
 - `config_full_simulation.yaml`: ten samples per scenario. All eight ASimulatoR event classes run. It was five over four classes. Added `ir`, `a3`, `a5`, `mee` and a mixture.
 - `config_gtex_comparison.yaml`: `fastder.cores` is 1.
 - Corrected the `position_tolerance` comment in `config_full_simulation.yaml`. `pt0` needs exact agreement between edge and junction. It does not disable stitching.
+- The runtime panel's axis reads wall time per run. One run covers all samples of a scenario.
 - Depth configs are regenerated from `config_full_simulation.yaml`. All four depths share one grid.
 - Combinations differing only in an ignored parameter collapse. `--no-stitch` ignores `position_tolerance` and `coverage_tolerance`.
 - `summary.Rmd` leaves unstitched and junction-filtered runs out of every aggregate and best-combination pick. They get their own table at the end.

@@ -140,7 +140,8 @@ load_benchmarks <- function(bench_dir) {
   df
 }
 
-# Large outlined point marks the per-tool median across invocations.
+# Large outlined point marks the per-tool median across invocations. One
+# invocation processes every sample of a scenario, not one sample.
 panel_speed <- function(bench_dir) {
   df <- load_benchmarks(bench_dir) %>% filter(tool %in% TOOLS)
   med <- df %>% group_by(tool) %>%
@@ -157,7 +158,7 @@ panel_speed <- function(bench_dir) {
     # No tool legend here; the shared legend comes from the line panels, whose
     # keys show the line type and point symbol together.
     guides(colour = "none") +
-    labs(x = "Wall time per sample (s)", y = "Peak resident memory (MiB)") +
+    labs(x = "Wall time per run (s)", y = "Peak resident memory (MiB)") +
     theme_pub_square()
 }
 
