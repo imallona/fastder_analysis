@@ -232,7 +232,7 @@ figures: reports composites
 dryrun:
 	cd $(WORKFLOW_DIR) && bash -c '$(ACTIVATE) && \
 	  FASTDER_EVAL_CONFIG=../config/config_full_simulation.yaml \
-	  snakemake --cores $(CORES) -n'
+	  snakemake --cores $(CORES) --use-conda --use-singularity -n'
 
 unlock:
 	cd $(WORKFLOW_DIR) && bash -c '$(ACTIVATE) && snakemake --unlock'

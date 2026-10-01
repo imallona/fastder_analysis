@@ -50,3 +50,10 @@ def test_a_local_run_adds_neither():
     out = dry_run("CONDA_INIT=/nonexistent/activate")
     assert "--profile" not in out
     assert "cores_used" not in out
+
+
+def test_dryrun_plans_with_the_flags_of_a_run():
+    result = subprocess.run(["make", "-n", "dryrun"], cwd=ROOT,
+                            capture_output=True, text=True, check=True)
+    assert "--use-conda" in result.stdout
+    assert "--use-singularity" in result.stdout

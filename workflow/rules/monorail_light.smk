@@ -89,16 +89,16 @@ rule ml_star_align:
         idx=[op.join(LIGHT_STAR_IDX, f) for f in STAR_IDX_FILES],
     output:
         # Read by the bigwig and junction rules, and by nothing after.
-        bam=temp(op.join(LIGHT_DIR, "{scenario}", "{sample}", "Aligned.sortedByCoord.out.bam")),
+        bam=temp(op.join(ALIGN_DIR, "{scenario}", "{sample}", "Aligned.sortedByCoord.out.bam")),
         # Declared so it goes with the BAM instead of being left behind.
-        bai=temp(op.join(LIGHT_DIR, "{scenario}", "{sample}", "Aligned.sortedByCoord.out.bam.bai")),
-        sj=op.join(LIGHT_DIR, "{scenario}", "{sample}", "SJ.out.tab"),
+        bai=temp(op.join(ALIGN_DIR, "{scenario}", "{sample}", "Aligned.sortedByCoord.out.bam.bai")),
+        sj=op.join(ALIGN_DIR, "{scenario}", "{sample}", "SJ.out.tab"),
     benchmark:
         op.join(BENCH_DIR, "ml_star_align", "{sample}_{scenario}.tsv")
     log:
         op.join(LOG_DIR, "ml_star_align", "{sample}_{scenario}.log"),
     params:
-        outprefix=lambda wc: op.join(LIGHT_DIR, wc.scenario, wc.sample) + "/",
+        outprefix=lambda wc: op.join(ALIGN_DIR, wc.scenario, wc.sample) + "/",
         idx_dir=LIGHT_STAR_IDX,
     threads: config["cores"]
     resources:
@@ -140,22 +140,22 @@ rule ml_star_align:
 # to the original contributor's agreement.
 rule ml_bam_to_bigwig:
     input:
-        bam=op.join(LIGHT_DIR, "{scenario}", "{sample}", "Aligned.sortedByCoord.out.bam"),
+        bam=op.join(ALIGN_DIR, "{scenario}", "{sample}", "Aligned.sortedByCoord.out.bam"),
     output:
         bws=(
-            [op.join(LIGHT_DIR, "{scenario}", "{sample}.plus.bw"),
-             op.join(LIGHT_DIR, "{scenario}", "{sample}.minus.bw")]
+            [op.join(ALIGN_DIR, "{scenario}", "{sample}.plus.bw"),
+             op.join(ALIGN_DIR, "{scenario}", "{sample}.minus.bw")]
             if STRANDED else
-            [op.join(LIGHT_DIR, "{scenario}", "{sample}.all.bw")]
+            [op.join(ALIGN_DIR, "{scenario}", "{sample}.all.bw")]
         ),
     benchmark:
         op.join(BENCH_DIR, "ml_bam_to_bigwig", "{sample}_{scenario}.tsv")
     log:
         op.join(LOG_DIR, "ml_bam_to_bigwig", "{sample}_{scenario}.log"),
     params:
-        chrom_sizes=lambda wc: op.join(LIGHT_DIR, wc.scenario, f"{wc.sample}.chrom.sizes"),
+        chrom_sizes=lambda wc: op.join(ALIGN_DIR, wc.scenario, f"{wc.sample}.chrom.sizes"),
         stranded=STRANDED,
-        outdir=lambda wc: op.join(LIGHT_DIR, wc.scenario),
+        outdir=lambda wc: op.join(ALIGN_DIR, wc.scenario),
     resources:
         mem_mb=8000,
         runtime=120,
@@ -194,18 +194,18 @@ rule ml_bam_to_bigwig:
 # downstream; see emit_lean_mm_rr.py for the rationale.
 rule ml_emit_mm_rr:
     input:
-        sj_files=expand(op.join(LIGHT_DIR, "{{scenario}}", "{sample}", "SJ.out.tab"),
+        sj_files=expand(op.join(ALIGN_DIR, "{{scenario}}", "{sample}", "SJ.out.tab"),
                         sample=PUMP_SAMPLES),
     output:
-        rr=op.join(LIGHT_DIR, "{scenario}", "junctions.ALL.RR"),
-        mm=op.join(LIGHT_DIR, "{scenario}", "junctions.ALL.MM"),
-        samples_tsv=op.join(LIGHT_DIR, "{scenario}", "samples.tsv"),
+        rr=op.join(ALIGN_DIR, "{scenario}", "junctions.ALL.RR"),
+        mm=op.join(ALIGN_DIR, "{scenario}", "junctions.ALL.MM"),
+        samples_tsv=op.join(ALIGN_DIR, "{scenario}", "samples.tsv"),
     benchmark:
         op.join(BENCH_DIR, "ml_emit_mm_rr_{scenario}.tsv")
     log:
         op.join(LOG_DIR, "ml_emit_mm_rr_{scenario}.log"),
     params:
-        out_prefix=lambda wc: op.join(LIGHT_DIR, wc.scenario, "junctions.ALL"),
+        out_prefix=lambda wc: op.join(ALIGN_DIR, wc.scenario, "junctions.ALL"),
         chroms=lambda wc: FASTDER_CFG.get("chromosomes") or [f"chr{i}" for i in range(1, 23)] + ["chrX"],
         samples=PUMP_SAMPLES,
         project=config["monorail"]["project_name"],

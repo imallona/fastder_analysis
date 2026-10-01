@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, op.join(workflow.basedir, "scripts"))
+import data_layout
 import param_grid
 
 # IMPORTANT: scenarios control whether ASimulatoR template transcripts contribute reads. template_and_variant keeps the default (template + variant both expressed); variant_only post-filters the FASTQ and GFF so the truth set carries only alternative isoforms.
@@ -73,6 +74,8 @@ R3_STUDY = RECOUNT3_CFG.get("study_acc", "")
 R3_BASE_URL = RECOUNT3_CFG.get("base_url", "http://duffel.rail.bio/recount3")
 R3_METADATA_URL = RECOUNT3_CFG.get("metadata_url", "http://idies.jhu.edu/recount3/data")
 R3_DIR = op.join(DATA_DIR, "recount3")
+# Per-group junction subsets depend on the config's groups and chromosomes.
+R3_GROUP_DIR = op.join(R3_DIR, "groups", CONFIG_BASENAME)
 
 # recount3 data source: "sra" (default) or "gtex". It selects the
 # data_sources/<source> path component and the "<source>." file-name prefix.
@@ -111,8 +114,10 @@ def _r3_sample_shard(sample):
     return sample.rsplit(".", 1)[0][-2:]
 
 
-# fastder
-FASTDER_DIR = op.join(DATA_DIR, "fastder")
+# Tool inputs and outputs are per config: scenario and parameter names
+# repeat across configs.
+FASTDER_DIR = op.join(DATA_DIR, "fastder", CONFIG_BASENAME)
+TOOLS_DIR = op.join(DATA_DIR, "tools", CONFIG_BASENAME)
 FASTDER_BUILD_DIR = op.join(WORKFLOW_DIR, "external", "fastder", "build")
 # Results live under a per-config subdirectory so multiple configs do not
 # overwrite each other. Reruns of the same config keep going to the same
@@ -134,7 +139,7 @@ ASIM_SAMPLES = list((config.get("asimulator") or {}).get("samples", {}).keys())
 # there. The tag uses int() so a YAML float (1e7) and an int (10000000) map to
 # the same directory.
 _ASIM_SEQ_DEPTH = (config.get("asimulator") or {}).get("seq_depth", 0)
-ASIM_DIR = op.join(DATA_DIR, "asim", f"depth_{int(_ASIM_SEQ_DEPTH)}")
+ASIM_DIR = op.join(DATA_DIR, "asim", data_layout.reads_key(_ASIM_SEQ_DEPTH))
 
 # Per the IMPORTANT note above, every downstream stage runs once per scenario.
 # The scenario axis depends on the input:
@@ -160,7 +165,7 @@ else:
     SCENARIOS = ["all"]
 
 # Tools to benchmark against fastder. Each tool produces a GTF at the
-# standardised path data/tools/{tool}/{scenario}/{param_id}/output.gtf,
+# standardised path data/tools/<config>/{tool}/{scenario}/{param_id}/output.gtf,
 # which run_gffcompare and eval_fuzzy_metrics consume via the {tool}
 # wildcard.
 #
@@ -320,6 +325,9 @@ REF_ANNOTATION = (config.get("gffcompare") or {}).get("reference_annotation") or
 LIGHT_STAR_IDX = op.join(LIGHT_DIR, "star_idx_" + REF_SCOPE)
 STAR_IDX_FILES = ["SA", "SAindex", "Genome", "chrNameLength.txt",
                   "genomeParameters.txt"]
+
+ALIGN_DIR = op.join(LIGHT_DIR, data_layout.alignment_key(
+    CONFIG_BASENAME, _PUMP_SOURCE_EARLY, _ASIM_SEQ_DEPTH, REF_SCOPE))
 
 # The grid itself lives in scripts/param_grid.py so it can be unit tested.
 _PARAM_COMBOS = param_grid.build_combos(FASTDER_CFG)

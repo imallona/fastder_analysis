@@ -14,7 +14,7 @@
 
 # 7b. Extract and organise all inputs that fastder needs into a flat directory.
 # The set of inputs depends on the backend: with monorail we read from the
-# unify/pump output dirs; with monorail_light we read from the LIGHT_DIR
+# unify/pump output dirs; with monorail_light we read from the ALIGN_DIR
 # scratch produced by the ml_* rules above.
 def _extract_inputs(wc):
     if BACKEND == "recount3":
@@ -28,16 +28,16 @@ def _extract_inputs(wc):
             )
         group_samples = R3_GROUPS[wc.scenario]
         return {
-            "rr": op.join(R3_DIR, wc.scenario, "junctions.ALL.RR"),
-            "mm": op.join(R3_DIR, wc.scenario, "junctions.ALL.MM"),
-            "samples_tsv": op.join(R3_DIR, wc.scenario, "junctions.ALL.samples.tsv"),
+            "rr": op.join(R3_GROUP_DIR, wc.scenario, "junctions.ALL.RR"),
+            "mm": op.join(R3_GROUP_DIR, wc.scenario, "junctions.ALL.MM"),
+            "samples_tsv": op.join(R3_GROUP_DIR, wc.scenario, "junctions.ALL.samples.tsv"),
             "bws": [op.join(R3_DIR, "bw", f"{s}.all.bw") for s in group_samples],
             # The reference annotation is the gffcompare truth set; depend on
             # the download so it is present before extract_fastder_inputs runs.
             "reference_gtf": REF_GTF,
         }
     if BACKEND == "monorail_light":
-        light_scn = op.join(LIGHT_DIR, wc.scenario)
+        light_scn = op.join(ALIGN_DIR, wc.scenario)
         result = {
             "rr": op.join(light_scn, "junctions.ALL.RR"),
             "mm": op.join(light_scn, "junctions.ALL.MM"),
@@ -90,7 +90,7 @@ rule extract_fastder_inputs:
     params:
         fastder_dir=lambda wc: op.join(FASTDER_DIR, wc.scenario),
         pump_dir=op.join(DATA_DIR, "pump"),
-        light_dir=lambda wc: op.join(LIGHT_DIR, wc.scenario),
+        light_dir=lambda wc: op.join(ALIGN_DIR, wc.scenario),
         scenario=lambda wc: wc.scenario,
         scenario_samples=lambda wc: SAMPLES_BY_SCENARIO[wc.scenario],
         asim_dir=ASIM_DIR,
@@ -379,7 +379,7 @@ rule build_fastder:
 
 
 # 10. Run fastder for each parameter combination.
-# Each run gets its own working directory (data/fastder/runs/{param_id}/) with
+# Each run gets its own working directory (data/fastder/<config>/{scenario}/runs/{param_id}/) with
 # symlinks to the shared inputs. This allows parallel execution without races
 # on the FASTDER_RESULT_*.gtf output filenames. Symlinks include .bw files
 # directly; fastder reads them via libBigWig.
@@ -443,7 +443,7 @@ rule run_fastder:
 
 
 # 11b. Per-tool runners. Each rule produces a GTF at
-# data/tools/{tool}/{scenario}/{param_id}/output.gtf so run_gffcompare and
+# data/tools/<config>/{tool}/{scenario}/{param_id}/output.gtf so run_gffcompare and
 # eval_fuzzy_metrics can compare the methods on the same simulated truth.
 
 # fastder: re-export the run_fastder GTF at the standardised path.
@@ -451,7 +451,7 @@ rule link_fastder_gtf:
     input:
         gtf_path=op.join(FASTDER_DIR, "{scenario}", "run_fastder_{param_id}.gtf_path"),
     output:
-        gtf=op.join(DATA_DIR, "tools", "fastder", "{scenario}", "{param_id}", "output.gtf"),
+        gtf=op.join(TOOLS_DIR, "fastder", "{scenario}", "{param_id}", "output.gtf"),
     benchmark:
         op.join(BENCH_DIR, "link_fastder_gtf", "{scenario}_{param_id}.tsv")
     log:
