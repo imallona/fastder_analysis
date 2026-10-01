@@ -93,6 +93,12 @@ def test_the_timed_pass_gives_every_job_the_one_slot():
     assert "--resources timed=1" in timed_pass
 
 
+def test_the_timed_pass_uses_the_greedy_scheduler():
+    """The default scheduler runs a solver on every core between and during jobs."""
+    passes = re.findall(r"snakemake --cores \d+[^&]*", dry_run())
+    assert ["--scheduler greedy" in p for p in passes] == [False, True, False]
+
+
 def test_timed_rules_are_the_ones_the_profile_pins():
     """A tool added to the comparison and left out of the timed pass fails here."""
     yaml = pytest.importorskip("yaml", reason="PyYAML not installed in this env")
