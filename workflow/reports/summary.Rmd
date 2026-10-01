@@ -180,6 +180,23 @@ fuzzy_all <- lapply(fuzzy_paths, function(p) {
   if (is.null(p) || !file.exists(p)) NULL else read_csv(p, show_col_types = FALSE)
 })
 
+# Unstitched (ns1) and junction-filtered (mjr above 0) runs are kept out of
+# every table below, so no chunk averages over them or picks one as the best
+# combination. They are reported in their own section at the end. Identifiers
+# come from scripts/param_grid.py, whose tests pin both patterns; helpers.R and
+# meta.Rmd apply the same filter.
+off_default_grid <- function(param_id) {
+  mjr <- suppressWarnings(as.integer(str_extract(param_id, "(?<=mjr)[0-9]+")))
+  grepl("(^|_)ns1(_|$)", param_id) | (!is.na(mjr) & mjr > 0L)
+}
+default_grid <- function(d) {
+  if (is.null(d)) NULL else d %>% filter(!off_default_grid(param_id))
+}
+df_off_grid <- df_all %>% filter(off_default_grid(param_id))
+df_all <- default_grid(df_all)
+cs <- default_grid(cs)
+fuzzy_all <- lapply(fuzzy_all, default_grid)
+
 # Sections below the "Tool comparison" block are fastder-only: they sweep
 # fastder's full parameter grid and facet by AS event class. The
 # baselines participate only along the shared axes (min_coverage and, for
@@ -1729,5 +1746,24 @@ if (!is.null(fuzzy$strand) && nrow(fuzzy$strand) > 0) {
            pct_unstranded = unstranded / total * 100,
            pct_unmatched = unmatched / total * 100)
   collapsible_kable(fs_wide, "Show strand counts and fractions", digits = 2)
+}
+```
+
+# Unstitched and junction-filtered runs
+
+Runs with `--no-stitch` (`ns1`) or with `--min-junction-reads` above 0 (`mjr`), averaged over samples. No section above includes them.
+
+```{r off_grid_table, results = "asis"}
+if (nrow(df_off_grid) > 0) {
+  knitr::kable(
+    df_off_grid %>%
+      group_by(tool, scenario, param_id) %>%
+      summarise(samples = n(),
+                across(c(base_sens, base_prec, exon_sens, exon_prec),
+                       ~ mean(.x, na.rm = TRUE)),
+                .groups = "drop"),
+    digits = 1)
+} else {
+  cat("None in this config.\n")
 }
 ```

@@ -18,6 +18,7 @@
 - Corrected the `position_tolerance` comment in `config_full_simulation.yaml`. `pt0` needs exact agreement between edge and junction. It does not disable stitching.
 - Depth configs are regenerated from `config_full_simulation.yaml`. All four depths share one grid.
 - Combinations differing only in an ignored parameter collapse. `--no-stitch` ignores `position_tolerance` and `coverage_tolerance`.
+- `summary.Rmd` leaves unstitched and junction-filtered runs out of every aggregate and best-combination pick. They get their own table at the end.
 - The parameter grid moved to `workflow/scripts/param_grid.py`. The Snakefile imports it. Job counts are unchanged.
 - README lists the current configs, grids and groHMM. Library-size comments say whole file.
 - `run_megadepth_baseline.py` takes `--library-sizes` as optional. Without it, sizes come from the BigWig headers.
