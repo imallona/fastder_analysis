@@ -6,9 +6,12 @@ per locus and per setting of the other parameters, the lowest and highest
 min_coverage that separate the groups, and whether every threshold in between
 does too.
 
+A third table counts, per threshold, the loci that separate, and flags the
+threshold that separates the most. A tie goes to the higher threshold.
+
 Usage:
     python collect_threshold_range.py --loci <tsv> --case <dir> --control <dir> \
-        --out <csv> --out-summary <csv>
+        --out <csv> --out-summary <csv> --out-counts <csv>
 
 Each group directory holds one <param_id>/output.gtf per parameter combination.
 """
@@ -112,6 +115,26 @@ def summarise(rows):
     return summary
 
 
+def loci_per_threshold(rows):
+    """Loci separating the groups at each threshold, per setting of the other
+    parameters, with the best threshold of each setting flagged."""
+    grouped = defaultdict(list)
+    for row in rows:
+        if row["separates"]:
+            grouped[(row["other_params"], float(row[SWEPT]))].append(row["gene"])
+        else:
+            grouped[(row["other_params"], float(row[SWEPT]))]
+    counts = [{"other_params": others, SWEPT: threshold, "loci_separating": len(genes),
+               "loci": " ".join(sorted(genes))}
+              for (others, threshold), genes in sorted(grouped.items())]
+    for others in {row["other_params"] for row in counts}:
+        setting = [row for row in counts if row["other_params"] == others]
+        best = max(setting, key=lambda row: (row["loci_separating"], row[SWEPT]))
+        for row in setting:
+            row["most_loci"] = int(row is best)
+    return counts
+
+
 def write_csv(rows, path, columns):
     with open(path, "w", newline="") as fh:
         writer = csv.DictWriter(fh, fieldnames=columns)
@@ -127,6 +150,7 @@ def main():
     parser.add_argument("--control", required=True)
     parser.add_argument("--out", required=True)
     parser.add_argument("--out-summary", required=True)
+    parser.add_argument("--out-counts", required=True)
     args = parser.parse_args()
 
     rows = collect(read_loci(args.loci), args.case, args.control)
@@ -136,6 +160,8 @@ def main():
     write_csv(summarise(rows), args.out_summary,
               ["gene", "other_params", "thresholds_tested", "thresholds_separating",
                "lowest_separating", "highest_separating", "contiguous"])
+    write_csv(loci_per_threshold(rows), args.out_counts,
+              ["other_params", SWEPT, "loci_separating", "loci", "most_loci"])
     print(f"wrote {len(rows)} rows to {args.out}")
 
 

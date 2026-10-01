@@ -6,7 +6,7 @@ separating range with a gap, and runs that differ in another parameter.
 
 import csv
 
-from collect_threshold_range import called, collect, read_loci, summarise
+from collect_threshold_range import called, collect, loci_per_threshold, read_loci, summarise
 
 LOCUS = {"gene": "STMN2", "chrom": "chr8", "start": 1000, "end": 1200}
 
@@ -86,6 +86,22 @@ def test_other_parameters_keep_their_own_range(tmp_path):
     summary = {s["other_params"]: s["thresholds_separating"]
                for s in summarise(collect([LOCUS], case, control))}
     assert summary == {"coverage_tolerance=1.0": 1, "coverage_tolerance=1000.0": 0}
+
+
+def test_the_threshold_separating_most_loci_is_flagged(tmp_path):
+    other = {"gene": "HDGFL2", "chrom": "chr19", "start": 500, "end": 600}
+    stmn2, hdgfl2 = [("chr8", 1100, 1150)], [("chr19", 520, 560)]
+    case, control = make_groups(tmp_path, {
+        "mc0.002": (stmn2 + hdgfl2, stmn2),
+        "mc0.005": (stmn2 + hdgfl2, []),
+        "mc0.02": (stmn2, []),
+        "mc0.5": ([], []),
+    })
+    counts = {row["min_coverage"]: row
+              for row in loci_per_threshold(collect([LOCUS, other], case, control))}
+    assert [counts[t]["loci_separating"] for t in (0.002, 0.005, 0.02, 0.5)] == [1, 2, 1, 0]
+    assert counts[0.005]["loci"] == "HDGFL2 STMN2"
+    assert [t for t, row in counts.items() if row["most_loci"]] == [0.005]
 
 
 def test_the_shipped_loci_table_parses():
