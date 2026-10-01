@@ -8,7 +8,7 @@ directories.
 import re
 from pathlib import Path
 
-from data_layout import alignment_key, reads_key
+from data_layout import alignment_key, index_key, reads_key
 
 RULES_DIR = Path(__file__).resolve().parents[1] / "workflow" / "rules"
 
@@ -51,6 +51,13 @@ def test_configs_sharing_reads_and_index_share_alignments():
 def test_chromosomes_separate_alignments():
     assert (alignment_key("a", "asimulator", DESIGN, 10, "chr21")
             != alignment_key("a", "asimulator", DESIGN, 10, "chr19_chr21"))
+
+
+def test_an_unannotated_index_separates_alignments():
+    assert index_key("chr21", True) == "chr21"
+    annotated = alignment_key("a", "asimulator", DESIGN, 10, index_key("chr21", True))
+    unannotated = alignment_key("b", "asimulator", DESIGN, 10, index_key("chr21", False))
+    assert annotated != unannotated
 
 
 def test_local_input_is_kept_per_config():

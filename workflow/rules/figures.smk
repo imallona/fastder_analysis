@@ -169,6 +169,28 @@ rule collect_min_junction_reads_table:
         """
 
 
+rule collect_annotation_table:
+    input:
+        script=op.join(WORKFLOW_DIR, "scripts", "collect_param_sweeps.py"),
+    output:
+        csv=op.join(FIG_DIR, "annotation.csv"),
+    log:
+        op.join(LOG_DIR, "collect_annotation_table.log"),
+    params:
+        results_root=FIG_RESULTS,
+    resources:
+        mem_mb=2000,
+        runtime=20,
+    conda:
+        "../envs/base.yaml"
+    shell:
+        """
+        python3 {input.script} --axis annotated_index \
+            --results-root {params.results_root} \
+            --out {output.csv} > {log} 2>&1
+        """
+
+
 # The sweep runs under whichever config declares fastder.scaling_cores.
 rule collect_scaling_table:
     input:
@@ -245,3 +267,4 @@ rule manuscript_figures:
         op.join(FIG_DIR, "supp_ablation.pdf"),
         op.join(FIG_DIR, "supp_min_junction_reads.pdf"),
         op.join(FIG_DIR, "supp_scaling.pdf"),
+        op.join(FIG_DIR, "annotation.csv"),

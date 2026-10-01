@@ -44,6 +44,7 @@ Our Snakemake workflow uses config files to define run properties.
 
 - `config_full_simulation.yaml`: paper simulation, 10 samples (the eight ASimulatoR event classes and two mixtures), 10M reads, chr21 and chr19, monorail_light, 20-combination fastder grid. The 10M point of the depth sweep; `_5M`/`_30M`/`_40M` variants come from `workflow/scripts/make_sim_configs.py`.
 - `config_full_simulation_rep2.yaml`, `_rep3.yaml`: the 10M simulation drawn again under seeds 11 and 12 (`make sim-replicates`). The cross-depth report and `ablation.csv` carry a `replicate` column and show the range. Written by the same script.
+- `config_unannotated_alignment.yaml`: the 10M reads aligned against a STAR index built without the annotation (`monorail.annotated_index: false`), fastder alone at its defaults (`make sim-unannotated`). `annotation.csv` compares it with the annotated run. Written by the same script.
 - `config_min_junction_reads_sweep.yaml`: the 10M simulated data, fastder alone at its defaults, `min_junction_reads` over 0, 1, 2, 5, 10, 20. Written by the same script.
 - `config_klim_2019_tdp43_recount3.yaml`: TDP-43 knockdown vs control, motor-neuron RNA-seq (SRP166282, GSE121569), chr8/19/20. Showcase: 1.0 CPM isolates the STMN2 cryptic exon.
 - `config_klim_2019_tdp43_recount3_panel.yaml`: same data at 0.02 CPM so the wider panel (STMN2, HDGFL2, ELAVL3, CELF5, KCNQ2) is emitted. Only STMN2 clears the noise floor; the other four are recovered through knockdown-specific junctions. No single threshold serves both, so the example runs twice.
@@ -62,6 +63,7 @@ Our Snakemake workflow uses config files to define run properties.
 - `fastder.stranded`: unstranded `all.bw` vs per-strand `plus`/`minus.bw`. Not supported by the recount3 backend.
 - `tools`: subset of `fastder`, `derfinder`, `megadepth_baseline`, `grohmm`. Omit to run all four.
 - `asimulator.*` (when `pump_source: asimulator`): `seq_depth`, `samples` (sample to event-mix map), `probs_as_freq`, `strand_specific`.
+- `monorail.annotated_index`: `false` builds the monorail_light STAR index without `--sjdbGTFfile`. Default `true`.
 - `monorail.local_samples` / `monorail.sra_samples`: for the `local` / `sra` sources.
 - `recount3.data_source`, `study_acc`, `groups`: each group becomes one scenario, either a sample list under a shared `study_acc` or a `{study, samples}` map.
 - `gffcompare.reference_annotation`: truth-set annotation for real data; empty uses the downloaded reference.

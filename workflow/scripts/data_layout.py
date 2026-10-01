@@ -20,13 +20,18 @@ def reads_key(design, seed):
     return f"depth_{depth}_seed_{seed}_{digest}"
 
 
-def alignment_key(config_name, pump_source, design, seed, ref_scope):
-    """Key of a set of alignments.
+def index_key(ref_scope, annotated):
+    """Key of a STAR index: its chromosomes, and whether it holds the annotation."""
+    return ref_scope if annotated else f"{ref_scope}_unannotated"
+
+
+def alignment_key(config_name, pump_source, design, seed, index):
+    """Key of a set of alignments. `index` is an index_key().
 
     Simulated reads are aligned once per read set and index, so configs that
     share both share the alignments. Other input has no such key and stays
     with its config.
     """
     if pump_source == "asimulator":
-        return f"{reads_key(design, seed)}_{ref_scope}"
+        return f"{reads_key(design, seed)}_{index}"
     return config_name

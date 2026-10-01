@@ -323,12 +323,16 @@ REF_ANNOTATION = (config.get("gffcompare") or {}).get("reference_annotation") or
 # STAR index for the monorail_light backend, keyed by the same scope so a
 # single-chromosome index and a whole-genome index never share a directory.
 # Outputs are the files STAR genomeGenerate always writes, not a directory.
-LIGHT_STAR_IDX = op.join(LIGHT_DIR, "star_idx_" + REF_SCOPE)
+# monorail.annotated_index: false builds it without the annotation, under its
+# own key.
+ANNOTATED_INDEX = config.get("monorail", {}).get("annotated_index", True)
+_INDEX_KEY = data_layout.index_key(REF_SCOPE, ANNOTATED_INDEX)
+LIGHT_STAR_IDX = op.join(LIGHT_DIR, "star_idx_" + _INDEX_KEY)
 STAR_IDX_FILES = ["SA", "SAindex", "Genome", "chrNameLength.txt",
                   "genomeParameters.txt"]
 
 ALIGN_DIR = op.join(LIGHT_DIR, data_layout.alignment_key(
-    CONFIG_BASENAME, _PUMP_SOURCE_EARLY, config.get("asimulator"), config["seed"], REF_SCOPE))
+    CONFIG_BASENAME, _PUMP_SOURCE_EARLY, config.get("asimulator"), config["seed"], _INDEX_KEY))
 
 # The grid itself lives in scripts/param_grid.py so it can be unit tested.
 _PARAM_COMBOS = param_grid.build_combos(FASTDER_CFG)
