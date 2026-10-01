@@ -3,9 +3,9 @@
 # fastder and the derfinder / megadepth-baseline pair.
 #
 # Reads every per-sample BigWig in --bigwig-dir, normalises each sample's
-# coverage to CPM (counts per million) using the same library_size formula
-# fastder and run_derfinder.R apply (Sum width * value over the user's
-# chromosomes), then summarises mean per 50 bp window with the kent
+# coverage to CPM (counts per million) using the same library size
+# fastder and run_derfinder.R apply (Sum width * value over the whole
+# file), then summarises mean per 50 bp window with the kent
 # bigWigAverageOverBed utility. Per-window CPMs are averaged across samples
 # into one vector per chromosome, integer-scaled, and fed to groHMM's HMM
 # via detectTranscripts. groHMM requires both Fp and Fm; since recount3

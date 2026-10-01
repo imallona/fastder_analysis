@@ -173,10 +173,9 @@ else:
 #   --position-tolerance   (n/a)                        --maxregiongap (analogue)
 #   --coverage-tolerance   (n/a)                        (n/a)
 #
-# All three tools normalise per-sample coverage to CPM before averaging,
-# using the same library_size formula (Sum length * value over the user's
-# chromosomes), so a given numeric --cutoff means the same thing
-# everywhere. fastder's --position-tolerance allows a few bp of slack at
+# All tools normalise per-sample coverage to CPM before averaging, using
+# the same library size (Sum length * value over the whole file), so a
+# given numeric --cutoff means the same thing everywhere. fastder's --position-tolerance allows a few bp of slack at
 # SJ-anchored boundaries; derfinder's --maxregiongap bridges a few bp of
 # below-threshold gap inside a region. The two are not identical, but
 # both are tolerance settings in the bp dimension; sweeping both surfaces
