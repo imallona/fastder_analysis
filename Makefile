@@ -80,14 +80,19 @@ TIMED_RULES := run_fastder run_fastder_scaling run_derfinder run_grohmm run_mega
 ## Cores for the timed pass: the widest point of the scaling run.
 TIMED_CORES ?= 16
 
-## The timed rules, one job at a time. Coverage and junction files are read
-## once first, so the first job does not pay for a cold disk.
-## $(1) config file, $(2) snakemake flags.
-define timed_pass
+## Coverage and junction files of a config, read once so the first timed job
+## does not pay for a cold disk. $(1) config file.
+define warm_inputs
 if [ -d data/fastder/$(basename $(1)) ]; then \
     find data/fastder/$(basename $(1)) -maxdepth 2 -type f \
       \( -name "*.bw" -o -name "*.MM" -o -name "*.RR" \) -exec cat {} + > /dev/null; \
-  fi && \
+  fi &&
+endef
+
+## The timed rules, one job at a time: every job of this pass books the one
+## timed slot. A dry run reads nothing. $(1) config file, $(2) snakemake flags.
+define timed_pass
+$(if $(filter -n --dry-run --dryrun,$(EXTRA)),,$(call warm_inputs,$(1))) \
   snakemake --cores $(TIMED_CORES) -p $(CONDA_PREFIX_FLAG) $(EXTRA) $(2) \
     --until $(TIMED_RULES) --default-resources timed=1 --resources timed=1
 endef
