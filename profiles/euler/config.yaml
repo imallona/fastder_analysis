@@ -45,6 +45,8 @@ set-resources:
     mem_mb_per_cpu: 8000
   figure_schematics:
     mem_mb_per_cpu: 8000
+  figure_tdp43_novel_exons:
+    mem_mb_per_cpu: 8000
   figure_supp_revision:
     mem_mb_per_cpu: 8000
   generate_stranded_bigwigs:
