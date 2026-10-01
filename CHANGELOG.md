@@ -36,6 +36,7 @@
 - Every executing rule declares `mem_mb` and `runtime`. Both bound concurrency locally through `--resources`. Both become scheduler requests on a cluster. The fastder rules size their request by scope. Benchmarks peaked under 2 GB per chromosome. They peaked at 30 GB genome-wide.
 - Rule `record_host_info`, recording the benchmark machine. It writes CPU model, cores and memory. Output is `results/<config>/host_info.tsv`. The benchmarks report depends on it.
 - `host_info.tsv` gains physical cores, threads per core, turbo and load. Unexposed values are `NA`. Available cores come from the scheduler affinity.
+- `record_host_info` runs in the timed pass of a local run. Its load figure then describes the machine while tools were timed.
 - `scripts/collect_tool_versions.py` and rule `collect_tool_versions`. Each run writes `tool_versions.csv` and `tool_versions.tex`. Versions come from the built environments, the fastder checkout and the ASimulatoR container.
 - `profiles/euler/config.yaml`, a profile for ETH Euler. It holds every cluster setting. The Slurm account is `es_platt`. Five timed rules pin `--constraint=EPYC_7763`. Nodes are not requested exclusively. Co-tenancy stays a caveat for Methods. Nothing under `workflow/` mentions Slurm.
 - A core budget for cluster runs. Each job books its thread count. `EULER=1` passes `--resources cores_used=32`. The `es_platt` share is 208 cores. `--cores` cannot bound a cluster run. Override with `EULER_CORE_BUDGET`.

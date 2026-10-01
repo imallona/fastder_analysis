@@ -80,6 +80,9 @@ SNAKEMAKE := snakemake --cores $(CORES) -p $(PROFILE_FLAG) $(RESOURCE_FLAG) $(CO
 
 ## Rules whose wall clock is reported.
 TIMED_RULES := run_fastder run_fastder_scaling run_derfinder run_grohmm run_megadepth_baseline
+## What the timed pass runs: the timed rules, and the record of the machine,
+## so its load is the one the timings were taken under.
+TIMED_PASS_RULES := $(TIMED_RULES) record_host_info
 ## Cores for the timed pass: the widest point of the scaling run.
 TIMED_CORES ?= 16
 
@@ -99,7 +102,7 @@ endef
 define timed_pass
 $(if $(filter -n --dry-run --dryrun,$(EXTRA)),,$(call warm_inputs,$(1))) \
   snakemake --cores $(TIMED_CORES) -p $(CONDA_PREFIX_FLAG) $(EXTRA) $(2) \
-    --until $(TIMED_RULES) --scheduler greedy \
+    --until $(TIMED_PASS_RULES) --scheduler greedy \
     --default-resources timed=1 --resources timed=1
 endef
 
@@ -109,7 +112,7 @@ endef
 ## enough. $(1) config file, $(2) snakemake flags.
 define run
 cd $(WORKFLOW_DIR) && bash -c '$(ACTIVATE) && export FASTDER_EVAL_CONFIG=../config/$(1) && \
-  $(if $(EULER),$(SNAKEMAKE) $(2),$(SNAKEMAKE) $(2) --omit-from $(TIMED_RULES) && \
+  $(if $(EULER),$(SNAKEMAKE) $(2),$(SNAKEMAKE) $(2) --omit-from $(TIMED_PASS_RULES) && \
   $(call timed_pass,$(1),$(2)) && \
   $(SNAKEMAKE) $(2))'
 endef

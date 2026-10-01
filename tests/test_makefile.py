@@ -93,6 +93,13 @@ def test_the_timed_pass_gives_every_job_the_one_slot():
     assert "--resources timed=1" in timed_pass
 
 
+def test_the_machine_is_recorded_in_the_timed_pass():
+    """Recorded earlier, its load would describe the prepare pass."""
+    prepare, timed, _ = re.findall(r"snakemake --cores \d+[^&]*", dry_run())
+    assert "record_host_info" in prepare.split("--omit-from")[1]
+    assert "record_host_info" in timed.split("--until")[1]
+
+
 def test_the_timed_pass_uses_the_greedy_scheduler():
     """The default scheduler runs a solver on every core between and during jobs."""
     passes = re.findall(r"snakemake --cores \d+[^&]*", dry_run())
