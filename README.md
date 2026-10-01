@@ -57,6 +57,7 @@ Our Snakemake workflow uses config files to define run properties.
 - `fastder.min_coverage`, `min_length`, `position_tolerance`, `coverage_tolerance`, `min_junction_reads`, `no_stitch`: lists, run as a cross-product. Omit a list for fastder's default.
 - `fastder.cores`: threads for fastder itself. Defaults to `cores`; the tool comparisons set 1.
 - `fastder.scaling_cores`: core counts for the fastder scaling run. Omit to skip it.
+- `benchmark_repeats`: times each timed tool run is repeated. Default 1. Reports and `scaling.csv` give the median over repeats.
 - `fastder.stranded`: unstranded `all.bw` vs per-strand `plus`/`minus.bw`. Not supported by the recount3 backend.
 - `tools`: subset of `fastder`, `derfinder`, `megadepth_baseline`, `grohmm`. Omit to run all four.
 - `asimulator.*` (when `pump_source: asimulator`): `seq_depth`, `samples` (sample to event-mix map), `probs_as_freq`, `strand_specific`.
