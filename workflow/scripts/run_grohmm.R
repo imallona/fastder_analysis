@@ -110,6 +110,7 @@ message("[run_grohmm] processing ", length(chroms), " chromosomes; ",
 # so we can pivot the TSV back into per-chromosome vectors.
 windows_bed <- tempfile(fileext = ".bed")
 window_size <- as.integer(opt$`window-size`)
+window_names <- character(0)
 con <- file(windows_bed, "w")
 on.exit(close(con), add = TRUE)
 for (chrom in chroms) {
@@ -117,6 +118,7 @@ for (chrom in chroms) {
   starts <- seq.int(0L, chrom_len - 1L, by = window_size)
   ends <- pmin(starts + window_size, chrom_len)
   names_col <- paste0(chrom, ":", starts)
+  window_names <- c(window_names, names_col)
   cat(sprintf("%s\t%d\t%d\t%s\n", chrom, starts, ends, names_col),
       file = con, sep = "")
 }
@@ -151,9 +153,8 @@ for (i in seq_along(samples)) {
 }
 
 # Pre-compute the per-chromosome window count and the index range that each
-# chromosome occupies in the global per-window vector returned by
-# bigWigAverageOverBed (rows come back in BED order, which is the order we
-# emitted: chromosome by chromosome).
+# chromosome occupies in the global per-window vector, which follows the order
+# the windows were emitted in: chromosome by chromosome.
 windows_per_chrom <- vapply(chroms, function(chrom) {
   chrom_len <- sizes[[chrom]]
   length(seq.int(0L, chrom_len - 1L, by = window_size))
@@ -180,9 +181,15 @@ for (si in seq_along(samples)) {
       stop("[run_grohmm] bigWigAverageOverBed returned ", nrow(df),
            " rows, expected ", total_windows, " for ", bw_path)
     }
+    # bigWigAverageOverBed groups its rows by chromosome in its own order,
+    # not the BED's, so rows are placed by window name.
+    row_of_window <- match(window_names, df[[1]])
+    if (anyNA(row_of_window)) {
+      stop("[run_grohmm] bigWigAverageOverBed dropped windows for ", bw_path)
+    }
     # column 5 is mean0 (mean coverage including uncovered bases as 0); that
     # is the right denominator for a per-window CPM.
-    per_file_means <- per_file_means + df[[5]]
+    per_file_means <- per_file_means + df[[5]][row_of_window]
   }
   mean_cpm_sum <- mean_cpm_sum + per_file_means / cpm_factors[si]
   n_contributing <- n_contributing + 1L
