@@ -293,6 +293,10 @@ SCALING_CORES = FASTDER_CFG.get("scaling_cores") or []
 # the sweep measures fastder against itself on one fixed workload.
 SCALING_SCENARIO = FASTDER_CFG.get("scaling_scenario") or (SCENARIOS[0] if SCENARIOS else "")
 
+# Optional: thresholds at which fastder separates two scenarios at a set of
+# loci. Needs loci (a TSV with ce_start and ce_end), case and control.
+THRESHOLD_RANGE = config.get("threshold_range") or {}
+
 # Memory requests in MB, from the first submission's peak resident sets:
 # under 2 GB per chromosome, 30 GB at most genome-wide.
 FASTDER_MEM_MB = 8000 if FASTDER_CFG.get("chromosomes") else 48000
@@ -467,6 +471,7 @@ rule all:
         op.join(RESULTS_DIR, "fuzzy_strand.csv"),
         op.join(RESULTS_DIR, "truth_chain_stats.csv"),
         op.join(RESULTS_DIR, "tool_versions.csv"),
+        *([op.join(RESULTS_DIR, "threshold_range.csv")] if THRESHOLD_RANGE else []),
         # The recount3 backend adds a report comparing the sample groups.
         # The gtex data source gets the structural-concordance report
         # instead, which compares the per-tissue expressed-region catalogs.

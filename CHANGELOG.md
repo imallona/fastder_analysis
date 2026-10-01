@@ -52,6 +52,7 @@
 - `monorail.annotated_index`, default true. False builds the STAR index without the annotation. `config_unannotated_alignment.yaml` runs fastder on such an alignment. `annotation.csv` compares it with the annotated run. Run it with `make sim-unannotated`.
 - `tests/test_capability_table.py`, guarding the snapping cell. A bare yes there fails the test. Snapping reaches internal chain edges only.
 - `tests/test_make_scenario.py`, covering the compressed round trip.
+- `config_klim_2019_tdp43_recount3_ladder.yaml` and rule `collect_threshold_range`. fastder runs over ten `min_coverage` values. `threshold_range_summary.csv` gives the separating range per cryptic exon locus. The loci moved to `config/tdp43_cryptic_exons.tsv`, with a source per row. Run it with `make tdp43-ladder`.
 
 ### Fixed
 

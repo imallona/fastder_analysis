@@ -9,6 +9,7 @@ params:
   manifest_csv: ""
   summary_csv: ""
   reference_gtf: ""
+  loci_tsv: ""
   study: ""
 ---
 
@@ -75,15 +76,7 @@ group_colors <- setNames(
 # between a flanking junction pair; for STMN2, CELF5 and KCNQ2 a single
 # knockdown-specific junction was seen, so the box is anchored on it and on
 # the knockdown coverage peak.
-regions <- data.frame(
-  gene = c("STMN2", "HDGFL2", "ELAVL3", "CELF5", "KCNQ2"),
-  chrom = c("chr8", "chr19", "chr19", "chr19", "chr20"),
-  start = c(79606000, 4467000, 11446000, 3219000, 63395000),
-  end = c(79671000, 4507000, 11486000, 3302000, 63478000),
-  ce_start = c(79616821, 4492015, 11463496, 3278200, 63444558),
-  ce_end = c(79617200, 4492152, 11463662, 3278400, 63444758),
-  stringsAsFactors = FALSE
-)
+regions <- read.delim(params$loci_tsv, stringsAsFactors = FALSE)
 knitr::kable(regions, caption = "Cryptic exon panel: plot window and expected cryptic exon (hg38)")
 ```
 
@@ -141,8 +134,9 @@ tool_labels <- c(fastder = "fastder",
 # instead shows each ER component as a separate bar, so the cryptic exon
 # block is visible. The other tools emit single-exon transcripts, so their
 # tracks look the same under either filter.
+# A tool left out of the run has an empty manifest cell, which reads as NA.
 load_regions <- function(gtf) {
-  if (length(gtf) == 0 || !nzchar(gtf) || !file.exists(gtf)) return(GRanges())
+  if (length(gtf) == 0 || is.na(gtf) || !nzchar(gtf) || !file.exists(gtf)) return(GRanges())
   gr <- tryCatch(import(gtf), error = function(e) GRanges())
   if (length(gr) > 0 && "type" %in% colnames(mcols(gr))) {
     ex <- gr[!is.na(gr$type) & gr$type == "exon"]

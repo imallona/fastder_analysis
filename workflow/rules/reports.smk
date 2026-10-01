@@ -226,6 +226,37 @@ rule render_benchmarks_report:
         """
 
 
+# Thresholds at which the case scenario has a called region at each locus and
+# the control scenario has none.
+rule collect_threshold_range:
+    input:
+        script=op.join(WORKFLOW_DIR, "scripts", "collect_threshold_range.py"),
+        loci=lambda wc: THRESHOLD_RANGE["loci"],
+        gtfs=lambda wc: expand(
+            op.join(TOOLS_DIR, "fastder", "{scenario}", "{param_id}", "output.gtf"),
+            scenario=[THRESHOLD_RANGE["case"], THRESHOLD_RANGE["control"]],
+            param_id=PARAM_IDS),
+    output:
+        table=op.join(RESULTS_DIR, "threshold_range.csv"),
+        summary=op.join(RESULTS_DIR, "threshold_range_summary.csv"),
+    log:
+        op.join(LOG_DIR, "collect_threshold_range.log"),
+    params:
+        case=lambda wc: op.join(TOOLS_DIR, "fastder", THRESHOLD_RANGE["case"]),
+        control=lambda wc: op.join(TOOLS_DIR, "fastder", THRESHOLD_RANGE["control"]),
+    resources:
+        mem_mb=4000,
+        runtime=30,
+    conda:
+        "../envs/base.yaml"
+    shell:
+        """
+        python3 {input.script} --loci {input.loci} \
+            --case {params.case} --control {params.control} \
+            --out {output.table} --out-summary {output.summary} > {log} 2>&1
+        """
+
+
 # Build the manifest the recount3 report reads: one row per sample, with the
 # group it belongs to, its coverage BigWig, and its group's called-region GTF
 # for each tool (fastder, derfinder, megadepth_baseline, grohmm).
@@ -295,6 +326,7 @@ rule render_recount3_report:
         manifest=op.join(RESULTS_DIR, "recount3_manifest.csv"),
         summary=op.join(RESULTS_DIR, "summary.csv"),
         reference_gtf=(REF_GTF if BACKEND == "recount3" else []),
+        loci=op.join(WORKFLOW_DIR, "..", "config", "tdp43_cryptic_exons.tsv"),
         rmd=op.join(WORKFLOW_DIR, "reports", "recount3.Rmd"),
     output:
         op.join(RESULTS_DIR, "recount3.html"),
@@ -316,6 +348,7 @@ rule render_recount3_report:
             params = list(manifest_csv = '$(realpath {input.manifest})',
                           summary_csv = '$(realpath {input.summary})',
                           reference_gtf = '{params.reference_gtf}',
+                          loci_tsv = '$(realpath {input.loci})',
                           study = '{params.study}'),
             quiet = TRUE)" > {log} 2>&1
         """
