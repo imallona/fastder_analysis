@@ -477,13 +477,12 @@ jaccard_fill <- function() {
 }
 panel_tdp43_jaccard <- function(csv = TDP43_JACCARD_CSV) {
   d <- read_csv(csv, col_types = cols(cpm = col_character())) %>%
-    mutate(cpm = factor(paste0(cpm, " CPM"),
-                        levels = paste0(c("1.0", "0.02"), " CPM")))
+    arrange(desc(as.numeric(cpm))) %>%
+    mutate(cpm = paste0(cpm, " CPM"), cpm = factor(cpm, levels = unique(cpm)))
   ggplot(d, aes(cpm, jaccard, fill = cpm)) +
     geom_col(width = 0.6) +
     geom_text(aes(label = sprintf("%.2f", jaccard)), vjust = -0.3, size = 3) +
-    scale_fill_manual(values = c("1.0 CPM" = "#9ecae1", "0.02 CPM" = "#3182bd"),
-                      guide = "none") +
+    scale_fill_manual(values = c("#9ecae1", "#3182bd"), guide = "none") +
     coord_cartesian(ylim = c(0, 1)) +
     labs(x = "min coverage", y = "TDP-43 WT vs KD Jaccard") +
     theme_pub() + theme(axis.text.x = element_text(angle = 30, hjust = 1))
