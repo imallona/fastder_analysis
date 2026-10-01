@@ -144,6 +144,59 @@ rule record_host_info:
         """
 
 
+# ASimulatoR's version, read inside the container that runs it.
+rule asimulator_version:
+    output:
+        op.join(RESULTS_DIR, "asimulator_version.txt"),
+    log:
+        op.join(LOG_DIR, "asimulator_version.log"),
+    resources:
+        mem_mb=2000,
+        runtime=10,
+    container:
+        "docker://biomedbigdata/asimulator"
+    shell:
+        """
+        Rscript -e 'cat(as.character(packageVersion("ASimulatoR")), "\n")' \
+            > {output} 2> {log}
+        """
+
+
+# Versions of the tools behind this run's results. It depends on summary.csv
+# so every tool environment is built by the time it reads them.
+rule collect_tool_versions:
+    input:
+        script=op.join(WORKFLOW_DIR, "scripts", "collect_tool_versions.py"),
+        summary=op.join(RESULTS_DIR, "summary.csv"),
+        asimulator=([op.join(RESULTS_DIR, "asimulator_version.txt")]
+                    if HAS_SIM_TRUTH else []),
+    output:
+        csv=op.join(RESULTS_DIR, "tool_versions.csv"),
+        tex=op.join(RESULTS_DIR, "tool_versions.tex"),
+    log:
+        op.join(LOG_DIR, "collect_tool_versions.log"),
+    params:
+        conda_dir=CONDA_ENVS_DIR,
+        envs_dir=op.join(WORKFLOW_DIR, "envs"),
+        fastder_src=op.join(WORKFLOW_DIR, "external", "fastder"),
+        asimulator=lambda wc, input: (f"--asimulator-version {input.asimulator}"
+                                      if input.asimulator else ""),
+    resources:
+        mem_mb=1000,
+        runtime=10,
+    conda:
+        "../envs/base.yaml"
+    shell:
+        """
+        python3 {input.script} \
+            --conda-dir {params.conda_dir} \
+            --envs-dir {params.envs_dir} \
+            --fastder-src {params.fastder_src} \
+            {params.asimulator} \
+            --out-csv {output.csv} --out-tex {output.tex} > {log} 2>&1
+        """
+
+
 rule render_benchmarks_report:
     input:
         summary=op.join(RESULTS_DIR, "summary.csv"),
