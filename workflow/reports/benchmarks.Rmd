@@ -68,8 +68,8 @@ dataset_labels <- c(
   config_full_simulation_40M             = "Simulation (chr21 and chr19, 40M reads/sample)",
   config_gtex_comparison                 = "GTEx chr19 (4 tissues, 32 sub-groups)",
   config_gtex_concordance                = "GTEx genome-wide (4 tissues, 32 sub-groups)",
-  config_klim_2019_tdp43_recount3        = "TDP-43 STMN2 showcase (recount3 SRP166282, 1 CPM)",
-  config_klim_2019_tdp43_recount3_panel  = "TDP-43 cryptic-exon panel (recount3 SRP166282, 0.02 CPM)"
+  config_klim_2019_tdp43_recount3        = "TDP-43 STMN2 showcase (recount3 SRP166282)",
+  config_klim_2019_tdp43_recount3_panel  = "TDP-43 cryptic-exon panel (recount3 SRP166282)"
 )
 dataset_label <- if (config_name %in% names(dataset_labels)) {
   unname(dataset_labels[config_name])

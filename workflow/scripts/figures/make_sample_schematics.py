@@ -50,7 +50,7 @@ for y in (0.675, 0.475):
                 arrowprops=dict(arrowstyle="-|>", color=GREY, lw=1.1))
 ax.text(0.58, 0.62, "cryptic-exon genes\nSTMN2, HDGFL2,\nELAVL3, CELF5, KCNQ2",
         fontsize=8, ha="left", va="center")
-ax.text(0.58, 0.30, "1.0 CPM: STMN2 only\n0.02 CPM: full panel",
+ax.text(0.58, 0.30, "0.05 CPM: STMN2 only\n0.005 CPM: wider panel",
         fontsize=7.5, color=GREY, ha="left", va="center")
 ax.set_xlim(0, 1.0)
 ax.set_ylim(0.0, 1.02)
@@ -73,7 +73,7 @@ for i, t in enumerate(tissues):
 # Arrow from the tissue stack to the fastder threshold, mirroring the TDP scheme.
 ax.annotate("", xy=(0.62, 0.45), xytext=(0.46, 0.45),
             arrowprops=dict(arrowstyle="-|>", color=GREY, lw=1.1))
-ax.text(0.64, 0.45, "fastder\n1.0 CPM", fontsize=8.5, ha="left", va="center")
+ax.text(0.64, 0.45, "fastder\n0.005 CPM", fontsize=8.5, ha="left", va="center")
 ax.text(0.0, 0.04, "8 sub-groups of 5 samples -> 32 catalogs", fontsize=8, color=GREY, ha="left")
 ax.set_xlim(0, 1.0)
 ax.set_ylim(0.0, 1.02)
