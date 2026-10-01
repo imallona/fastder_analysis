@@ -82,8 +82,7 @@ fastder:
   position_tolerance: [5]
   no_stitch: [false]
   # Junction read support summed over the loaded samples. 0 is the
-  # published behaviour: no junction filter at all, which is what
-  # every number in the first submission was produced with.
+  # default: no junction filter at all.
   min_junction_reads: [0, 1, 2, 5, 10, 20]
   chromosomes: ["chr21", "chr19"]
   # One core, matching the single thread Snakemake gives derfinder, groHMM and

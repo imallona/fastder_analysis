@@ -3,7 +3,7 @@
 # Reads config_full_simulation; rebuilds from the local mirror.
 
 args <- commandArgs(trailingOnly = TRUE)
-fig_dir <- Sys.getenv("FASTDER_FIG_DIR", "/home/imallona/src/writing_fastder/figures")
+fig_dir <- Sys.getenv("FASTDER_FIG_DIR", file.path("results", "figures"))
 out <- if (length(args) >= 1) args[[1]] else file.path(fig_dir, "fig_sim_event_jaccard.png")
 
 source(file.path(dirname(sub("--file=", "",

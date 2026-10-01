@@ -2,7 +2,7 @@
 # Reads config_gtex_concordance/chain_stats.csv.
 
 args <- commandArgs(trailingOnly = TRUE)
-fig_dir <- Sys.getenv("FASTDER_FIG_DIR", "/home/imallona/src/writing_fastder/figures")
+fig_dir <- Sys.getenv("FASTDER_FIG_DIR", file.path("results", "figures"))
 out <- if (length(args) >= 1) args[[1]] else file.path(fig_dir, "fig_gtexcmp_genomic_dist.pdf")
 
 source(file.path(dirname(sub("--file=", "",

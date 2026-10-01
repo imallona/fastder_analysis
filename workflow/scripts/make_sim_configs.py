@@ -199,8 +199,7 @@ def junction_sweep_config(base_lines):
         ["  # Held at the shipped defaults so the filter is the only axis.\n",
          *(f"  {k}: {v}\n" for k, v in FIXED_GRID.items()),
          "  # Junction read support summed over the loaded samples. 0 is the\n"
-         "  # published behaviour: no junction filter at all, which is what\n"
-         "  # every number in the first submission was produced with.\n",
+         "  # default: no junction filter at all.\n",
          f"  min_junction_reads: {MIN_JUNCTION_READS}\n"])
     header = (
         "# Junction read-support sensitivity: the same simulated data as\n"

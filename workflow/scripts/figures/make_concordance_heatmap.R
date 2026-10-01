@@ -19,9 +19,8 @@ suppressPackageStartupMessages({
 args <- commandArgs(trailingOnly = TRUE)
 out_base <- if (length(args) >= 1) args[[1]] else "fig_gtex_concordance"
 
-RESULTS_ROOT <- Sys.getenv("FASTDER_RESULTS_ROOT",
-                           "/home/imallona/src/writing_fastder/barbara_results/results")
-FIG_DIR <- Sys.getenv("FASTDER_FIG_DIR", "/home/imallona/src/writing_fastder/figures")
+RESULTS_ROOT <- Sys.getenv("FASTDER_RESULTS_ROOT", "results")
+FIG_DIR <- Sys.getenv("FASTDER_FIG_DIR", file.path("results", "figures"))
 CONFIG <- "config_gtex_concordance"
 
 tissue_levels <- c("brain", "heart", "muscle", "blood")

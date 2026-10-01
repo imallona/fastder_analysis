@@ -10,8 +10,9 @@
 
 args <- commandArgs(trailingOnly = TRUE)
 out <- if (length(args) >= 1) args[[1]] else "figure_main_1.pdf"
-fig_dir <- Sys.getenv("FASTDER_FIG_DIR", "/home/imallona/src/writing_fastder/figures")
-bench_dir <- Sys.getenv("FASTDER_BENCH_DIR", "/home/imallona/src/writing_fastder/barbara_results/benchmarks/config_full_simulation")
+fig_dir <- Sys.getenv("FASTDER_FIG_DIR", file.path("results", "figures"))
+bench_dir <- Sys.getenv("FASTDER_BENCH_DIR",
+                        file.path("logs", "benchmarks", "config_full_simulation"))
 
 source(file.path(dirname(sub("--file=", "",
   grep("--file=", commandArgs(FALSE), value = TRUE))), "helpers.R"))
