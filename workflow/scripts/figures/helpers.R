@@ -167,8 +167,9 @@ RESULTS_ROOT <- Sys.getenv("FASTDER_RESULTS_ROOT",
                            "/home/imallona/src/writing_fastder/barbara_results/results")
 FIG_DIR <- Sys.getenv("FASTDER_FIG_DIR", "/home/imallona/src/writing_fastder/figures")
 
-# Read one CSV from every config_full_simulation* run, stamping the depth its
-# name encodes (the base config is 10M). Mirrors the loader in meta.Rmd.
+# Read one CSV from every config_full_simulation* run, stamping the depth and
+# the replicate its name encodes (the base config is 10M, replicate 1). Mirrors
+# the loader in meta.Rmd.
 load_depth_sweep <- function(file_name, root = RESULTS_ROOT) {
   run_dirs <- list.dirs(root, recursive = FALSE, full.names = TRUE)
   run_dirs <- run_dirs[grepl("^config_full_simulation", basename(run_dirs))]
@@ -176,12 +177,27 @@ load_depth_sweep <- function(file_name, root = RESULTS_ROOT) {
     m <- str_match(d, "_([0-9]+)M$")[, 2]
     if (is.na(m)) 10L else as.integer(m)
   }
+  replicate_of <- function(d) {
+    m <- str_match(d, "_rep([0-9]+)$")[, 2]
+    if (is.na(m)) 1L else as.integer(m)
+  }
   read_run <- function(dir_path) {
     path <- file.path(dir_path, file_name)
     if (!file.exists(path)) return(NULL)
-    read_csv(path, show_col_types = FALSE) %>% mutate(depth_M = depth_of(basename(dir_path)))
+    read_csv(path, show_col_types = FALSE) %>%
+      mutate(depth_M = depth_of(basename(dir_path)),
+             replicate = replicate_of(basename(dir_path)))
   }
   bind_rows(lapply(run_dirs, read_run))
+}
+
+# Mean, lowest and highest replicate of `value`, itself a per-replicate mean.
+# Each replicate weighs the same however many rows it has; a replicate with no
+# value is left out.
+across_replicates <- function(df, ...) {
+  df %>% filter(!is.na(value)) %>% group_by(...) %>%
+    summarise(low = min(value), high = max(value), value = mean(value),
+              .groups = "drop")
 }
 
 # Panel: gffcompare sensitivity and precision against depth, exon and
@@ -191,15 +207,16 @@ panel_depth <- function(which_levels = c("Transcript", "Exon"), tools = TOOLS) {
   summary_all <- load_depth_sweep("summary.csv") %>%
     filter(tool %in% tools) %>% default_grid()
   levels_long <- bind_rows(
-    summary_all %>% transmute(tool, scenario, depth_M, level = "Transcript",
+    summary_all %>% transmute(tool, scenario, depth_M, replicate, level = "Transcript",
                               sensitivity = transcript_sens, precision = transcript_prec),
-    summary_all %>% transmute(tool, scenario, depth_M, level = "Exon",
+    summary_all %>% transmute(tool, scenario, depth_M, replicate, level = "Exon",
                               sensitivity = exon_sens, precision = exon_prec)
   ) %>%
     filter(level %in% which_levels) %>%
     pivot_longer(c(sensitivity, precision), names_to = "metric", values_to = "value") %>%
-    group_by(tool, scenario, depth_M, level, metric) %>%
+    group_by(tool, scenario, depth_M, replicate, level, metric) %>%
     summarise(value = mean(value, na.rm = TRUE), .groups = "drop") %>%
+    across_replicates(tool, scenario, depth_M, level, metric) %>%
     mutate(scenario = relabel_scenario(scenario),
            depth_x = depth_M * tool_dodge[as.character(tool)])
   ggplot(levels_long, aes(depth_x, value, colour = tool, shape = tool, linetype = tool)) +
@@ -232,10 +249,12 @@ panel_boundary <- function(tools = TOOLS) {
     filter(tool %in% tools) %>% default_grid()
   b5 <- distances_all %>%
     mutate(distance = as.integer(distance)) %>%
-    group_by(tool, scenario, depth_M, sample, param_id) %>%
+    group_by(tool, scenario, depth_M, replicate, sample, param_id) %>%
     summarise(pct = mean(abs(distance) <= 5) * 100, .groups = "drop") %>%
-    group_by(tool, scenario, depth_M) %>%
-    summarise(pct = mean(pct), .groups = "drop") %>%
+    group_by(tool, scenario, depth_M, replicate) %>%
+    summarise(value = mean(pct), .groups = "drop") %>%
+    across_replicates(tool, scenario, depth_M) %>%
+    rename(pct = value) %>%
     mutate(scenario = relabel_scenario(scenario),
            depth_x = depth_M * tool_dodge[as.character(tool)])
   ggplot(b5, aes(depth_x, pct, colour = tool, shape = tool, linetype = tool)) +
@@ -626,7 +645,10 @@ panel_ablation <- function(path = file.path(FIG_DIR, "ablation.csv")) {
                            labels = unname(metric_labels)),
            scenario = relabel_scenario(scenario))
   save_panel_data(d, "panel_ablation")
+  # Mean over replicates; the bar spans them where a depth has several.
+  d <- across_replicates(d, depth_M, scenario, arm, metric)
   ggplot(d, aes(depth_M, value, colour = arm, shape = arm, linetype = arm)) +
+    geom_linerange(aes(ymin = low, ymax = high), linetype = "solid", show.legend = FALSE) +
     geom_line(linewidth = 0.7) + geom_point(size = 2.4) +
     scale_x_continuous(trans = "log10", breaks = sort(unique(d$depth_M))) +
     scale_colour_manual(values = c("#FC8D62", "#7F7F7F"), name = NULL) +
@@ -646,6 +668,7 @@ panel_min_junction_reads <- function(path = file.path(FIG_DIR, "min_junction_rea
                            labels = unname(metric_labels)),
            scenario = relabel_scenario(scenario))
   save_panel_data(d, "panel_min_junction_reads")
+  d <- across_replicates(d, min_junction_reads, scenario, metric)
   ggplot(d, aes(min_junction_reads, value, colour = scenario, shape = scenario)) +
     geom_line(linewidth = 0.7) + geom_point(size = 2.4) +
     scale_x_continuous(trans = "log1p", breaks = sort(unique(d$min_junction_reads))) +

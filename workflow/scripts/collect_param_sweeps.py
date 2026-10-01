@@ -29,10 +29,17 @@ BOUNDARY_WINDOW_BP = 5
 def depth_of(run_dir):
     """Reads per sample in millions, from the results directory name.
 
-    config_full_simulation is the 10M point and carries no suffix.
+    config_full_simulation is the 10M point and carries no suffix; neither do
+    its replicates.
     """
     match = re.search(r"_([0-9]+)M$", op.basename(run_dir))
     return int(match.group(1)) if match else 10
+
+
+def replicate_of(run_dir):
+    """Draw of the simulation, from the _rep<N> suffix. An unsuffixed run is 1."""
+    match = re.search(r"_rep([0-9]+)$", op.basename(run_dir))
+    return int(match.group(1)) if match else 1
 
 
 def simulation_run_dirs(results_root, prefix="config_full_simulation"):
@@ -109,10 +116,11 @@ def boundary_rows(run_dir, axis, tool):
 
 
 def collect(results_root, axis, tool="fastder", prefix="config_full_simulation"):
-    """One row per depth, scenario, swept value and metric."""
+    """One row per depth, replicate, scenario, swept value and metric."""
     rows = []
     for run_dir in simulation_run_dirs(results_root, prefix):
         depth = depth_of(run_dir)
+        replicate = replicate_of(run_dir)
         gathered = accuracy_rows(run_dir, axis, tool)
         for key, values in boundary_rows(run_dir, axis, tool).items():
             gathered[key].extend(values)
@@ -120,6 +128,7 @@ def collect(results_root, axis, tool="fastder", prefix="config_full_simulation")
         for (scenario, value, metric), values in ordered:
             rows.append({
                 "depth_M": depth,
+                "replicate": replicate,
                 "scenario": scenario,
                 "tool": tool,
                 axis: int(value) if isinstance(value, bool) else value,
@@ -131,7 +140,7 @@ def collect(results_root, axis, tool="fastder", prefix="config_full_simulation")
 
 
 def write_csv(rows, path, axis):
-    columns = ["depth_M", "scenario", "tool", axis, "metric", "value", "n"]
+    columns = ["depth_M", "replicate", "scenario", "tool", axis, "metric", "value", "n"]
     with open(path, "w", newline="") as fh:
         writer = csv.DictWriter(fh, fieldnames=columns)
         writer.writeheader()
