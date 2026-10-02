@@ -61,9 +61,9 @@ fastder:
   # ladder config the STMN2 cryptic exon is the only locus separating the
   # groups from 0.01 to 0.2 CPM; 0.05 is the middle of that range.
   min_coverage: [0.05]
-  # chr8 carries STMN2. chr19 and chr20 are kept so this run shares the
+  # chr8 carries STMN2. chr19 is kept so this run shares the
   # reference download with the panel run and the report renders every panel.
-  chromosomes: ["chr8", "chr19", "chr20"]
+  chromosomes: ["chr8", "chr19"]
 
 gffcompare:
   # The truth set for the recount3 backend is the downloaded Ensembl

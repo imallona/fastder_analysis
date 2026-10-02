@@ -108,6 +108,6 @@ def test_the_loci_table_in_config_parses():
     from pathlib import Path
     tsv = Path(__file__).resolve().parents[1] / "config" / "tdp43_cryptic_exons.tsv"
     loci = read_loci(tsv)
-    assert [locus["gene"] for locus in loci] == ["STMN2", "HDGFL2", "ELAVL3", "CELF5", "KCNQ2"]
+    assert [locus["gene"] for locus in loci] == ["STMN2", "HDGFL2", "ELAVL3", "CELF5"]
     with open(tsv, newline="") as fh:
         assert all(row["source"] for row in csv.DictReader(fh, delimiter="\t"))

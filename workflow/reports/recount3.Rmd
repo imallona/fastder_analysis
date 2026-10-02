@@ -33,14 +33,14 @@ called regions of the knockdown group and the control group can be placed
 side by side.
 
 This report is specific to the TDP-43 knockdown experiment. The cryptic exon
-panel used below (STMN2, HDGFL2, ELAVL3, CELF5, KCNQ2) is hardcoded for it
+panel used below (STMN2, HDGFL2, ELAVL3, CELF5) is hardcoded for it
 (Klim et al. 2019, recount3 study SRP166282), with loci picked from the
 study's knockdown-specific novel splice junctions. If the recount3 backend is
 run on a different study, the cryptic exon panels still render but are not
 meaningful for it.
 
 Loss of TDP-43 lets cryptic exons appear in many genes. The panel here
-covers STMN2 on chr8, HDGFL2, ELAVL3 and CELF5 on chr19, and KCNQ2 on chr20.
+covers STMN2 on chr8, and HDGFL2, ELAVL3 and CELF5 on chr19.
 These cryptic exons are not part of the Ensembl annotation, so they cannot be
 scored as true positives. The aim is a visual check: a cryptic exon should
 show up as a called region, and usually as coverage, in the knockdown group,
@@ -72,7 +72,7 @@ group_colors <- setNames(
 # gene body plus a small flank. The cryptic exon coordinates (ce_start,
 # ce_end) come from the knockdown-specific novel splice junctions in the
 # recount3 junction matrix: for HDGFL2 and ELAVL3 the cryptic exon is the gap
-# between a flanking junction pair; for STMN2, CELF5 and KCNQ2 a single
+# between a flanking junction pair; for STMN2 and CELF5 a single
 # knockdown-specific junction was seen, so the box is anchored on it and on
 # the knockdown coverage peak.
 regions <- read.delim(params$loci_tsv, stringsAsFactors = FALSE)
