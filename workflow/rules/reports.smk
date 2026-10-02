@@ -143,7 +143,7 @@ rule asimulator_version:
         mem_mb=2000,
         runtime=10,
     container:
-        "docker://biomedbigdata/asimulator"
+        ASIMULATOR_IMAGE
     shell:
         """
         Rscript -e 'cat(as.character(packageVersion("ASimulatoR")), "\n")' \

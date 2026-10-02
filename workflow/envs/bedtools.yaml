@@ -3,5 +3,5 @@ channels:
   - bioconda
 dependencies:
   - python=3.12
-  - bedtools=2.31
-  - pandas
+  - bedtools=2.31.1
+  - pandas=3.0.6

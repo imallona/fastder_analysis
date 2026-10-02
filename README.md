@@ -28,7 +28,7 @@ FASTDER_EVAL_CONFIG=../config/config_full_simulation.yaml \
   snakemake --use-conda --use-singularity --cores <num_cores>
 ```
 
-`--use-singularity` is required for any run with simulated input (`run_asimulator` pulls `docker://biomedbigdata/asimulator`) and for the `monorail` backend (`recount-pump`, `recount-unify`). The recount3 backend uses no container.
+`--use-singularity` is required for any run with simulated input (`run_asimulator` pulls `docker://biomedbigdata/asimulator`, named by digest) and for the `monorail` backend (`recount-pump`, `recount-unify`). The recount3 backend uses no container.
 
 ## Run modes / alignment backend
 
