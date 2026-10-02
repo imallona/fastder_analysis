@@ -32,9 +32,9 @@ IGNORED_WHEN_SET = {
 }
 
 
-# Point the comparisons are made at: fastder's shipped defaults from
-# cpp/main.cpp, except min_coverage, which ships as 0.05 CPM and is set here to
-# the threshold with the best exon-level F1 on config_threshold_ladder.
+# Point the comparisons are made at: fastder's defaults, from cpp/main.cpp.
+# Its default min_coverage is the threshold with the best exon-level F1 on
+# config_threshold_ladder.
 REFERENCE = {"min_coverage": 0.005, "min_length": 10, "position_tolerance": 5,
              "min_junction_reads": 0}
 
