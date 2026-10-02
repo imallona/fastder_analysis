@@ -40,7 +40,7 @@
 ##
 ## Cluster runs: add EULER=1 to any target above to submit its rules to Slurm
 ## through profiles/euler. slurm/ holds sbatch wrappers that do this for the
-## revision's four run groups.
+## four run groups.
 ##
 ## Variables (override on the command line, e.g. make sim CORES=24):
 ##   CORES        snakemake --cores value (default 12)
