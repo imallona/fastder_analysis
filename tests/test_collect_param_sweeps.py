@@ -183,6 +183,26 @@ def test_annotation_table_compares_the_two_alignments_at_the_defaults(tmp_path):
                       (0, "exon_sens"): 55.0, (0, "exon_prec"): 61.0}
 
 
+def test_annotation_table_has_a_row_set_per_tool(tmp_path):
+    make_run(tmp_path, "config_full_simulation", [
+        summary_row("mc0.005_ml10_pt5_ns0", 60, 62),
+        summary_row("mc0.005_pt5", 55, 58, tool="derfinder"),
+        summary_row("mc0.005_pt20", 1, 1, tool="derfinder"),
+        summary_row("mc0.005", 54, 57, tool="megadepth_baseline"),
+    ])
+    make_run(tmp_path, "config_unannotated_alignment", [
+        summary_row("mc0.005_ml10_pt5_ns0", 54, 57),
+        summary_row("mc0.005_pt5", 53, 56, tool="derfinder"),
+        summary_row("mc0.005", 52, 55, tool="megadepth_baseline"),
+    ])
+    rows = collect_annotation(str(tmp_path))
+    sens = {(r["tool"], r["annotated_index"]): r["value"] for r in rows
+            if r["metric"] == "exon_sens"}
+    assert sens == {("fastder", 1): 60.0, ("fastder", 0): 54.0,
+                    ("derfinder", 1): 55.0, ("derfinder", 0): 53.0,
+                    ("megadepth_baseline", 1): 54.0, ("megadepth_baseline", 0): 52.0}
+
+
 def test_the_unannotated_run_stays_out_of_the_depth_tables(tmp_path):
     make_run(tmp_path, "config_full_simulation",
              [summary_row("mc0.005_ml10_pt5_ns0", 60, 62)])

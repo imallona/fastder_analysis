@@ -32,6 +32,8 @@ SPLIT_TOOL = "fastder_split"
 
 # The two alignments of the 10M reads, by whether the index held the annotation.
 ANNOTATION_RUNS = ((1, "config_full_simulation"), (0, "config_unannotated_alignment"))
+# The tools run on both alignments.
+ANNOTATION_TOOLS = ("fastder", "derfinder", "megadepth_baseline")
 
 
 def depth_of(run_dir):
@@ -165,27 +167,29 @@ def collect(results_root, axis, tool="fastder", prefix="config_full_simulation")
     return rows
 
 
-def collect_annotation(results_root, tool="fastder", runs=ANNOTATION_RUNS):
-    """One row per alignment, scenario and metric, stitched runs at the defaults."""
+def collect_annotation(results_root, tools=ANNOTATION_TOOLS, runs=ANNOTATION_RUNS):
+    """One row per tool, alignment, scenario and metric, at the reference point,
+    fastder stitched."""
     rows = []
-    for annotated, name in runs:
-        run_dir = op.join(results_root, name)
-        gathered = accuracy_rows(run_dir, "no_stitch", tool)
-        for key, values in boundary_rows(run_dir, "no_stitch", tool).items():
-            gathered[key].extend(values)
-        for (scenario, unstitched, metric), values in sorted(gathered.items()):
-            if unstitched:
-                continue
-            rows.append({
-                "depth_M": depth_of(run_dir),
-                "replicate": replicate_of(run_dir),
-                "scenario": scenario,
-                "tool": tool,
-                "annotated_index": annotated,
-                "metric": metric,
-                "value": sum(values) / len(values),
-                "n": len(values),
-            })
+    for tool in tools:
+        for annotated, name in runs:
+            run_dir = op.join(results_root, name)
+            gathered = accuracy_rows(run_dir, "no_stitch", tool)
+            for key, values in boundary_rows(run_dir, "no_stitch", tool).items():
+                gathered[key].extend(values)
+            for (scenario, unstitched, metric), values in sorted(gathered.items()):
+                if unstitched:
+                    continue
+                rows.append({
+                    "depth_M": depth_of(run_dir),
+                    "replicate": replicate_of(run_dir),
+                    "scenario": scenario,
+                    "tool": tool,
+                    "annotated_index": annotated,
+                    "metric": metric,
+                    "value": sum(values) / len(values),
+                    "n": len(values),
+                })
     return rows
 
 

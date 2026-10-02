@@ -224,8 +224,8 @@ def test_ablation_junction_filter_and_annotation(tree):
     assert found[f"ablation.sim.10M.{SCENARIO}.stitched.exon_prec"] == pytest.approx(55.0)
     assert found[f"ablation.sim.10M.{SCENARIO}.unstitched.exon_prec"] == pytest.approx(1.0)
     assert found[f"junction_filter.{SCENARIO}.mjr5.exon_prec"] == pytest.approx(65.0)
-    assert found[f"annotation.{SCENARIO}.unannotated.exon_prec"] == pytest.approx(48.0)
-    assert found[f"annotation.{SCENARIO}.annotated.exon_prec"] == pytest.approx(55.0)
+    assert found[f"annotation.{SCENARIO}.fastder.unannotated.exon_prec"] == pytest.approx(48.0)
+    assert found[f"annotation.{SCENARIO}.fastder.annotated.exon_prec"] == pytest.approx(55.0)
 
 
 def test_a_listed_sweep_that_never_ran_is_an_error(tree):
