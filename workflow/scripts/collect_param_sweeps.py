@@ -17,10 +17,11 @@ Usage:
 """
 import argparse
 import csv
+import functools
 import os
 import os.path as op
 import re
-from collections import defaultdict
+from collections import Counter, defaultdict
 from glob import glob
 
 from param_grid import comparable, parse_param_id
@@ -91,23 +92,46 @@ def accuracy_rows(run_dir, axis, tool):
     return out
 
 
+@functools.lru_cache(maxsize=None)
+def boundary_distances(run_dir):
+    """Absolute boundary distances of a run, counted per tool, scenario, sample
+    and param_id. fuzzy_distances.csv has one row per boundary and runs to
+    gigabytes, so it is read once per run and kept as counts."""
+    path = op.join(run_dir, "fuzzy_distances.csv")
+    counts = defaultdict(Counter)
+    if not op.exists(path):
+        return counts
+    with open(path, newline="") as fh:
+        reader = csv.reader(fh)
+        header = next(reader, None)
+        if header is None:
+            return counts
+        tool, scenario, sample, param_id, distance = (
+            header.index(name) for name in ("tool", "scenario", "sample", "param_id", "distance"))
+        for row in reader:
+            if row[distance] != "":
+                counts[(row[tool], row[scenario], row[sample], row[param_id])][abs(int(row[distance]))] += 1
+    return counts
+
+
+def within_window_share(distance_counts):
+    """Percent of the counted distances inside the window."""
+    total = sum(distance_counts.values())
+    hits = sum(n for distance, n in distance_counts.items() if distance <= BOUNDARY_WINDOW_BP)
+    return 100.0 * hits / total
+
+
 def boundary_rows(run_dir, axis, tool):
     """Share of boundaries within the window, from fuzzy_distances.csv."""
-    hits = defaultdict(lambda: [0, 0])
-    for row in read_rows(op.join(run_dir, "fuzzy_distances.csv")):
-        if row.get("tool") != tool:
+    pooled = defaultdict(Counter)
+    for (row_tool, scenario, _, param_id), distance_counts in boundary_distances(run_dir).items():
+        if row_tool != tool:
             continue
-        combo = parse_param_id(row.get("param_id", ""))
+        combo = parse_param_id(param_id)
         if not comparable(combo, axis):
             continue
-        raw = row.get("distance")
-        if raw in (None, ""):
-            continue
-        key = (row["scenario"], axis_value(combo, axis), "boundary_within_5bp")
-        counts = hits[key]
-        counts[1] += 1
-        counts[0] += within_window(raw)
-    return {key: [100.0 * hit / total] for key, (hit, total) in hits.items() if total}
+        pooled[(scenario, axis_value(combo, axis), "boundary_within_5bp")].update(distance_counts)
+    return {key: [within_window_share(distance_counts)] for key, distance_counts in pooled.items()}
 
 
 def within_window(distance):
