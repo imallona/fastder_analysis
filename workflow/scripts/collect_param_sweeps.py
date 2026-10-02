@@ -1,6 +1,6 @@
 """Tidy tables for the single-axis fastder comparisons.
 
-Every parameter stays at its shipped default while one axis moves: --no-stitch
+Every parameter stays at its default while one axis moves: --no-stitch
 for the ablation, --min-junction-reads for the read-support sweep, and the
 STAR index, with or without the annotation, for annotated_index. Accuracy
 comes from summary.csv, boundary distances from fuzzy_distances.csv, averaged

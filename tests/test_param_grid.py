@@ -5,7 +5,14 @@ here changes the benchmark without failing, so the collapsing behaviour is
 pinned below.
 """
 
+import re
+from pathlib import Path
+
+import pytest
+
 import param_grid as pg
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
 class TestParamId:
@@ -150,3 +157,11 @@ def test_stitched_at_reference_is_one_corner_of_the_grid():
 
 def test_an_unstitched_run_is_not_the_reference():
     assert not pg.stitched_at_reference({"min_coverage": 0.005, "no_stitch": True})
+
+
+@pytest.mark.parametrize("r_source", ["workflow/scripts/figures/helpers.R",
+                                      "workflow/reports/meta.Rmd"])
+def test_r_code_uses_the_reference_threshold(r_source):
+    text = (REPO_ROOT / r_source).read_text()
+    declared = re.search(r"^REFERENCE_MIN_COVERAGE <- ([0-9.]+)$", text, re.MULTILINE)
+    assert float(declared.group(1)) == pg.REFERENCE["min_coverage"]

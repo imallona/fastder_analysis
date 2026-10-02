@@ -49,7 +49,7 @@ fastder:
   # The panel config's stitching gate, and fastder's default, which is
   # effectively open. Each gets its own range.
   coverage_tolerance: [1.0, 1000.0]
-  chromosomes: ["chr8", "chr19", "chr20"]
+  chromosomes: ["chr8", "chr19"]
 
 # Per locus, the thresholds at which a region is called in the case group and
 # not in the control group. Loci are the ce_start and ce_end columns.

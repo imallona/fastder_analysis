@@ -16,7 +16,7 @@
 # sets can be compared.
 #
 # This is the panel config: a single low threshold that emits the wider
-# cryptic exon panel (STMN2, HDGFL2, ELAVL3, CELF5, KCNQ2). Those loci were
+# cryptic exon panel (STMN2, HDGFL2, ELAVL3, CELF5). Those loci were
 # picked from knockdown-specific novel splice junctions in the recount3
 # junction matrix. The threshold is the one at which most of them separate
 # knockdown from control on the ladder config. The companion
@@ -61,7 +61,7 @@ fastder:
   stranded: false
   # Panel run: one threshold, no sweep. min_coverage is in CPM. On the ladder
   # config 0.005 separates the most loci (STMN2, HDGFL2, ELAVL3). CELF5
-  # separates from 0.0005 to 0.002 only, and KCNQ2 at no threshold.
+  # separates from 0.0005 to 0.002 only.
   min_coverage: [0.005]
   # Tighten the stitching gate so a low-coverage cryptic exon is not absorbed
   # into a wide block with a neighbouring high-coverage constitutive exon. The
@@ -72,10 +72,9 @@ fastder:
   # default (1000) is effectively open and is the reason the panel figures
   # bury STMN2 and HDGFL2 inside one large stitched region.
   coverage_tolerance: [1.0]
-  # Cryptic exon panel: chr8 (STMN2), chr19 (HDGFL2, ELAVL3, CELF5), chr20
-  # (KCNQ2). Loci picked from knockdown-specific novel junctions in the
+  # Cryptic exon panel: chr8 (STMN2), chr19 (HDGFL2, ELAVL3, CELF5). Loci picked from knockdown-specific novel junctions in the
   # recount3 junction matrix.
-  chromosomes: ["chr8", "chr19", "chr20"]
+  chromosomes: ["chr8", "chr19"]
 
 gffcompare:
   # The truth set for the recount3 backend is the downloaded Ensembl
