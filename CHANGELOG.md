@@ -67,6 +67,7 @@
 - The TDP-43 ladder runs twelve thresholds, from 0.0002 to 1.0 CPM. `threshold_range_counts.csv` counts the loci separating the groups at each and flags the threshold with the most.
 - TDP-43 thresholds come from the ladder. The showcase runs at 0.05 CPM, was 1.0. The panel runs at 0.005 CPM, was 0.02.
 - KCNQ2 is out of the TDP-43 panel: its box lay on an annotated exon, called in both groups. The TDP-43 configs run chr8 and chr19.
+- Rule logs go to `logs/<config>/`. They were shared by all configs.
 - The three GTEx configs call regions at 0.005 CPM, was 1.0. It had the best exon-level F1 on the GTEx threshold ladder.
 - Rules `figure_tdp43_novel_exons` and `figure_tdp43_jaccard` write the two TDP-43 tables figure 2 reads.
 

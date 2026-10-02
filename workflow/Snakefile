@@ -21,11 +21,11 @@ configfile: _CFG_PATH
 # Internal path constants.
 WORKFLOW_DIR = workflow.basedir
 DATA_DIR = op.join(WORKFLOW_DIR, "data")
-LOG_DIR = op.join(WORKFLOW_DIR, "logs")
-# Snakemake benchmark TSVs land under logs/benchmarks/<config>/. The config
-# basename keeps per-config runtime numbers separated so that running a
-# second config does not overwrite the first config's benchmark TSVs.
-BENCH_DIR = op.join(LOG_DIR, "benchmarks", CONFIG_BASENAME)
+# Logs and benchmark TSVs are kept per config, under logs/<config>/ and
+# logs/benchmarks/<config>/, so one config's run does not overwrite another's.
+LOGS_ROOT = op.join(WORKFLOW_DIR, "logs")
+LOG_DIR = op.join(LOGS_ROOT, CONFIG_BASENAME)
+BENCH_DIR = op.join(LOGS_ROOT, "benchmarks", CONFIG_BASENAME)
 
 # Where Snakemake builds the conda environments: --conda-prefix, or its default
 # under the working directory.
