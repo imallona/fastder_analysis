@@ -11,6 +11,8 @@
 # rendered report figures, expected as PNGs in FASTDER_FIG_DIR; the troponin
 # marker loci read the per-sub-group GTFs of config_gtex_concordance.
 
+import yaml
+
 FIG_SCRIPTS = op.join(WORKFLOW_DIR, "scripts", "figures")
 FIG_DIR = config.get("figures_dir", op.join(WORKFLOW_DIR, "results", "figures"))
 FIG_RESULTS = op.join(WORKFLOW_DIR, "results")
@@ -83,6 +85,62 @@ rule figure_novel_exons:
         "{input.reference} {output} > {log} 2>&1"
 
 
+# TDP-43 inputs of figure 2, from the showcase and panel runs.
+TDP43_SHOWCASE = "config_klim_2019_tdp43_recount3"
+TDP43_PANEL = "config_klim_2019_tdp43_recount3_panel"
+
+
+def tdp43_manifest(config_name):
+    return op.join(FIG_RESULTS, config_name, "recount3_manifest.csv")
+
+
+def tdp43_threshold(config_name):
+    """The single min_coverage a TDP-43 config calls regions at."""
+    path = op.join(WORKFLOW_DIR, "..", "config", config_name + ".yaml")
+    with open(path) as handle:
+        return yaml.safe_load(handle)["fastder"]["min_coverage"][0]
+
+
+rule figure_tdp43_novel_exons:
+    input:
+        manifest=tdp43_manifest(TDP43_PANEL),
+        script=op.join(FIG_SCRIPTS, "extract_novel_exons_tdp43.R"),
+        reference=REF_GTF,
+    output:
+        op.join(FIG_DIR, "tdp43_novel_exons.csv"),
+    log:
+        op.join(LOG_DIR, "figure_tdp43_novel_exons.log"),
+    resources:
+        mem_mb=8000,
+        runtime=60,
+    conda:
+        "../envs/figures.yaml"
+    shell:
+        "Rscript {input.script} {input.manifest} {input.reference} {output} > {log} 2>&1"
+
+
+rule figure_tdp43_jaccard:
+    input:
+        showcase=tdp43_manifest(TDP43_SHOWCASE),
+        panel=tdp43_manifest(TDP43_PANEL),
+        script=op.join(FIG_SCRIPTS, "extract_tdp43_jaccard.R"),
+    output:
+        op.join(FIG_DIR, "tdp43_jaccard.csv"),
+    params:
+        showcase=tdp43_threshold(TDP43_SHOWCASE),
+        panel=tdp43_threshold(TDP43_PANEL),
+    log:
+        op.join(LOG_DIR, "figure_tdp43_jaccard.log"),
+    resources:
+        mem_mb=4000,
+        runtime=60,
+    conda:
+        "../envs/figures.yaml"
+    shell:
+        "Rscript {input.script} {output} {params.showcase}={input.showcase} "
+        "{params.panel}={input.panel} > {log} 2>&1"
+
+
 rule figure_main_1:
     input:
         helpers=op.join(FIG_SCRIPTS, "helpers.R"),
@@ -108,6 +166,8 @@ rule figure_main_2:
         schematics=op.join(FIG_DIR, "fig_tdp43_scheme.pdf"),
         markers=op.join(FIG_DIR, "marker_loci.csv"),
         novel=op.join(FIG_DIR, "novel_exons.csv"),
+        tdp43_novel=op.join(FIG_DIR, "tdp43_novel_exons.csv"),
+        tdp43_jaccard=op.join(FIG_DIR, "tdp43_jaccard.csv"),
     output:
         composite=op.join(FIG_DIR, "figure_main_2.pdf"),
         # Demoted from the composite, kept visible.
