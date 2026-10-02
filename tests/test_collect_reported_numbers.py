@@ -152,6 +152,8 @@ def test_replicates_get_their_own_names(tree):
                       ["config_full_simulation", "config_full_simulation_rep2"])
     names = {n["name"] for n in numbers}
     assert f"sim.10M.rep2.{SCENARIO}.fastder.exon_prec" in names
+    assert not any(name.startswith("sim.10M.rep2.") and "wall" in name for name in names)
+    assert any(name.startswith("sim.10M.") and "wall" in name for name in names)
 
 
 def test_a_listed_config_with_a_missing_file_is_an_error(tree):

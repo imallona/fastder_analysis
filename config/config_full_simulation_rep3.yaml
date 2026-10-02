@@ -19,8 +19,6 @@
 
 seed: 12
 cores: 12
-# Times each timed tool run is repeated; the median is reported.
-benchmark_repeats: 3
 
 asimulator:
   seq_depth: 10000000

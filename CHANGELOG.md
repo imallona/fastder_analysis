@@ -73,6 +73,8 @@
 - `envs/figures.yaml` gains svglite, which the figure scripts save SVG with, and Gviz for `make_stmn2_track.R`.
 - `make all` also runs `mjr-sweep` and the three threshold ladders. The reported numbers read the sweep, so `make figures` failed after `make all`.
 - The three threshold ladders run in one pass, their tool runs in parallel. No timing is read from them.
+- The replicates, the junction-filter sweep and the unannotated alignment also run in one pass, each tool run once. Run times are exported for the first replicate of each depth only.
+- The two TDP-43 configs repeat each timed run three times, and their run times are exported.
 - The three GTEx configs call regions at 0.005 CPM, was 1.0. It had the best exon-level F1 on the GTEx threshold ladder.
 - Rules `figure_tdp43_novel_exons` and `figure_tdp43_jaccard` write the two TDP-43 tables figure 2 reads.
 
