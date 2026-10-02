@@ -187,7 +187,7 @@ tdp43:
 	$(call run,config_klim_2019_tdp43_recount3.yaml,--use-conda)
 
 ## TDP-43 recount3 panel: a low single threshold that emits the wider cryptic
-## exon panel (STMN2, HDGFL2, ELAVL3, CELF5, KCNQ2), recovered via junctions.
+## exon panel (STMN2, HDGFL2, ELAVL3, CELF5), recovered via junctions.
 tdp43-panel:
 	$(call run,config_klim_2019_tdp43_recount3_panel.yaml,--use-conda)
 

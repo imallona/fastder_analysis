@@ -3,7 +3,7 @@
 #
 #   sbatch slurm/03_tdp43.sh
 #
-# Cheap: four recount3 BigWigs over chr8, chr19 and chr20. Rerun because
+# Cheap: four recount3 BigWigs over chr8 and chr19. Rerun because
 # whole-file library size changes what a CPM threshold means.
 #
 # The configs still carry the old hand-tuned thresholds, 1.0 and 0.02 CPM.

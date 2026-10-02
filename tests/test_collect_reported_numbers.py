@@ -169,7 +169,7 @@ def test_threshold_ranges_and_comparison(tree):
         {"gene": "STMN2", "other_params": "coverage_tolerance=1.0", "thresholds_tested": 10,
          "thresholds_separating": 6, "lowest_separating": 0.005, "highest_separating": 0.2,
          "contiguous": 1},
-        {"gene": "KCNQ2", "other_params": "coverage_tolerance=1.0", "thresholds_tested": 10,
+        {"gene": "CELF5", "other_params": "coverage_tolerance=1.0", "thresholds_tested": 10,
          "thresholds_separating": 0, "lowest_separating": "", "highest_separating": "",
          "contiguous": ""},
     ])
@@ -182,8 +182,8 @@ def test_threshold_ranges_and_comparison(tree):
     found = values(tree, comparison_config="gtex", threshold_config="ladder")
     assert found["comparison.fastder.exon_prec"] == pytest.approx(52.0)
     assert found["threshold_range.STMN2.coverage_tolerance_1.0.highest_separating"] == 0.2
-    assert found["threshold_range.KCNQ2.coverage_tolerance_1.0.thresholds_separating"] == 0
-    assert "threshold_range.KCNQ2.coverage_tolerance_1.0.lowest_separating" not in found
+    assert found["threshold_range.CELF5.coverage_tolerance_1.0.thresholds_separating"] == 0
+    assert "threshold_range.CELF5.coverage_tolerance_1.0.lowest_separating" not in found
 
 
 def test_written_files(tree, tmp_path):
