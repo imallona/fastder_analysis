@@ -17,7 +17,7 @@ FIG_RESULTS = op.join(WORKFLOW_DIR, "results")
 FIG_ENV = {
     "FASTDER_RESULTS_ROOT": FIG_RESULTS,
     "FASTDER_FIG_DIR": FIG_DIR,
-    "FASTDER_BENCH_DIR": op.join(WORKFLOW_DIR, "logs", "benchmarks", "config_full_simulation"),
+    "FASTDER_BENCH_DIR": op.join(LOGS_ROOT, "benchmarks", "config_full_simulation"),
 }
 _fig_exports = " ".join(f"{k}={v}" for k, v in FIG_ENV.items())
 
@@ -200,7 +200,7 @@ rule collect_scaling_table:
     log:
         op.join(LOG_DIR, "collect_scaling_table.log"),
     params:
-        bench_dir=op.join(WORKFLOW_DIR, "logs", "benchmarks",
+        bench_dir=op.join(LOGS_ROOT, "benchmarks",
                           config.get("scaling_bench_config", "config_full_simulation")),
     resources:
         mem_mb=2000,
@@ -276,7 +276,7 @@ rule collect_reported_numbers:
         op.join(LOG_DIR, "collect_reported_numbers.log"),
     params:
         results_root=FIG_RESULTS,
-        bench_root=op.join(WORKFLOW_DIR, "logs", "benchmarks"),
+        bench_root=op.join(LOGS_ROOT, "benchmarks"),
         simulations=" ".join(REPORTED_SIMULATIONS),
         runtimes=" ".join(REPORTED_RUNTIMES),
     resources:
