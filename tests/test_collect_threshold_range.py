@@ -104,7 +104,7 @@ def test_the_threshold_separating_most_loci_is_flagged(tmp_path):
     assert [t for t, row in counts.items() if row["most_loci"]] == [0.005]
 
 
-def test_the_shipped_loci_table_parses():
+def test_the_loci_table_in_config_parses():
     from pathlib import Path
     tsv = Path(__file__).resolve().parents[1] / "config" / "tdp43_cryptic_exons.tsv"
     loci = read_loci(tsv)
