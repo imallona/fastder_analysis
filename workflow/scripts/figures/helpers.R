@@ -33,6 +33,15 @@ default_grid <- function(df) {
   df %>% filter(!is_no_stitch(param_id), min_junction_reads_of(param_id) == 0L)
 }
 
+# Same value as REFERENCE["min_coverage"] in param_grid.py; a test compares them.
+REFERENCE_MIN_COVERAGE <- 0.005
+
+# Rows called at the reference threshold. groHMM has no threshold and is kept.
+at_reference_threshold <- function(df) {
+  threshold <- suppressWarnings(as.numeric(str_extract(df$param_id, "(?<=mc)[0-9.]+")))
+  df %>% filter(is.na(threshold) | threshold == REFERENCE_MIN_COVERAGE)
+}
+
 # Saves what a panel drew, next to the figure.
 save_panel_data <- function(df, name, dir = FIG_DIR) {
   if (is.null(dir) || !nzchar(dir)) return(invisible(df))
@@ -201,11 +210,12 @@ across_replicates <- function(df, ...) {
 }
 
 # Panel: gffcompare sensitivity and precision against depth, exon and
-# transcript levels, averaged over samples and parameters. Verbatim from the
-# meta.Rmd sens_prec chunk, restyled to the shared clean theme.
+# transcript levels, at the reference threshold, averaged over samples and the
+# other parameters. From the meta.Rmd sens_prec chunk, restyled to the shared
+# clean theme.
 panel_depth <- function(which_levels = c("Transcript", "Exon"), tools = TOOLS) {
   summary_all <- load_depth_sweep("summary.csv") %>%
-    filter(tool %in% tools) %>% default_grid()
+    filter(tool %in% tools) %>% default_grid() %>% at_reference_threshold()
   levels_long <- bind_rows(
     summary_all %>% transmute(tool, scenario, depth_M, replicate, level = "Transcript",
                               sensitivity = transcript_sens, precision = transcript_prec),
@@ -246,7 +256,7 @@ panel_depth <- function(which_levels = c("Transcript", "Exon"), tools = TOOLS) {
 # against depth. Verbatim from the meta.Rmd boundary chunk, restyled.
 panel_boundary <- function(tools = TOOLS) {
   distances_all <- load_depth_sweep("fuzzy_distances.csv") %>%
-    filter(tool %in% tools) %>% default_grid()
+    filter(tool %in% tools) %>% default_grid() %>% at_reference_threshold()
   b5 <- distances_all %>%
     mutate(distance = as.integer(distance)) %>%
     group_by(tool, scenario, depth_M, replicate, sample, param_id) %>%
