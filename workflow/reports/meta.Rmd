@@ -74,10 +74,15 @@ across_replicates <- function(df, ...) {
 # move the reported numbers with nothing in the plot saying so. They have their
 # own figures, built by scripts/collect_param_sweeps.py. Identifiers come from
 # scripts/param_grid.py, whose tests pin these two patterns.
+# min_coverage is kept at the reference threshold of scripts/param_grid.py, the
+# value the tools are compared at; groHMM has no threshold and is kept.
+REFERENCE_MIN_COVERAGE <- 0.005
 default_grid <- function(df) {
   if (is.null(df) || nrow(df) == 0) return(df)
   mjr <- suppressWarnings(as.integer(str_extract(df$param_id, "(?<=mjr)[0-9]+")))
-  df[!grepl("(^|_)ns1(_|$)", df$param_id) & (is.na(mjr) | mjr == 0L), ]
+  threshold <- suppressWarnings(as.numeric(str_extract(df$param_id, "(?<=mc)[0-9.]+")))
+  df[!grepl("(^|_)ns1(_|$)", df$param_id) & (is.na(mjr) | mjr == 0L) &
+       (is.na(threshold) | threshold == REFERENCE_MIN_COVERAGE), ]
 }
 
 summary_all <- default_grid(bind_rows(lapply(run_dirs, read_run, "summary.csv")))

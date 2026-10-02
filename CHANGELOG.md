@@ -15,6 +15,7 @@
 - Figure scripts default to `results/` and `results/figures/` under the workflow. They pointed at one user's home. Report labels name both simulated chromosomes.
 - `config_full_simulation.yaml`: `fastder.cores` is 1.
 - The reference threshold is 0.005 CPM. It had the best exon-level F1 on the threshold ladder. `config_full_simulation.yaml` sweeps 0.005 and 0.05. Tables and the sweep configs use 0.005.
+- The depth and boundary panels and `meta.Rmd` use the runs at the reference threshold. They averaged over every threshold of the grid.
 - `config_full_simulation.yaml`: chromosomes are chr21 and chr19. It was chr21 alone.
 - `config_full_simulation.yaml`: ten samples per scenario. All eight ASimulatoR event classes run. It was five over four classes. Added `ir`, `a3`, `a5`, `mee` and a mixture.
 - Each simulated sample has its own seed, the run seed times 1000 plus the sample's position. Under one shared seed the samples of a run drew the same genes and expression levels.
