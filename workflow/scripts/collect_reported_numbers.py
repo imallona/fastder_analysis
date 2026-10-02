@@ -292,10 +292,10 @@ def junction_filter(results_root, config):
 
 
 def annotation(results_root, annotated_config, unannotated_config):
-    """fastder at the reference point on the annotated and the unannotated alignment."""
+    """Each tool at the reference point on the annotated and the unannotated alignment."""
     require_run(results_root, unannotated_config)
     runs = ((1, annotated_config), (0, unannotated_config))
-    return [number(f"annotation.{row['scenario']}."
+    return [number(f"annotation.{row['scenario']}.{row['tool']}."
                    f"{'annotated' if row['annotated_index'] else 'unannotated'}.{row['metric']}",
                    row["value"], "percent",
                    annotated_config if row["annotated_index"] else unannotated_config,

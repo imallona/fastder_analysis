@@ -75,6 +75,7 @@
 - The three threshold ladders run in one pass, their tool runs in parallel. No timing is read from them.
 - The replicates, the junction-filter sweep and the unannotated alignment also run in one pass, each tool run once. Run times are exported for the first replicate of each depth only.
 - The two TDP-43 configs repeat each timed run three times, and their run times are exported.
+- `config_unannotated_alignment.yaml` also runs derfinder and the megadepth baseline. `annotation.csv` and the exported numbers carry the tool.
 - The three GTEx configs call regions at 0.005 CPM, was 1.0. It had the best exon-level F1 on the GTEx threshold ladder.
 - Rules `figure_tdp43_novel_exons` and `figure_tdp43_jaccard` write the two TDP-43 tables figure 2 reads.
 
