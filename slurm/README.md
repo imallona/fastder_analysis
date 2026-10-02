@@ -12,7 +12,7 @@ The workflow itself knows nothing about Slurm. Rules declare `mem_mb` and `runti
 
 Rough sizes: the GTEx runs need about 100 GB, dominated by 160 coverage BigWigs at about 124 MB each and one junction matrix per tissue at about 2.8 GB gzipped, stored decompressed.
 
-The simulation set is the heavy one. Measured on an earlier run, five samples at 10M reads over chr21 produced 40 GB of FASTQ and 6.6 GB of alignments. The revision doubles the samples and runs four depths, so the same accounting gives roughly 680 GB of FASTQ and 110 GB of BAM. The reads are now stored gzipped, which takes the FASTQ side to about 170 GB.
+The simulation set is the heavy one. Measured on an earlier run, five samples at 10M reads over chr21 produced 40 GB of FASTQ and 6.6 GB of alignments. Ten samples at four depths over two chromosomes give roughly 680 GB of FASTQ and 110 GB of BAM by the same accounting. The reads are stored gzipped, which takes the FASTQ side to about 170 GB.
 
 Most of that is now transient. The scenario FASTQ files and the sorted BAMs are `temp()`: Snakemake deletes each once the jobs reading it are done, so the peak follows the concurrency rather than the total, and what survives is the coverage BigWigs, the junction tables and the results. The ASimulatoR reads themselves are kept, since regenerating them costs a full simulation. `--notemp` keeps everything, at the cost of the full footprint.
 
