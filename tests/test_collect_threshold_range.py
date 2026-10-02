@@ -6,6 +6,8 @@ separating range with a gap, and runs that differ in another parameter.
 
 import csv
 
+import pytest
+
 from collect_threshold_range import called, collect, loci_per_threshold, read_loci, summarise
 
 LOCUS = {"gene": "STMN2", "chrom": "chr8", "start": 1000, "end": 1200}
@@ -56,6 +58,18 @@ def test_a_locus_called_in_both_groups_is_not_separated(tmp_path):
     summary = summarise(rows)[0]
     assert (summary["lowest_separating"], summary["highest_separating"]) == (0.5, 0.5)
     assert summary["thresholds_tested"] == 3
+
+
+def test_only_listed_runs_are_read(tmp_path):
+    hit = [("chr8", 1100, 1150)]
+    case, control = make_groups(tmp_path, {
+        "mc0.01": (hit, []),
+        "mc2.0": (hit, []),
+    })
+    rows = collect([LOCUS], case, control, listed=["mc0.01"])
+    assert [r["param_id"] for r in rows] == ["mc0.01"]
+    with pytest.raises(FileNotFoundError, match="mc0.5"):
+        collect([LOCUS], case, control, listed=["mc0.5"])
 
 
 def test_a_gap_in_the_range_is_reported(tmp_path):
