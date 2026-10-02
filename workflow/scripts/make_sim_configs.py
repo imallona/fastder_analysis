@@ -107,6 +107,14 @@ def without_scaling(base_lines, rewrite):
     return out
 
 
+def without_repeats(lines):
+    """Drops benchmark_repeats: no timing is read from the config, so each tool
+    run happens once."""
+    return [line for line in lines
+            if key_at(line, 0) != "benchmark_repeats"
+            and not line.startswith("# Times each timed tool run is repeated")]
+
+
 def depth_config(base_lines, depth_m):
     reads = depth_m * 1_000_000
 
@@ -132,6 +140,7 @@ def replicate_config(base_lines, replicate, seed):
     out = without_scaling(base_lines, set_seed)
     if out == without_scaling(base_lines, lambda line: line):
         raise SystemExit("no top-level seed in the base config")
+    out = without_repeats(out)
     header = (
         f"# Replicate {replicate} of the 10M simulation: the same design drawn under\n"
         f"# seed {seed}.\n"
@@ -188,6 +197,7 @@ def unannotated_config(base_lines):
                "  # STAR index built without --sjdbGTFfile: every junction is found\n"
                "  # from the reads alone.\n"
                "  annotated_index: false\n")
+    out = without_repeats(out)
     header = (
         "# Alignment without an annotation: the same simulated reads as\n"
         "# config_full_simulation.yaml, fastder alone at the reference point.\n"
@@ -205,10 +215,7 @@ def threshold_ladder_config(base_lines):
         ["  # min_coverage in CPM is the only axis that moves.\n",
          *(f"  {k}: {v}\n" for k, v in grid.items())],
         tools=("fastder", "derfinder", "megadepth_baseline"))
-    # No timing is read from this run, so nothing is repeated.
-    out = [line for line in out
-           if key_at(line, 0) != "benchmark_repeats"
-           and not line.startswith("# Times each timed tool run is repeated")]
+    out = without_repeats(out)
     out += ["\n", "# Adds threshold_ladder.csv and threshold_choice.csv to the run.\n",
             "threshold_choice: true\n"]
     header = (
@@ -231,6 +238,7 @@ def junction_sweep_config(base_lines):
          "  # Junction read support summed over the loaded samples. 0 is the\n"
          "  # default: no junction filter at all.\n",
          f"  min_junction_reads: {MIN_JUNCTION_READS}\n"])
+    out = without_repeats(out)
     header = (
         "# Junction read-support sensitivity: the same simulated data as\n"
         "# config_full_simulation.yaml, fastder alone, every parameter but\n"

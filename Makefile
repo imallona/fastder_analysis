@@ -119,9 +119,9 @@ cd $(WORKFLOW_DIR) && bash -c '$(ACTIVATE) && export FASTDER_EVAL_CONFIG=../conf
   $(SNAKEMAKE) $(2))'
 endef
 
-## Run one config in a single pass. For the threshold ladders: no timing is
-## read from them, so their tool runs share the machine. $(1) config file,
-## $(2) snakemake flags.
+## Run one config in a single pass. For the configs read for accuracy only:
+## no timing is taken from them, so their tool runs share the machine.
+## $(1) config file, $(2) snakemake flags.
 define run_untimed
 cd $(WORKFLOW_DIR) && bash -c '$(ACTIVATE) && export FASTDER_EVAL_CONFIG=../config/$(1) && \
   $(SNAKEMAKE) $(2)'
@@ -172,13 +172,13 @@ sim-40m:
 
 ## The 10M simulation drawn again under other seeds.
 sim-replicates:
-	$(call run,config_full_simulation_rep2.yaml,--use-conda --use-singularity)
-	$(call run,config_full_simulation_rep3.yaml,--use-conda --use-singularity)
+	$(call run_untimed,config_full_simulation_rep2.yaml,--use-conda --use-singularity)
+	$(call run_untimed,config_full_simulation_rep3.yaml,--use-conda --use-singularity)
 
 ## The 10M reads aligned against an index built without the annotation.
 ## Reuses the simulated reads, so run after sim.
 sim-unannotated:
-	$(call run,config_unannotated_alignment.yaml,--use-conda --use-singularity)
+	$(call run_untimed,config_unannotated_alignment.yaml,--use-conda --use-singularity)
 
 ## Coverage threshold ladder for fastder, derfinder and the megadepth baseline.
 ## Reuses the simulated reads, so run after sim. threshold_choice.csv names
@@ -188,7 +188,7 @@ threshold-ladder:
 
 ## min_junction_reads sweep, fastder alone. Reuses the 10M data, so run after sim.
 mjr-sweep:
-	$(call run,config_min_junction_reads_sweep.yaml,--use-conda --use-singularity)
+	$(call run_untimed,config_min_junction_reads_sweep.yaml,--use-conda --use-singularity)
 
 ## TDP-43 recount3 showcase: a clean single threshold that isolates the STMN2
 ## cryptic exon. The recount3 backend has no ASimulatoR container step, so no

@@ -312,7 +312,9 @@ def collect(results_root, bench_root, simulations, comparison_config=None,
         params = reference_params(run_dir)
         for section in (accuracy, overlap, boundaries, locus_recall, strand):
             numbers += section(config, run_dir, params)
-        numbers += runtime(config, op.join(bench_root, config), run_label(config))
+        # Later replicates are run for accuracy only and are not timed.
+        if replicate_of(config) == 1:
+            numbers += runtime(config, op.join(bench_root, config), run_label(config))
     if comparison_config:
         numbers += comparison(comparison_config, op.join(results_root, comparison_config))
     for config in runtime_configs:
