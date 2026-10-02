@@ -13,7 +13,7 @@ conda create -c conda-forge -c bioconda -c nodefaults -n snakemake snakemake
 make submodules        # fetch the fastder and monorail-external submodules, once after cloning
 ```
 
-There is a `Makefile` including `make help` (`sim`, `simulations`, `tdp43`, `tdp43-panel`, `gtex`, `gtex-comparison`, `gtex-pick`, `meta`, `all`, `smoke`, `dryrun`, `unlock`). Override defaults on the command line, e.g. `make sim CORES=24` (`ULIMIT_KB` caps per-process virtual memory at 100 GB).
+There is a `Makefile`; `make help` lists its targets. `make all` runs every config the figures read and then `make figures`; `make smoke` is a small end-to-end test. Override defaults on the command line, e.g. `make sim CORES=24` (`ULIMIT_KB` caps per-process virtual memory at 100 GB).
 
 A local run makes three passes over a config: the inputs, then the tool runs whose wall clock is reported, one job at a time, then evaluation and reports. Keep the machine free of other work during the second pass.
 
