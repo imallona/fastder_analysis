@@ -15,7 +15,7 @@ make submodules        # fetch the fastder and monorail-external submodules, onc
 
 There is a `Makefile`; `make help` lists its targets. `make all` runs every config the figures read and then `make figures`; `make smoke` is a small end-to-end test. Override defaults on the command line, e.g. `make sim CORES=24` (`ULIMIT_KB` caps per-process virtual memory at 100 GB).
 
-A local run makes three passes over a config: the inputs, then the tool runs whose wall clock is reported, one job at a time, then evaluation and reports. Keep the machine free of other work during the second pass.
+A local run makes three passes over a config: the inputs, then the tool runs whose wall clock is reported, one job at a time, then evaluation and reports. Keep the machine free of other work during the second pass. The three threshold ladders run in one pass: no timing is read from them.
 
 Add `EULER=1` to any target to submit its rules to the ETH Euler cluster instead of running them here, e.g. `make gtex-comparison EULER=1`. The cluster settings live in `profiles/euler/config.yaml` and the sbatch wrappers in `slurm/`; see `slurm/README.md`. Without `EULER=1` the workflow runs locally exactly as before.
 

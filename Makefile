@@ -119,6 +119,14 @@ cd $(WORKFLOW_DIR) && bash -c '$(ACTIVATE) && export FASTDER_EVAL_CONFIG=../conf
   $(SNAKEMAKE) $(2))'
 endef
 
+## Run one config in a single pass. For the threshold ladders: no timing is
+## read from them, so their tool runs share the machine. $(1) config file,
+## $(2) snakemake flags.
+define run_untimed
+cd $(WORKFLOW_DIR) && bash -c '$(ACTIVATE) && export FASTDER_EVAL_CONFIG=../config/$(1) && \
+  $(SNAKEMAKE) $(2)'
+endef
+
 ## Run snakemake targets under one config. $(1) config file, $(2) targets.
 define snake
 cd $(WORKFLOW_DIR) && bash -c '$(ACTIVATE) && FASTDER_EVAL_CONFIG=../config/$(1) $(SNAKEMAKE) --use-conda $(2)'
@@ -176,7 +184,7 @@ sim-unannotated:
 ## Reuses the simulated reads, so run after sim. threshold_choice.csv names
 ## the threshold with the best exon-level F1.
 threshold-ladder:
-	$(call run,config_threshold_ladder.yaml,--use-conda --use-singularity)
+	$(call run_untimed,config_threshold_ladder.yaml,--use-conda --use-singularity)
 
 ## min_junction_reads sweep, fastder alone. Reuses the 10M data, so run after sim.
 mjr-sweep:
@@ -196,7 +204,7 @@ tdp43-panel:
 ## TDP-43 recount3 ladder: fastder at every threshold of a ladder, and the
 ## range over which each cryptic exon locus separates knockdown from control.
 tdp43-ladder:
-	$(call run,config_klim_2019_tdp43_recount3_ladder.yaml,--use-conda)
+	$(call run_untimed,config_klim_2019_tdp43_recount3_ladder.yaml,--use-conda)
 
 ## GTEx structural-concordance atlas: fastder run genome-wide, once per tissue
 ## sub-group over the recount3 gtex data source, then the per-sub-group
@@ -220,7 +228,7 @@ gtex-smoke:
 ## tools. threshold_choice.csv names the threshold with the best exon-level F1
 ## against the annotation.
 gtex-threshold-ladder:
-	$(call run,config_gtex_threshold_ladder.yaml,--use-conda)
+	$(call run_untimed,config_gtex_threshold_ladder.yaml,--use-conda)
 
 ## Rewrite the recount3.groups block of both GTEx configs to cover the
 ## listed tissues. Existing tissues keep their sample IDs exactly (so
