@@ -71,6 +71,7 @@
 - `run_fastder` declares its GTF, `runs/<param_id>/fastder.gtf`, and the rules downstream read it. They read a file holding its path, which does not change, so new calls did not rerun them.
 - Four figure scripts read the run directory of the config's threshold. They named `mc1.0`.
 - `envs/figures.yaml` gains svglite, which the figure scripts save SVG with, and Gviz for `make_stmn2_track.R`.
+- `make all` also runs `mjr-sweep` and the three threshold ladders. The reported numbers read the sweep, so `make figures` failed after `make all`.
 - The three GTEx configs call regions at 0.005 CPM, was 1.0. It had the best exon-level F1 on the GTEx threshold ladder.
 - Rules `figure_tdp43_novel_exons` and `figure_tdp43_jaccard` write the two TDP-43 tables figure 2 reads.
 

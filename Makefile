@@ -133,9 +133,11 @@ help:
 	@echo "Targets: submodules submodules-latest sim simulations sim-5m sim-30m sim-40m sim-replicates sim-unannotated threshold-ladder mjr-sweep tdp43 tdp43-panel tdp43-ladder gtex gtex-comparison gtex-smoke gtex-threshold-ladder gtex-pick meta reports composites figures smoke all dryrun unlock envs"
 	@echo "Variables: CORES=$(CORES) ULIMIT_KB=$(ULIMIT_KB) CONDA_ENV=$(CONDA_ENV) EULER=$(EULER) EULER_CORE_BUDGET=$(EULER_CORE_BUDGET) CONDA_PREFIX_DIR=$(CONDA_PREFIX_DIR)"
 
+## Every run the figures and the reported numbers read, then the figures.
 ## meta only needs the simulation results, so it runs before the tdp43 runs:
 ## a tdp43 failure then cannot block the cross-depth report.
-all: simulations sim-replicates sim-unannotated meta tdp43 tdp43-panel tdp43-ladder gtex gtex-comparison figures
+all: simulations sim-replicates mjr-sweep sim-unannotated threshold-ladder meta \
+     tdp43 tdp43-panel tdp43-ladder gtex-comparison gtex gtex-threshold-ladder figures
 
 ## Submodules at their recorded commits. A clone leaves them empty.
 submodules:
