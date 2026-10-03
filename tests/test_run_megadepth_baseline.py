@@ -76,33 +76,63 @@ class TestFindRegions:
 
 
 class TestLibrarySize:
-    """library_size = sum of (end - start) * value over the requested chroms."""
+    """library_size is the whole-file sum of (end - start) * value.
+
+    It deliberately does not depend on which chromosomes a run analyses, so a
+    given --cutoff is the same absolute threshold in a single-chromosome run
+    and a genome-wide one.
+    """
 
     def test_single_interval(self, tmp_path):
         bw = str(tmp_path / "a.all.bw")
         _write_bw(bw, "chr1", 100, [(10, 20, 4.0)])
-        assert rmb.library_size(bw, ["chr1"]) == pytest.approx(40.0)
+        assert rmb.library_size(bw) == pytest.approx(40.0)
 
     def test_multiple_intervals_summed(self, tmp_path):
         bw = str(tmp_path / "a.all.bw")
         _write_bw(bw, "chr1", 200, [(10, 20, 4.0), (50, 70, 1.5)])
-        assert rmb.library_size(bw, ["chr1"]) == pytest.approx(40.0 + 30.0)
+        assert rmb.library_size(bw) == pytest.approx(40.0 + 30.0)
 
-    def test_only_requested_chroms_count(self, tmp_path):
+    def test_counts_chromosomes_the_run_does_not_analyse(self, tmp_path):
         bw = str(tmp_path / "a.all.bw")
         bw_x = pyBigWig.open(bw, "w")
         bw_x.addHeader([("chr1", 100), ("chr2", 100)])
         bw_x.addEntries(["chr1"], [10], ends=[20], values=[4.0])
         bw_x.addEntries(["chr2"], [10], ends=[30], values=[2.0])
         bw_x.close()
-        assert rmb.library_size(bw, ["chr1"]) == pytest.approx(40.0)
-        assert rmb.library_size(bw, ["chr2"]) == pytest.approx(40.0)
-        assert rmb.library_size(bw, ["chr1", "chr2"]) == pytest.approx(80.0)
+        assert rmb.library_size(bw) == pytest.approx(40.0 + 40.0)
 
-    def test_missing_chrom_silently_skipped(self, tmp_path):
+
+class TestSharedLibrarySizes:
+    """The pipeline passes a table so every tool divides by identical numbers."""
+
+    def test_read_library_sizes_keys_on_real_path(self, tmp_path):
         bw = str(tmp_path / "a.all.bw")
         _write_bw(bw, "chr1", 100, [(10, 20, 4.0)])
-        assert rmb.library_size(bw, ["chrZ"]) == 0.0
+        table = tmp_path / "library_sizes.tsv"
+        table.write_text("bigwig\tsample\tlibrary_size\n"
+                         f"{bw}\ta\t1234.5\n")
+        sizes = rmb.read_library_sizes(str(table))
+        assert sizes[os.path.realpath(bw)] == pytest.approx(1234.5)
+
+    def test_table_overrides_the_computed_value(self, tmp_path):
+        bw = str(tmp_path / "a.all.bw")
+        _write_bw(bw, "chr1", 100, [(10, 20, 4.0)])
+        table = tmp_path / "library_sizes.tsv"
+        table.write_text("bigwig\tsample\tlibrary_size\n"
+                         f"{bw}\ta\t2000000.0\n")
+        from_table = rmb.sample_cpm_factors([[bw]], str(table))
+        computed = rmb.sample_cpm_factors([[bw]], None)
+        assert from_table == pytest.approx([2.0])
+        assert computed == pytest.approx([40.0 / 1e6])
+
+    def test_stranded_tracks_sum_into_one_factor(self, tmp_path):
+        plus = str(tmp_path / "a.plus.bw")
+        minus = str(tmp_path / "a.minus.bw")
+        _write_bw(plus, "chr1", 100, [(10, 20, 4.0)])
+        _write_bw(minus, "chr1", 100, [(30, 40, 6.0)])
+        assert rmb.sample_cpm_factors([[plus, minus]], None) == pytest.approx(
+            [(40.0 + 60.0) / 1e6])
 
 
 class TestMeanCpmCoverage:

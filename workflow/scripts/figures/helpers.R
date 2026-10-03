@@ -14,6 +14,42 @@ BASE_SIZE <- 9
 
 TOOLS <- c("fastder", "derfinder", "megadepth_baseline", "grohmm")
 
+# Tools scored on exon-level accuracy. groHMM bins coverage in 50 nt tiles,
+# which cannot land on an exon boundary. It stays in the CDF and base panels.
+EXON_LEVEL_TOOLS <- setdiff(TOOLS, "grohmm")
+
+# --no-stitch and --min-junction-reads are grid axes, not accuracy settings.
+# Aggregate panels average over the grid, so they keep the default corner.
+# Identifiers come from param_grid.py, whose tests pin these patterns.
+is_no_stitch <- function(param_id) grepl("(^|_)ns1(_|$)", param_id)
+
+min_junction_reads_of <- function(param_id) {
+  v <- suppressWarnings(as.integer(str_extract(param_id, "(?<=mjr)[0-9]+")))
+  ifelse(is.na(v), 0L, v)
+}
+
+# Stitched, unfiltered rows. Older identifiers carry neither component.
+default_grid <- function(df) {
+  df %>% filter(!is_no_stitch(param_id), min_junction_reads_of(param_id) == 0L)
+}
+
+# Same value as REFERENCE["min_coverage"] in param_grid.py; a test compares them.
+REFERENCE_MIN_COVERAGE <- 0.005
+
+# Rows called at the reference threshold. groHMM has no threshold and is kept.
+at_reference_threshold <- function(df) {
+  threshold <- suppressWarnings(as.numeric(str_extract(df$param_id, "(?<=mc)[0-9.]+")))
+  df %>% filter(is.na(threshold) | threshold == REFERENCE_MIN_COVERAGE)
+}
+
+# Saves what a panel drew, next to the figure.
+save_panel_data <- function(df, name, dir = FIG_DIR) {
+  if (is.null(dir) || !nzchar(dir)) return(invisible(df))
+  dir.create(dir, showWarnings = FALSE, recursive = TRUE)
+  readr::write_csv(df, file.path(dir, paste0(name, ".csv")))
+  invisible(df)
+}
+
 # Identical to the values in the fastder-evaluation reports, so figures match.
 tool_palette <- c(
   derfinder          = "#66C2A5",
@@ -96,7 +132,10 @@ load_benchmarks <- function(bench_dir) {
     rel <- sub(paste0(bench_dir, .Platform$file.sep), "", path)
     parts <- strsplit(rel, .Platform$file.sep, fixed = TRUE)[[1]]
     rule <- parts[1]
-    d <- read_tsv(path, show_col_types = FALSE)
+    # One row per repeat of the job; keep the median.
+    d <- read_tsv(path, show_col_types = FALSE) %>%
+      summarise(s = median(as.numeric(s), na.rm = TRUE),
+                max_rss = median(as.numeric(max_rss), na.rm = TRUE))
     d$rule <- rule
     d
   }
@@ -110,7 +149,8 @@ load_benchmarks <- function(bench_dir) {
   df
 }
 
-# Large outlined point marks the per-tool median across invocations.
+# Large outlined point marks the per-tool median across invocations. One
+# invocation processes every sample of a scenario, not one sample.
 panel_speed <- function(bench_dir) {
   df <- load_benchmarks(bench_dir) %>% filter(tool %in% TOOLS)
   med <- df %>% group_by(tool) %>%
@@ -127,18 +167,18 @@ panel_speed <- function(bench_dir) {
     # No tool legend here; the shared legend comes from the line panels, whose
     # keys show the line type and point symbol together.
     guides(colour = "none") +
-    labs(x = "Wall time per sample (s)", y = "Peak resident memory (MiB)") +
+    labs(x = "Wall time per run (s)", y = "Peak resident memory (MiB)") +
     theme_pub_square()
 }
 
-# Results tree to read. Defaults to the local mirror; the snakemake rule sets
-# FASTDER_RESULTS_ROOT to the workflow results directory for a barbara rerun.
-RESULTS_ROOT <- Sys.getenv("FASTDER_RESULTS_ROOT",
-                           "/home/imallona/src/writing_fastder/barbara_results/results")
-FIG_DIR <- Sys.getenv("FASTDER_FIG_DIR", "/home/imallona/src/writing_fastder/figures")
+# Results tree to read. The snakemake rules set both variables; the defaults
+# are the workflow's own directories, relative to workflow/.
+RESULTS_ROOT <- Sys.getenv("FASTDER_RESULTS_ROOT", "results")
+FIG_DIR <- Sys.getenv("FASTDER_FIG_DIR", file.path("results", "figures"))
 
-# Read one CSV from every config_full_simulation* run, stamping the depth its
-# name encodes (the base config is 10M). Mirrors the loader in meta.Rmd.
+# Read one CSV from every config_full_simulation* run, stamping the depth and
+# the replicate its name encodes (the base config is 10M, replicate 1). Mirrors
+# the loader in meta.Rmd.
 load_depth_sweep <- function(file_name, root = RESULTS_ROOT) {
   run_dirs <- list.dirs(root, recursive = FALSE, full.names = TRUE)
   run_dirs <- run_dirs[grepl("^config_full_simulation", basename(run_dirs))]
@@ -146,29 +186,47 @@ load_depth_sweep <- function(file_name, root = RESULTS_ROOT) {
     m <- str_match(d, "_([0-9]+)M$")[, 2]
     if (is.na(m)) 10L else as.integer(m)
   }
+  replicate_of <- function(d) {
+    m <- str_match(d, "_rep([0-9]+)$")[, 2]
+    if (is.na(m)) 1L else as.integer(m)
+  }
   read_run <- function(dir_path) {
     path <- file.path(dir_path, file_name)
     if (!file.exists(path)) return(NULL)
-    read_csv(path, show_col_types = FALSE) %>% mutate(depth_M = depth_of(basename(dir_path)))
+    read_csv(path, show_col_types = FALSE) %>%
+      mutate(depth_M = depth_of(basename(dir_path)),
+             replicate = replicate_of(basename(dir_path)))
   }
   bind_rows(lapply(run_dirs, read_run))
 }
 
+# Mean, lowest and highest replicate of `value`, itself a per-replicate mean.
+# Each replicate weighs the same however many rows it has; a replicate with no
+# value is left out.
+across_replicates <- function(df, ...) {
+  df %>% filter(!is.na(value)) %>% group_by(...) %>%
+    summarise(low = min(value), high = max(value), value = mean(value),
+              .groups = "drop")
+}
+
 # Panel: gffcompare sensitivity and precision against depth, exon and
-# transcript levels, averaged over samples and parameters. Verbatim from the
-# meta.Rmd sens_prec chunk, restyled to the shared clean theme.
-panel_depth <- function(which_levels = c("Transcript", "Exon")) {
-  summary_all <- load_depth_sweep("summary.csv")
+# transcript levels, at the reference threshold, averaged over samples and the
+# other parameters. From the meta.Rmd sens_prec chunk, restyled to the shared
+# clean theme.
+panel_depth <- function(which_levels = c("Transcript", "Exon"), tools = TOOLS) {
+  summary_all <- load_depth_sweep("summary.csv") %>%
+    filter(tool %in% tools) %>% default_grid() %>% at_reference_threshold()
   levels_long <- bind_rows(
-    summary_all %>% transmute(tool, scenario, depth_M, level = "Transcript",
+    summary_all %>% transmute(tool, scenario, depth_M, replicate, level = "Transcript",
                               sensitivity = transcript_sens, precision = transcript_prec),
-    summary_all %>% transmute(tool, scenario, depth_M, level = "Exon",
+    summary_all %>% transmute(tool, scenario, depth_M, replicate, level = "Exon",
                               sensitivity = exon_sens, precision = exon_prec)
   ) %>%
     filter(level %in% which_levels) %>%
     pivot_longer(c(sensitivity, precision), names_to = "metric", values_to = "value") %>%
-    group_by(tool, scenario, depth_M, level, metric) %>%
+    group_by(tool, scenario, depth_M, replicate, level, metric) %>%
     summarise(value = mean(value, na.rm = TRUE), .groups = "drop") %>%
+    across_replicates(tool, scenario, depth_M, level, metric) %>%
     mutate(scenario = relabel_scenario(scenario),
            depth_x = depth_M * tool_dodge[as.character(tool)])
   ggplot(levels_long, aes(depth_x, value, colour = tool, shape = tool, linetype = tool)) +
@@ -196,14 +254,17 @@ panel_depth <- function(which_levels = c("Transcript", "Exon")) {
 
 # Panel: fraction of exon boundaries within 5 bp of a reference boundary,
 # against depth. Verbatim from the meta.Rmd boundary chunk, restyled.
-panel_boundary <- function() {
-  distances_all <- load_depth_sweep("fuzzy_distances.csv")
+panel_boundary <- function(tools = TOOLS) {
+  distances_all <- load_depth_sweep("fuzzy_distances.csv") %>%
+    filter(tool %in% tools) %>% default_grid() %>% at_reference_threshold()
   b5 <- distances_all %>%
     mutate(distance = as.integer(distance)) %>%
-    group_by(tool, scenario, depth_M, sample, param_id) %>%
+    group_by(tool, scenario, depth_M, replicate, sample, param_id) %>%
     summarise(pct = mean(abs(distance) <= 5) * 100, .groups = "drop") %>%
-    group_by(tool, scenario, depth_M) %>%
-    summarise(pct = mean(pct), .groups = "drop") %>%
+    group_by(tool, scenario, depth_M, replicate) %>%
+    summarise(value = mean(pct), .groups = "drop") %>%
+    across_replicates(tool, scenario, depth_M) %>%
+    rename(pct = value) %>%
     mutate(scenario = relabel_scenario(scenario),
            depth_x = depth_M * tool_dodge[as.character(tool)])
   ggplot(b5, aes(depth_x, pct, colour = tool, shape = tool, linetype = tool)) +
@@ -236,6 +297,8 @@ extract_pt <- function(pid) {
 # Best parameter per tool by median Jaccard, matching baselines to fastder on
 # the shared mc (and pt for derfinder) axes; grohmm at its own best.
 best_pids <- function(jaccard) {
+  # Default runs only, or an unstitched run can win and be drawn as fastder.
+  jaccard <- default_grid(jaccard)
   best_fastder <- jaccard %>% filter(tool == "fastder") %>%
     mutate(jaccard = as.numeric(jaccard)) %>%
     group_by(param_id) %>% summarise(m = median(jaccard), .groups = "drop") %>%
@@ -424,13 +487,12 @@ jaccard_fill <- function() {
 }
 panel_tdp43_jaccard <- function(csv = TDP43_JACCARD_CSV) {
   d <- read_csv(csv, col_types = cols(cpm = col_character())) %>%
-    mutate(cpm = factor(paste0(cpm, " CPM"),
-                        levels = paste0(c("1.0", "0.02"), " CPM")))
+    arrange(desc(as.numeric(cpm))) %>%
+    mutate(cpm = paste0(cpm, " CPM"), cpm = factor(cpm, levels = unique(cpm)))
   ggplot(d, aes(cpm, jaccard, fill = cpm)) +
     geom_col(width = 0.6) +
     geom_text(aes(label = sprintf("%.2f", jaccard)), vjust = -0.3, size = 3) +
-    scale_fill_manual(values = c("1.0 CPM" = "#9ecae1", "0.02 CPM" = "#3182bd"),
-                      guide = "none") +
+    scale_fill_manual(values = c("#9ecae1", "#3182bd"), guide = "none") +
     coord_cartesian(ylim = c(0, 1)) +
     labs(x = "min coverage", y = "TDP-43 WT vs KD Jaccard") +
     theme_pub() + theme(axis.text.x = element_text(angle = 30, hjust = 1))
@@ -440,9 +502,11 @@ panel_tdp43_jaccard <- function(csv = TDP43_JACCARD_CSV) {
 # gffcompare level: "exon" or "transcript".
 panel_gtexcmp_precision <- function(config = GTEXCMP, level = "exon") {
   col <- if (level == "transcript") "transcript_prec" else "exon_prec"
+  # groHMM is left out at the exon level, as in the simulation panels.
+  tools <- if (level == "exon") EXON_LEVEL_TOOLS else TOOLS
   d <- read_result(config, "summary.csv") %>%
     group_by(tool) %>% summarise(prec = median(.data[[col]], na.rm = TRUE), .groups = "drop") %>%
-    filter(tool %in% TOOLS)
+    filter(tool %in% tools)
   ggplot(d, aes(reorder(tool, -prec), prec, fill = tool)) +
     geom_col(width = 0.45) +
     scale_fill_manual(values = tool_palette, guide = "none") +
@@ -566,4 +630,107 @@ panel_placeholder <- function(text) {
     theme_void() +
     theme(panel.border = element_rect(colour = "grey70", fill = NA,
                                       linetype = "dashed"))
+}
+
+# --- Revision panels. Each reads the CSV its collector wrote. ---
+
+# Junction integration is what is switched, not an accuracy setting. The split
+# configuration is the stitched run with every exon as its own record.
+ablation_labels <- c(stitched = "stitched", split = "stitched, exons split",
+                     unstitched = "--no-stitch")
+
+metric_labels <- c(exon_sens = "Exon sensitivity (%)",
+                   exon_prec = "Exon precision (%)",
+                   boundary_within_5bp = "Boundaries within 5 bp (%)")
+
+read_panel_csv <- function(path) {
+  if (!file.exists(path)) stop("no panel table at ", path)
+  read_csv(path, show_col_types = FALSE)
+}
+
+# Panel: the three ablation configurations against depth.
+panel_ablation <- function(path = file.path(FIG_DIR, "ablation.csv")) {
+  d <- read_panel_csv(path) %>%
+    mutate(arm = case_when(tool == "fastder_split" ~ "split",
+                           no_stitch == 1 ~ "unstitched",
+                           TRUE ~ "stitched"),
+           arm = factor(ablation_labels[arm], levels = unname(ablation_labels)),
+           metric = factor(metric, levels = names(metric_labels),
+                           labels = unname(metric_labels)),
+           scenario = relabel_scenario(scenario))
+  save_panel_data(d, "panel_ablation")
+  # Mean over replicates; the bar spans them where a depth has several.
+  d <- across_replicates(d, depth_M, scenario, arm, metric)
+  ggplot(d, aes(depth_M, value, colour = arm, shape = arm, linetype = arm)) +
+    geom_linerange(aes(ymin = low, ymax = high), linetype = "solid", show.legend = FALSE) +
+    geom_line(linewidth = 0.7) + geom_point(size = 2.4) +
+    scale_x_continuous(trans = "log10", breaks = sort(unique(d$depth_M))) +
+    scale_colour_manual(values = c("#FC8D62", "#8DA0CB", "#7F7F7F"), name = NULL) +
+    scale_shape_manual(values = c(16, 17, 1), name = NULL) +
+    scale_linetype_manual(values = c("solid", "dotted", "dashed"), name = NULL) +
+    coord_cartesian(ylim = c(0, 100)) +
+    facet_grid(scenario ~ metric, labeller = labeller(scenario = label_wrap_gen(12))) +
+    labs(x = "Reads per sample (M)", y = "Percent") +
+    theme_pub_square() + theme(axis.text.x = element_text(angle = 45, hjust = 1),
+                               legend.position = "bottom")
+}
+
+# Panel: accuracy against the junction read-support threshold. 0 is published.
+panel_min_junction_reads <- function(path = file.path(FIG_DIR, "min_junction_reads.csv")) {
+  d <- read_panel_csv(path) %>%
+    mutate(metric = factor(metric, levels = names(metric_labels),
+                           labels = unname(metric_labels)),
+           scenario = relabel_scenario(scenario))
+  save_panel_data(d, "panel_min_junction_reads")
+  d <- across_replicates(d, min_junction_reads, scenario, metric)
+  ggplot(d, aes(min_junction_reads, value, colour = scenario, shape = scenario)) +
+    geom_line(linewidth = 0.7) + geom_point(size = 2.4) +
+    scale_x_continuous(trans = "log1p", breaks = sort(unique(d$min_junction_reads))) +
+    scale_colour_manual(values = c("#FC8D62", "#66C2A5"), name = NULL) +
+    scale_shape_manual(values = c(16, 17), name = NULL) +
+    coord_cartesian(ylim = c(0, 100)) +
+    facet_wrap(~ metric) +
+    labs(x = "Minimum junction reads, summed over samples",
+         y = "Percent") +
+    theme_pub_square() + theme(legend.position = "bottom")
+}
+
+# Panel: wall time and peak memory against cores, one workload. The ceilings
+# are annotated: parsing caps at samples, averaging at chromosomes.
+panel_scaling <- function(path = file.path(FIG_DIR, "scaling.csv"),
+                          samples = NA_integer_, chromosomes = NA_integer_) {
+  # All-blank peak_rss types logical, which clashes with wall_s below.
+  d <- read_panel_csv(path) %>% mutate(peak_rss_gb = as.numeric(peak_rss_gb))
+  save_panel_data(d, "panel_scaling")
+  # Wall time first; memory is its cost.
+  metric_order <- c("Wall time (s)", "Peak resident memory (GiB)")
+  long <- bind_rows(
+    d %>% transmute(cores, value = wall_s, metric = metric_order[1]),
+    d %>% filter(!is.na(peak_rss_gb)) %>%
+      transmute(cores, value = peak_rss_gb, metric = metric_order[2])
+  ) %>% mutate(metric = factor(metric, levels = metric_order))
+  # Wall-time facet only. Labels sit inside the panel; Inf gets clipped.
+  wall_top <- max(long$value[long$metric == metric_order[1]], na.rm = TRUE)
+  ceilings <- data.frame(
+    cores = c(samples, chromosomes),
+    metric = factor(metric_order[1], levels = metric_order),
+    value = wall_top,
+    label = c("parsing: one thread per sample",
+              "averaging: one thread per chromosome")
+  ) %>% filter(!is.na(cores))
+  p <- ggplot(long, aes(cores, value)) +
+    geom_line(linewidth = 0.7, colour = "#FC8D62") +
+    geom_point(size = 2.4, colour = "#FC8D62") +
+    scale_x_continuous(trans = "log2", breaks = sort(unique(long$cores))) +
+    facet_wrap(~ metric, scales = "free_y") +
+    labs(x = "Cores given to fastder", y = NULL) +
+    theme_pub_square()
+  if (nrow(ceilings) > 0) {
+    p <- p +
+      geom_vline(data = ceilings, aes(xintercept = cores),
+                 linetype = "dotted", colour = "#7F7F7F") +
+      geom_text(data = ceilings, aes(x = cores, y = value, label = label),
+                angle = 90, hjust = 1, vjust = -0.4, size = 2.1, colour = "#7F7F7F")
+  }
+  p
 }

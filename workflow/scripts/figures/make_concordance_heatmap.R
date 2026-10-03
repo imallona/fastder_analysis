@@ -19,9 +19,8 @@ suppressPackageStartupMessages({
 args <- commandArgs(trailingOnly = TRUE)
 out_base <- if (length(args) >= 1) args[[1]] else "fig_gtex_concordance"
 
-RESULTS_ROOT <- Sys.getenv("FASTDER_RESULTS_ROOT",
-                           "/home/imallona/src/writing_fastder/barbara_results/results")
-FIG_DIR <- Sys.getenv("FASTDER_FIG_DIR", "/home/imallona/src/writing_fastder/figures")
+RESULTS_ROOT <- Sys.getenv("FASTDER_RESULTS_ROOT", "results")
+FIG_DIR <- Sys.getenv("FASTDER_FIG_DIR", file.path("results", "figures"))
 CONFIG <- "config_gtex_concordance"
 
 tissue_levels <- c("brain", "heart", "muscle", "blood")
@@ -29,12 +28,15 @@ tissue_levels <- c("brain", "heart", "muscle", "blood")
 tissue_cols <- c(brain = "#6a51a3", heart = "#cb181d",
                  muscle = "#41ab5d", blood = "#2171b5")
 
+# One parameter set per sub-group: the config calls regions at one threshold.
 gtf_paths <- Sys.glob(file.path(RESULTS_ROOT, CONFIG, "fastder", "*",
-                                "reference", "mc1.0", "gffcompare.annotated.gtf"))
+                                "reference", "*", "gffcompare.annotated.gtf"))
 if (length(gtf_paths) == 0)
   stop("no sub-group GTFs under ", file.path(RESULTS_ROOT, CONFIG, "fastder"))
 
 subgroups <- basename(dirname(dirname(dirname(gtf_paths))))
+if (anyDuplicated(subgroups))
+  stop("more than one parameter set per sub-group under ", file.path(RESULTS_ROOT, CONFIG, "fastder"))
 tissue_of <- sub("_[0-9]+$", "", subgroups)
 keep <- tissue_of %in% tissue_levels
 gtf_paths <- gtf_paths[keep]; subgroups <- subgroups[keep]; tissue_of <- tissue_of[keep]

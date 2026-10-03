@@ -7,25 +7,44 @@
 ##
 ## Usage:
 ##   make submodules         # fetch the fastder and monorail-external submodules
+##   make submodules-latest  # move them to the tip of the branch each tracks
 ##   make sim                # the 10M paper simulation run
 ##   make simulations        # the full depth sweep: 5M, 10M, 30M, 40M
+##   make sim-replicates     # two further draws of the 10M simulation
+##   make mjr-sweep          # junction read-support sensitivity, reuses the 10M simulation
+##   make sim-unannotated    # the 10M reads aligned without the annotation, fastder alone
+##   make threshold-ladder   # the 10M reads over a ladder of coverage thresholds
 ##   make tdp43              # TDP-43 recount3 showcase: STMN2, clean threshold
 ##   make tdp43-panel        # TDP-43 recount3 panel: 5 cryptic exons, low threshold
+##   make tdp43-ladder       # TDP-43 recount3 over a ladder of thresholds, fastder alone
 ##   make gtex               # GTEx structural-concordance atlas (genome-wide, fastder only)
 ##   make gtex-comparison    # GTEx tool comparison (chr19, all three tools)
 ##   make gtex-smoke         # reduced GTEx run, 12 BigWigs, to validate the path
+##   make gtex-threshold-ladder  # one sub-group per tissue over a ladder of coverage thresholds
 ##   make gtex-pick          # rewrite the gtex configs to cover the configured tissue set (BLOOD BRAIN HEART MUSCLE LIVER LUNG TESTIS ADIPOSE_TISSUE by default)
 ##   make meta               # render the depth-sweep report (after the runs)
 ##   make reports            # re-render the figure-feeding reports (PDFs included)
 ##   make composites         # assemble the two composite figures
 ##   make figures            # reports then composites
 ##   make smoke              # quick 2-sample smoke test
-##   make all                # simulations, meta, both tdp43 runs, then gtex
+##   make all                # simulations, replicates, meta, both tdp43 runs, then gtex
 ##   make dryrun             # snakemake -n for the 10M simulation config
 ##   make unlock             # release a stale snakemake lock
+##   make envs               # build every conda environment without running anything
+##
+## Variables also accept EXTRA, appended to every snakemake call:
+##   make sim EXTRA=-n
+##
+## A local run makes three passes over a config: inputs, then the timed rules
+## one at a time, then evaluation and reports.
+##
+## Cluster runs: add EULER=1 to any target above to submit its rules to Slurm
+## through profiles/euler. slurm/ holds sbatch wrappers that do this for the
+## four run groups.
 ##
 ## Variables (override on the command line, e.g. make sim CORES=24):
 ##   CORES        snakemake --cores value (default 12)
+##   TIMED_CORES  --cores for the pass that runs the timed rules alone (default 16)
 ##   ULIMIT_KB    per-process virtual memory cap in KB, inherited by every
 ##                job shell (default 104857600, i.e. 100 GB)
 ##   CONDA_ENV    conda env that holds snakemake (default snakemake)
@@ -36,14 +55,77 @@ ULIMIT_KB   ?= 104857600
 CONDA_ENV   ?= snakemake
 CONDA_INIT  ?= $(HOME)/miniconda3/bin/activate
 
+## EULER=1 sends every rule to Slurm, e.g. make gtex EULER=1.
+EULER ?=
+PROFILE_FLAG := $(if $(EULER),--profile $(CURDIR)/profiles/euler,)
+
+## Cores held at once on the cluster; the es_platt share is 208.
+EULER_CORE_BUDGET ?= 32
+RESOURCE_FLAG := $(if $(EULER),--resources cores_used=$(EULER_CORE_BUDGET),)
+
+## Conda env location. On Euler use project storage: $HOME caps inodes.
+CONDA_PREFIX_DIR ?=
+CONDA_PREFIX_FLAG := $(if $(CONDA_PREFIX_DIR),--conda-prefix $(CONDA_PREFIX_DIR),)
+
+## Extra snakemake flags, e.g. EXTRA=-n.
+EXTRA ?=
+
 WORKFLOW_DIR := workflow
 
-## Activate the snakemake env and cap per-process virtual memory at 100 GB.
-## snakemake's per-job shells inherit the ulimit, so every job is bounded.
-ACTIVATE := source $(CONDA_INIT) && conda activate $(CONDA_ENV) && \
-            ulimit -v $(ULIMIT_KB)
+## Activate the snakemake env, unless CONDA_INIT names nothing that exists: an
+## already activated environment is then used as it stands. Caps per-process
+## virtual memory at 100 GB, which per-job shells inherit.
+CONDA_ACTIVATE := $(if $(wildcard $(CONDA_INIT)),source $(CONDA_INIT) && conda activate $(CONDA_ENV) && ,)
+ACTIVATE := $(CONDA_ACTIVATE) ulimit -v $(ULIMIT_KB)
 
-SNAKEMAKE := snakemake --cores $(CORES) -p
+SNAKEMAKE := snakemake --cores $(CORES) -p $(PROFILE_FLAG) $(RESOURCE_FLAG) $(CONDA_PREFIX_FLAG) $(EXTRA)
+
+## Rules whose wall clock is reported.
+TIMED_RULES := run_fastder run_fastder_scaling run_derfinder run_grohmm run_megadepth_baseline
+## What the timed pass runs: the timed rules, and the record of the machine,
+## so its load is the one the timings were taken under.
+TIMED_PASS_RULES := $(TIMED_RULES) record_host_info
+## Cores for the timed pass: the widest point of the scaling run.
+TIMED_CORES ?= 16
+
+## Coverage and junction files of a config, read once so the first timed job
+## does not pay for a cold disk. $(1) config file.
+define warm_inputs
+if [ -d data/fastder/$(basename $(1)) ]; then \
+    find data/fastder/$(basename $(1)) -maxdepth 2 -type f \
+      \( -name "*.bw" -o -name "*.MM" -o -name "*.RR" \) -exec cat {} + > /dev/null; \
+  fi &&
+endef
+
+## The timed rules, one job at a time: every job of this pass books the one
+## timed slot. The greedy scheduler is used because the default one runs its
+## solver on every core while a job is being timed. A dry run reads nothing.
+## $(1) config file, $(2) snakemake flags.
+define timed_pass
+$(if $(filter -n --dry-run --dryrun,$(EXTRA)),,$(call warm_inputs,$(1))) \
+  snakemake --cores $(TIMED_CORES) -p $(CONDA_PREFIX_FLAG) $(EXTRA) $(2) \
+    --until $(TIMED_PASS_RULES) --scheduler greedy \
+    --default-resources timed=1 --resources timed=1
+endef
+
+## Run one config. Locally in three passes, so that no timed job shares the
+## machine: everything upstream of the timed rules, the timed rules alone, then
+## the rest. On the cluster the scheduler places the jobs and one pass is
+## enough. $(1) config file, $(2) snakemake flags.
+define run
+cd $(WORKFLOW_DIR) && bash -c '$(ACTIVATE) && export FASTDER_EVAL_CONFIG=../config/$(1) && \
+  $(if $(EULER),$(SNAKEMAKE) $(2),$(SNAKEMAKE) $(2) --omit-from $(TIMED_PASS_RULES) && \
+  $(call timed_pass,$(1),$(2)) && \
+  $(SNAKEMAKE) $(2))'
+endef
+
+## Run one config in a single pass. For the configs read for accuracy only:
+## no timing is taken from them, so their tool runs share the machine.
+## $(1) config file, $(2) snakemake flags.
+define run_untimed
+cd $(WORKFLOW_DIR) && bash -c '$(ACTIVATE) && export FASTDER_EVAL_CONFIG=../config/$(1) && \
+  $(SNAKEMAKE) $(2)'
+endef
 
 ## Run snakemake targets under one config. $(1) config file, $(2) targets.
 define snake
@@ -51,60 +133,78 @@ cd $(WORKFLOW_DIR) && bash -c '$(ACTIVATE) && FASTDER_EVAL_CONFIG=../config/$(1)
 endef
 
 .DEFAULT_GOAL := help
-.PHONY: help all submodules sim simulations sim-5m sim-30m sim-40m tdp43 \
-        tdp43-panel gtex gtex-comparison gtex-smoke gtex-pick meta reports \
-        composites figures smoke dryrun unlock
+.PHONY: help all submodules sim simulations sim-5m sim-30m sim-40m sim-replicates sim-unannotated threshold-ladder tdp43 \
+        tdp43-panel tdp43-ladder gtex gtex-comparison gtex-smoke gtex-threshold-ladder gtex-pick meta reports \
+        composites figures smoke dryrun unlock envs mjr-sweep submodules-latest
 
 help:
-	@echo "Targets: submodules sim simulations sim-5m sim-30m sim-40m tdp43 tdp43-panel gtex gtex-comparison gtex-smoke gtex-pick meta reports composites figures smoke all dryrun unlock"
-	@echo "Variables: CORES=$(CORES) ULIMIT_KB=$(ULIMIT_KB) CONDA_ENV=$(CONDA_ENV)"
+	@echo "Targets: submodules submodules-latest sim simulations sim-5m sim-30m sim-40m sim-replicates sim-unannotated threshold-ladder mjr-sweep tdp43 tdp43-panel tdp43-ladder gtex gtex-comparison gtex-smoke gtex-threshold-ladder gtex-pick meta reports composites figures smoke all dryrun unlock envs"
+	@echo "Variables: CORES=$(CORES) ULIMIT_KB=$(ULIMIT_KB) CONDA_ENV=$(CONDA_ENV) EULER=$(EULER) EULER_CORE_BUDGET=$(EULER_CORE_BUDGET) CONDA_PREFIX_DIR=$(CONDA_PREFIX_DIR)"
 
+## Every run the figures and the reported numbers read, then the figures.
 ## meta only needs the simulation results, so it runs before the tdp43 runs:
 ## a tdp43 failure then cannot block the cross-depth report.
-all: simulations meta tdp43 tdp43-panel gtex gtex-comparison figures
+all: simulations sim-replicates mjr-sweep sim-unannotated threshold-ladder meta \
+     tdp43 tdp43-panel tdp43-ladder gtex-comparison gtex gtex-threshold-ladder figures
 
-## Populate the git submodules. workflow/external/fastder must hold the fastder
-## sources for the build_fastder rule to find a CMakeLists.txt; a plain
-## git clone leaves the submodules empty. Idempotent, safe to re-run.
+## Submodules at their recorded commits. A clone leaves them empty.
 submodules:
 	git submodule update --init --recursive
+
+## Move the fastder pin to the tip of revision. monorail-external stays put.
+submodules-latest:
+	git submodule update --init --remote workflow/external/fastder
+	git submodule status --recursive
 
 simulations: sim sim-5m sim-30m sim-40m
 
 sim:
-	cd $(WORKFLOW_DIR) && bash -c '$(ACTIVATE) && \
-	  FASTDER_EVAL_CONFIG=../config/config_full_simulation.yaml \
-	  $(SNAKEMAKE) --use-conda --use-singularity'
+	$(call run,config_full_simulation.yaml,--use-conda --use-singularity)
 
 sim-5m:
-	cd $(WORKFLOW_DIR) && bash -c '$(ACTIVATE) && \
-	  FASTDER_EVAL_CONFIG=../config/config_full_simulation_5M.yaml \
-	  $(SNAKEMAKE) --use-conda --use-singularity'
+	$(call run,config_full_simulation_5M.yaml,--use-conda --use-singularity)
 
 sim-30m:
-	cd $(WORKFLOW_DIR) && bash -c '$(ACTIVATE) && \
-	  FASTDER_EVAL_CONFIG=../config/config_full_simulation_30M.yaml \
-	  $(SNAKEMAKE) --use-conda --use-singularity'
+	$(call run,config_full_simulation_30M.yaml,--use-conda --use-singularity)
 
 sim-40m:
-	cd $(WORKFLOW_DIR) && bash -c '$(ACTIVATE) && \
-	  FASTDER_EVAL_CONFIG=../config/config_full_simulation_40M.yaml \
-	  $(SNAKEMAKE) --use-conda --use-singularity'
+	$(call run,config_full_simulation_40M.yaml,--use-conda --use-singularity)
+
+## The 10M simulation drawn again under other seeds.
+sim-replicates:
+	$(call run_untimed,config_full_simulation_rep2.yaml,--use-conda --use-singularity)
+	$(call run_untimed,config_full_simulation_rep3.yaml,--use-conda --use-singularity)
+
+## The 10M reads aligned against an index built without the annotation.
+## Reuses the simulated reads, so run after sim.
+sim-unannotated:
+	$(call run_untimed,config_unannotated_alignment.yaml,--use-conda --use-singularity)
+
+## Coverage threshold ladder for fastder, derfinder and the megadepth baseline.
+## Reuses the simulated reads, so run after sim. threshold_choice.csv names
+## the threshold with the best exon-level F1.
+threshold-ladder:
+	$(call run_untimed,config_threshold_ladder.yaml,--use-conda --use-singularity)
+
+## min_junction_reads sweep, fastder alone. Reuses the 10M data, so run after sim.
+mjr-sweep:
+	$(call run_untimed,config_min_junction_reads_sweep.yaml,--use-conda --use-singularity)
 
 ## TDP-43 recount3 showcase: a clean single threshold that isolates the STMN2
 ## cryptic exon. The recount3 backend has no ASimulatoR container step, so no
 ## --use-singularity.
 tdp43:
-	cd $(WORKFLOW_DIR) && bash -c '$(ACTIVATE) && \
-	  FASTDER_EVAL_CONFIG=../config/config_klim_2019_tdp43_recount3.yaml \
-	  $(SNAKEMAKE) --use-conda'
+	$(call run,config_klim_2019_tdp43_recount3.yaml,--use-conda)
 
 ## TDP-43 recount3 panel: a low single threshold that emits the wider cryptic
-## exon panel (STMN2, HDGFL2, ELAVL3, CELF5, KCNQ2), recovered via junctions.
+## exon panel (STMN2, HDGFL2, ELAVL3, CELF5), recovered via junctions.
 tdp43-panel:
-	cd $(WORKFLOW_DIR) && bash -c '$(ACTIVATE) && \
-	  FASTDER_EVAL_CONFIG=../config/config_klim_2019_tdp43_recount3_panel.yaml \
-	  $(SNAKEMAKE) --use-conda'
+	$(call run,config_klim_2019_tdp43_recount3_panel.yaml,--use-conda)
+
+## TDP-43 recount3 ladder: fastder at every threshold of a ladder, and the
+## range over which each cryptic exon locus separates knockdown from control.
+tdp43-ladder:
+	$(call run_untimed,config_klim_2019_tdp43_recount3_ladder.yaml,--use-conda)
 
 ## GTEx structural-concordance atlas: fastder run genome-wide, once per tissue
 ## sub-group over the recount3 gtex data source, then the per-sub-group
@@ -112,23 +212,23 @@ tdp43-panel:
 ## baselines. The recount3 backend has no ASimulatoR container step, so no
 ## --use-singularity.
 gtex:
-	cd $(WORKFLOW_DIR) && bash -c '$(ACTIVATE) && \
-	  FASTDER_EVAL_CONFIG=../config/config_gtex_concordance.yaml \
-	  $(SNAKEMAKE) --use-conda'
+	$(call run,config_gtex_concordance.yaml,--use-conda)
 
 ## GTEx tool comparison: the same sub-groups on chr19 with all three tools,
 ## for the fastder-versus-baseline runtime and gffcompare comparison.
 gtex-comparison:
-	cd $(WORKFLOW_DIR) && bash -c '$(ACTIVATE) && \
-	  FASTDER_EVAL_CONFIG=../config/config_gtex_comparison.yaml \
-	  $(SNAKEMAKE) --use-conda'
+	$(call run,config_gtex_comparison.yaml,--use-conda)
 
 ## Reduced GTEx run: 2 tissues, 12 BigWigs, one chromosome. Walks the
 ## whole gtex path cheaply; run it before make gtex to validate.
 gtex-smoke:
-	cd $(WORKFLOW_DIR) && bash -c '$(ACTIVATE) && \
-	  FASTDER_EVAL_CONFIG=../config/config_gtex_smoke.yaml \
-	  $(SNAKEMAKE) --use-conda'
+	$(call run,config_gtex_smoke.yaml,--use-conda)
+
+## GTEx coverage threshold ladder: one sub-group per tissue, chr19, three
+## tools. threshold_choice.csv names the threshold with the best exon-level F1
+## against the annotation.
+gtex-threshold-ladder:
+	$(call run_untimed,config_gtex_threshold_ladder.yaml,--use-conda)
 
 ## Rewrite the recount3.groups block of both GTEx configs to cover the
 ## listed tissues. Existing tissues keep their sample IDs exactly (so
@@ -166,9 +266,7 @@ gtex-pick:
 	  --apply $(GTEX_CONFIGS)'
 
 smoke:
-	cd $(WORKFLOW_DIR) && bash -c '$(ACTIVATE) && \
-	  FASTDER_EVAL_CONFIG=../config/config_quick_light.yaml \
-	  $(SNAKEMAKE) --use-conda --use-singularity'
+	$(call run,config_quick_light.yaml,--use-conda --use-singularity)
 
 ## Knit the cross-depth report from the config_full_simulation* results.
 ## Per-run reports (summary.html, benchmarks.html, recount3.html) are produced
@@ -197,7 +295,15 @@ figures: reports composites
 dryrun:
 	cd $(WORKFLOW_DIR) && bash -c '$(ACTIVATE) && \
 	  FASTDER_EVAL_CONFIG=../config/config_full_simulation.yaml \
-	  snakemake --cores $(CORES) -n'
+	  snakemake --cores $(CORES) --use-conda --use-singularity -n'
 
 unlock:
 	cd $(WORKFLOW_DIR) && bash -c '$(ACTIVATE) && snakemake --unlock'
+
+## Build one config's conda envs, on a login node: the proxy is shared.
+CONFIG ?= config_full_simulation.yaml
+
+envs:
+	cd $(WORKFLOW_DIR) && bash -c '$(ACTIVATE) && \
+	  FASTDER_EVAL_CONFIG=../config/$(CONFIG) \
+	  $(SNAKEMAKE) --use-conda --use-singularity --conda-create-envs-only'

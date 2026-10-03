@@ -22,7 +22,11 @@ rule ml_star_index:
         op.join(LOG_DIR, "ml_star_index.log"),
     params:
         idx_dir=LIGHT_STAR_IDX,
+        annotated=ANNOTATED_INDEX,
     threads: config["cores"]
+    resources:
+        mem_mb=32000,
+        runtime=240,
     conda:
         "../envs/star.yaml"
     shell:
@@ -52,11 +56,14 @@ rule ml_star_index:
         # genomeSAindexNbases must be tuned down for small genomes (STAR manual).
         genome_size=$(cat "${{fastas[@]}}" | awk '!/^>/{{tot+=length($0)}} END{{print tot}}')
         sa=$(python3 -c "import math; print(min(14, int(math.log2($genome_size)/2 - 1)))")
+        sjdb=()
+        if [ "{params.annotated}" = "True" ]; then
+            sjdb=(--sjdbGTFfile "$tmpdir/annotation.gtf" --sjdbOverhang 100)
+        fi
         STAR --runMode genomeGenerate \
             --genomeDir {params.idx_dir} \
             --genomeFastaFiles "${{fastas[@]}}" \
-            --sjdbGTFfile "$tmpdir/annotation.gtf" \
-            --sjdbOverhang 100 \
+            "${{sjdb[@]}}" \
             --genomeSAindexNbases "$sa" \
             --runThreadN {threads} > {log} 2>&1
         rm -rf "$tmpdir"
@@ -75,8 +82,8 @@ def ml_star_fastq_input(wc):
         sample_cfg = config["monorail"]["local_samples"][wc.sample]
         return {"fq1": sample_cfg["fq1"], "fq2": sample_cfg["fq2"]}
     return {
-        "fq1": op.join(ASIM_DIR, wc.sample, wc.scenario, "sample_01_1.fastq"),
-        "fq2": op.join(ASIM_DIR, wc.sample, wc.scenario, "sample_01_2.fastq"),
+        "fq1": op.join(ASIM_DIR, wc.sample, wc.scenario, "sample_01_1.fastq.gz"),
+        "fq2": op.join(ASIM_DIR, wc.sample, wc.scenario, "sample_01_2.fastq.gz"),
     }
 
 
@@ -85,31 +92,45 @@ rule ml_star_align:
         unpack(ml_star_fastq_input),
         idx=[op.join(LIGHT_STAR_IDX, f) for f in STAR_IDX_FILES],
     output:
-        bam=op.join(LIGHT_DIR, "{scenario}", "{sample}", "Aligned.sortedByCoord.out.bam"),
-        sj=op.join(LIGHT_DIR, "{scenario}", "{sample}", "SJ.out.tab"),
+        # Read by the bigwig and junction rules, and by nothing after.
+        bam=temp(op.join(ALIGN_DIR, "{scenario}", "{sample}", "Aligned.sortedByCoord.out.bam")),
+        # Declared so it goes with the BAM instead of being left behind.
+        bai=temp(op.join(ALIGN_DIR, "{scenario}", "{sample}", "Aligned.sortedByCoord.out.bam.bai")),
+        sj=op.join(ALIGN_DIR, "{scenario}", "{sample}", "SJ.out.tab"),
     benchmark:
         op.join(BENCH_DIR, "ml_star_align", "{sample}_{scenario}.tsv")
     log:
         op.join(LOG_DIR, "ml_star_align", "{sample}_{scenario}.log"),
     params:
-        outprefix=lambda wc: op.join(LIGHT_DIR, wc.scenario, wc.sample) + "/",
+        outprefix=lambda wc: op.join(ALIGN_DIR, wc.scenario, wc.sample) + "/",
         idx_dir=LIGHT_STAR_IDX,
     threads: config["cores"]
+    resources:
+        mem_mb=32000,
+        runtime=240,
     conda:
         "../envs/star.yaml"
     shell:
         """
         mkdir -p {params.outprefix}
+        # STAR scratch and sort spill on node-local disk; both die with the
+        # job. STAR creates outTmpDir itself and fails if it exists.
+        scratch="${{TMPDIR:-{params.outprefix}}}/star_{wildcards.scenario}_{wildcards.sample}"
+        rm -rf "$scratch"
+        mkdir -p "$scratch"
         STAR --runMode alignReads \
             --genomeDir {params.idx_dir} \
             --readFilesIn {input.fq1} {input.fq2} \
+            --readFilesCommand zcat \
             --runThreadN {threads} \
             --outSAMtype BAM Unsorted \
             --outSAMstrandField intronMotif \
+            --outTmpDir "$scratch/STARtmp" \
             --outFileNamePrefix {params.outprefix} > {log} 2>&1
-        samtools sort -@ {threads} -o {output.bam} \
+        samtools sort -@ {threads} -T "$scratch/sort" -o {output.bam} \
             {params.outprefix}Aligned.out.bam >> {log} 2>&1
         rm {params.outprefix}Aligned.out.bam
+        rm -rf "$scratch"
         samtools index {output.bam} >> {log} 2>&1
         """
 
@@ -123,22 +144,25 @@ rule ml_star_align:
 # to the original contributor's agreement.
 rule ml_bam_to_bigwig:
     input:
-        bam=op.join(LIGHT_DIR, "{scenario}", "{sample}", "Aligned.sortedByCoord.out.bam"),
+        bam=op.join(ALIGN_DIR, "{scenario}", "{sample}", "Aligned.sortedByCoord.out.bam"),
     output:
         bws=(
-            [op.join(LIGHT_DIR, "{scenario}", "{sample}.plus.bw"),
-             op.join(LIGHT_DIR, "{scenario}", "{sample}.minus.bw")]
+            [op.join(ALIGN_DIR, "{scenario}", "{sample}.plus.bw"),
+             op.join(ALIGN_DIR, "{scenario}", "{sample}.minus.bw")]
             if STRANDED else
-            [op.join(LIGHT_DIR, "{scenario}", "{sample}.all.bw")]
+            [op.join(ALIGN_DIR, "{scenario}", "{sample}.all.bw")]
         ),
     benchmark:
         op.join(BENCH_DIR, "ml_bam_to_bigwig", "{sample}_{scenario}.tsv")
     log:
         op.join(LOG_DIR, "ml_bam_to_bigwig", "{sample}_{scenario}.log"),
     params:
-        chrom_sizes=lambda wc: op.join(LIGHT_DIR, wc.scenario, f"{wc.sample}.chrom.sizes"),
+        chrom_sizes=lambda wc: op.join(ALIGN_DIR, wc.scenario, f"{wc.sample}.chrom.sizes"),
         stranded=STRANDED,
-        outdir=lambda wc: op.join(LIGHT_DIR, wc.scenario),
+        outdir=lambda wc: op.join(ALIGN_DIR, wc.scenario),
+    resources:
+        mem_mb=8000,
+        runtime=120,
     conda:
         "../envs/stranded_bigwig.yaml"
     shell:
@@ -174,22 +198,25 @@ rule ml_bam_to_bigwig:
 # downstream; see emit_lean_mm_rr.py for the rationale.
 rule ml_emit_mm_rr:
     input:
-        sj_files=expand(op.join(LIGHT_DIR, "{{scenario}}", "{sample}", "SJ.out.tab"),
+        sj_files=expand(op.join(ALIGN_DIR, "{{scenario}}", "{sample}", "SJ.out.tab"),
                         sample=PUMP_SAMPLES),
     output:
-        rr=op.join(LIGHT_DIR, "{scenario}", "junctions.ALL.RR"),
-        mm=op.join(LIGHT_DIR, "{scenario}", "junctions.ALL.MM"),
-        samples_tsv=op.join(LIGHT_DIR, "{scenario}", "samples.tsv"),
+        rr=op.join(ALIGN_DIR, "{scenario}", "junctions.ALL.RR"),
+        mm=op.join(ALIGN_DIR, "{scenario}", "junctions.ALL.MM"),
+        samples_tsv=op.join(ALIGN_DIR, "{scenario}", "samples.tsv"),
     benchmark:
         op.join(BENCH_DIR, "ml_emit_mm_rr_{scenario}.tsv")
     log:
         op.join(LOG_DIR, "ml_emit_mm_rr_{scenario}.log"),
     params:
-        out_prefix=lambda wc: op.join(LIGHT_DIR, wc.scenario, "junctions.ALL"),
+        out_prefix=lambda wc: op.join(ALIGN_DIR, wc.scenario, "junctions.ALL"),
         chroms=lambda wc: FASTDER_CFG.get("chromosomes") or [f"chr{i}" for i in range(1, 23)] + ["chrX"],
         samples=PUMP_SAMPLES,
         project=config["monorail"]["project_name"],
         emit_script=op.join(WORKFLOW_DIR, "scripts", "emit_lean_mm_rr.py"),
+    resources:
+        mem_mb=8000,
+        runtime=120,
     run:
         # Build paired --sample / --sj args
         sample_args = []
