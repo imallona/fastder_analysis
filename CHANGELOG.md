@@ -69,6 +69,7 @@
 - TDP-43 thresholds come from the ladder. The showcase runs at 0.05 CPM. The panel runs at 0.005 CPM.
 - KCNQ2 is out of the TDP-43 panel. Its box overlapped an annotated exon. The TDP-43 configs run chr8 and chr19.
 - Rule logs go to `logs/<config>/`.
+- Tool, aligner and gffcompare environments name exact versions. The ASimulatoR image is named by digest.
 - `run_fastder` declares its GTF, `runs/<param_id>/fastder.gtf`. The rules downstream take it as input. New calls rerun them.
 - Four figure scripts read the config's one run directory. They stop when a sub-group has several.
 - `envs/figures.yaml` has svglite, for SVG output. It has Gviz, for `make_stmn2_track.R`.

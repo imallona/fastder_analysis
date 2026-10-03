@@ -3,11 +3,11 @@ channels:
   - conda-forge
   - bioconda
 dependencies:
-  - r-base=4.3
-  - r-optparse
-  - bioconductor-grohmm
-  - bioconductor-genomicranges
-  - bioconductor-iranges
-  - bioconductor-s4vectors
-  - ucsc-bigwigaverageoverbed
-  - ucsc-bigwiginfo
+  - r-base=4.3.3
+  - r-optparse=1.7.5
+  - bioconductor-grohmm=1.36.0
+  - bioconductor-genomicranges=1.54.1
+  - bioconductor-iranges=2.36.0
+  - bioconductor-s4vectors=0.40.2
+  - ucsc-bigwigaverageoverbed=482
+  - ucsc-bigwiginfo=482

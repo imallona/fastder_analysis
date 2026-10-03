@@ -3,8 +3,8 @@ channels:
   - conda-forge
   - bioconda
 dependencies:
-  - r-base=4.3
-  - r-optparse
-  - bioconductor-derfinder
-  - bioconductor-genomicranges
-  - bioconductor-rtracklayer
+  - r-base=4.3.3
+  - r-optparse=1.7.5
+  - bioconductor-derfinder=1.36.0
+  - bioconductor-genomicranges=1.54.1
+  - bioconductor-rtracklayer=1.62.0

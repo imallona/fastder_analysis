@@ -36,7 +36,7 @@ rule run_asimulator:
         # Generous: a simulation killed near the end costs more.
         runtime=1440,
     container:
-        "docker://biomedbigdata/asimulator"
+        ASIMULATOR_IMAGE
     script:
         "../scripts/runASimulatoR.R"
 
