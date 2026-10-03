@@ -323,7 +323,9 @@ rule capability_table:
 REPORTED_SIMULATIONS = ["config_full_simulation", "config_full_simulation_rep2",
                         "config_full_simulation_rep3", "config_full_simulation_5M",
                         "config_full_simulation_30M", "config_full_simulation_40M"]
-REPORTED_RUNTIMES = ["config_gtex_comparison", "config_gtex_concordance"]
+REPORTED_RUNTIMES = ["config_gtex_comparison", "config_gtex_concordance",
+                     "config_klim_2019_tdp43_recount3",
+                     "config_klim_2019_tdp43_recount3_panel"]
 
 
 rule collect_reported_numbers:

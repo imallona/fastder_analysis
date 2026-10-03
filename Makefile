@@ -40,7 +40,7 @@
 ##
 ## Cluster runs: add EULER=1 to any target above to submit its rules to Slurm
 ## through profiles/euler. slurm/ holds sbatch wrappers that do this for the
-## revision's four run groups.
+## four run groups.
 ##
 ## Variables (override on the command line, e.g. make sim CORES=24):
 ##   CORES        snakemake --cores value (default 12)
@@ -119,6 +119,14 @@ cd $(WORKFLOW_DIR) && bash -c '$(ACTIVATE) && export FASTDER_EVAL_CONFIG=../conf
   $(SNAKEMAKE) $(2))'
 endef
 
+## Run one config in a single pass. For the configs read for accuracy only:
+## no timing is taken from them, so their tool runs share the machine.
+## $(1) config file, $(2) snakemake flags.
+define run_untimed
+cd $(WORKFLOW_DIR) && bash -c '$(ACTIVATE) && export FASTDER_EVAL_CONFIG=../config/$(1) && \
+  $(SNAKEMAKE) $(2)'
+endef
+
 ## Run snakemake targets under one config. $(1) config file, $(2) targets.
 define snake
 cd $(WORKFLOW_DIR) && bash -c '$(ACTIVATE) && FASTDER_EVAL_CONFIG=../config/$(1) $(SNAKEMAKE) --use-conda $(2)'
@@ -133,9 +141,11 @@ help:
 	@echo "Targets: submodules submodules-latest sim simulations sim-5m sim-30m sim-40m sim-replicates sim-unannotated threshold-ladder mjr-sweep tdp43 tdp43-panel tdp43-ladder gtex gtex-comparison gtex-smoke gtex-threshold-ladder gtex-pick meta reports composites figures smoke all dryrun unlock envs"
 	@echo "Variables: CORES=$(CORES) ULIMIT_KB=$(ULIMIT_KB) CONDA_ENV=$(CONDA_ENV) EULER=$(EULER) EULER_CORE_BUDGET=$(EULER_CORE_BUDGET) CONDA_PREFIX_DIR=$(CONDA_PREFIX_DIR)"
 
+## Every run the figures and the reported numbers read, then the figures.
 ## meta only needs the simulation results, so it runs before the tdp43 runs:
 ## a tdp43 failure then cannot block the cross-depth report.
-all: simulations sim-replicates sim-unannotated meta tdp43 tdp43-panel tdp43-ladder gtex gtex-comparison figures
+all: simulations sim-replicates mjr-sweep sim-unannotated threshold-ladder meta \
+     tdp43 tdp43-panel tdp43-ladder gtex-comparison gtex gtex-threshold-ladder figures
 
 ## Submodules at their recorded commits. A clone leaves them empty.
 submodules:
@@ -162,23 +172,23 @@ sim-40m:
 
 ## The 10M simulation drawn again under other seeds.
 sim-replicates:
-	$(call run,config_full_simulation_rep2.yaml,--use-conda --use-singularity)
-	$(call run,config_full_simulation_rep3.yaml,--use-conda --use-singularity)
+	$(call run_untimed,config_full_simulation_rep2.yaml,--use-conda --use-singularity)
+	$(call run_untimed,config_full_simulation_rep3.yaml,--use-conda --use-singularity)
 
 ## The 10M reads aligned against an index built without the annotation.
 ## Reuses the simulated reads, so run after sim.
 sim-unannotated:
-	$(call run,config_unannotated_alignment.yaml,--use-conda --use-singularity)
+	$(call run_untimed,config_unannotated_alignment.yaml,--use-conda --use-singularity)
 
 ## Coverage threshold ladder for fastder, derfinder and the megadepth baseline.
 ## Reuses the simulated reads, so run after sim. threshold_choice.csv names
 ## the threshold with the best exon-level F1.
 threshold-ladder:
-	$(call run,config_threshold_ladder.yaml,--use-conda --use-singularity)
+	$(call run_untimed,config_threshold_ladder.yaml,--use-conda --use-singularity)
 
 ## min_junction_reads sweep, fastder alone. Reuses the 10M data, so run after sim.
 mjr-sweep:
-	$(call run,config_min_junction_reads_sweep.yaml,--use-conda --use-singularity)
+	$(call run_untimed,config_min_junction_reads_sweep.yaml,--use-conda --use-singularity)
 
 ## TDP-43 recount3 showcase: a clean single threshold that isolates the STMN2
 ## cryptic exon. The recount3 backend has no ASimulatoR container step, so no
@@ -194,7 +204,7 @@ tdp43-panel:
 ## TDP-43 recount3 ladder: fastder at every threshold of a ladder, and the
 ## range over which each cryptic exon locus separates knockdown from control.
 tdp43-ladder:
-	$(call run,config_klim_2019_tdp43_recount3_ladder.yaml,--use-conda)
+	$(call run_untimed,config_klim_2019_tdp43_recount3_ladder.yaml,--use-conda)
 
 ## GTEx structural-concordance atlas: fastder run genome-wide, once per tissue
 ## sub-group over the recount3 gtex data source, then the per-sub-group
@@ -218,7 +228,7 @@ gtex-smoke:
 ## tools. threshold_choice.csv names the threshold with the best exon-level F1
 ## against the annotation.
 gtex-threshold-ladder:
-	$(call run,config_gtex_threshold_ladder.yaml,--use-conda)
+	$(call run_untimed,config_gtex_threshold_ladder.yaml,--use-conda)
 
 ## Rewrite the recount3.groups block of both GTEx configs to cover the
 ## listed tissues. Existing tissues keep their sample IDs exactly (so

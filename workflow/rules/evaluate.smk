@@ -91,6 +91,9 @@ rule collect_chain_stats:
     input:
         gtf_paths=expand(op.join(FASTDER_DIR, "{scenario}", "run_fastder_{param_id}.gtf_path"),
                          scenario=SCENARIOS, param_id=PARAM_IDS),
+        # Read through gtf_paths; listed so new calls rerun this rule.
+        gtfs=expand(op.join(FASTDER_DIR, "{scenario}", "runs", "{param_id}", "fastder.gtf"),
+                    scenario=SCENARIOS, param_id=PARAM_IDS),
     output:
         op.join(RESULTS_DIR, "chain_stats.csv"),
     benchmark:

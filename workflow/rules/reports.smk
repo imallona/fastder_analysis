@@ -256,6 +256,7 @@ rule collect_threshold_range:
     params:
         case=lambda wc: op.join(TOOLS_DIR, "fastder", THRESHOLD_RANGE["case"]),
         control=lambda wc: op.join(TOOLS_DIR, "fastder", THRESHOLD_RANGE["control"]),
+        param_ids=" ".join(PARAM_IDS),
     resources:
         mem_mb=4000,
         runtime=30,
@@ -265,6 +266,7 @@ rule collect_threshold_range:
         """
         python3 {input.script} --loci {input.loci} \
             --case {params.case} --control {params.control} \
+            --param-id {params.param_ids} \
             --out {output.table} --out-summary {output.summary} \
             --out-counts {output.counts} > {log} 2>&1
         """

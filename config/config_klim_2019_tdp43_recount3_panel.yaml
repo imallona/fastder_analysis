@@ -30,6 +30,8 @@
 
 seed: 10
 cores: 8
+# Times each timed tool run is repeated; the median is reported.
+benchmark_repeats: 3
 
 monorail:
   ref_version: hg38

@@ -21,7 +21,7 @@ import argparse
 import csv
 import os.path as op
 import re
-from collections import defaultdict
+from collections import Counter, defaultdict
 from glob import glob
 from statistics import mean, median
 
@@ -126,26 +126,22 @@ def boundaries(config, run_dir, params):
     """Share of boundaries within the window, averaged over samples, and the
     median absolute distance."""
     source = op.join(run_dir, "fuzzy_distances.csv")
-    hits = defaultdict(lambda: [0, 0])
-    distances = defaultdict(list)
-    for row in at_reference(read_rows(source), params):
-        if row["distance"] in (None, ""):
-            continue
-        distance = abs(int(row["distance"]))
-        counts = hits[(row["scenario"], row["tool"], row["sample"])]
-        counts[1] += 1
-        counts[0] += distance <= BOUNDARY_WINDOW_BP
-        distances[(row["scenario"], row["tool"])].append(distance)
+    if not op.exists(source):
+        raise FileNotFoundError(f"expected input is missing: {source}")
     shares = defaultdict(list)
-    for (scenario, tool, _), (hit, total) in hits.items():
-        shares[(scenario, tool)].append(100.0 * hit / total)
+    pooled = defaultdict(Counter)
+    for (tool, scenario, _, param_id), counts in sweeps.boundary_distances(run_dir).items():
+        if params.get(tool) != param_id:
+            continue
+        shares[(scenario, tool)].append(sweeps.within_window_share(counts))
+        pooled[(scenario, tool)].update(counts)
     label = run_label(config)
     out = []
     for (scenario, tool), found in sorted(shares.items()):
         out.append(number(f"{label}.{scenario}.{tool}.boundary_within_{BOUNDARY_WINDOW_BP}bp",
                           mean(found), "percent", config, source))
         out.append(number(f"{label}.{scenario}.{tool}.boundary_distance_median",
-                          median(distances[(scenario, tool)]), "bp", config, source))
+                          median(pooled[(scenario, tool)].elements()), "bp", config, source))
     return out
 
 
@@ -292,10 +288,10 @@ def junction_filter(results_root, config):
 
 
 def annotation(results_root, annotated_config, unannotated_config):
-    """fastder at the reference point on the annotated and the unannotated alignment."""
+    """Each tool at the reference point on the annotated and the unannotated alignment."""
     require_run(results_root, unannotated_config)
     runs = ((1, annotated_config), (0, unannotated_config))
-    return [number(f"annotation.{row['scenario']}."
+    return [number(f"annotation.{row['scenario']}.{row['tool']}."
                    f"{'annotated' if row['annotated_index'] else 'unannotated'}.{row['metric']}",
                    row["value"], "percent",
                    annotated_config if row["annotated_index"] else unannotated_config,
@@ -312,7 +308,9 @@ def collect(results_root, bench_root, simulations, comparison_config=None,
         params = reference_params(run_dir)
         for section in (accuracy, overlap, boundaries, locus_recall, strand):
             numbers += section(config, run_dir, params)
-        numbers += runtime(config, op.join(bench_root, config), run_label(config))
+        # Later replicates are run for accuracy only and are not timed.
+        if replicate_of(config) == 1:
+            numbers += runtime(config, op.join(bench_root, config), run_label(config))
     if comparison_config:
         numbers += comparison(comparison_config, op.join(results_root, comparison_config))
     for config in runtime_configs:

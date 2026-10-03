@@ -11,7 +11,7 @@ threshold that separates the most. A tie goes to the higher threshold.
 
 Usage:
     python collect_threshold_range.py --loci <tsv> --case <dir> --control <dir> \
-        --out <csv> --out-summary <csv> --out-counts <csv>
+        [--param-id <id> ...] --out <csv> --out-summary <csv> --out-counts <csv>
 
 Each group directory holds one <param_id>/output.gtf per parameter combination.
 """
@@ -57,22 +57,34 @@ def param_ids(group_dir):
                   if op.exists(op.join(group_dir, name, "output.gtf")))
 
 
+def group_gtf(group_dir, param_id):
+    path = op.join(group_dir, param_id, "output.gtf")
+    if not op.exists(path):
+        raise FileNotFoundError(f"expected input is missing: {path}")
+    return path
+
+
 def other_params(combo):
     """The parameters held still, as text, so runs differing in them stay apart."""
     return ";".join(f"{name}={value}" for name, value in sorted(combo.items())
                     if name != SWEPT)
 
 
-def collect(loci, case_dir, control_dir):
-    """One row per locus and parameter combination present in both groups."""
+def collect(loci, case_dir, control_dir, listed=None):
+    """One row per locus and parameter combination.
+
+    listed names the combinations to read; a group directory can hold runs of
+    an earlier grid. Without it, every combination present in both groups is
+    read.
+    """
     rows = []
-    for param_id in param_ids(case_dir):
-        control_gtf = op.join(control_dir, param_id, "output.gtf")
-        if not op.exists(control_gtf):
-            continue
+    if listed is None:
+        listed = [param_id for param_id in param_ids(case_dir)
+                  if op.exists(op.join(control_dir, param_id, "output.gtf"))]
+    for param_id in sorted(listed):
         combo = parse_param_id(param_id)
-        case_exons = read_exons(op.join(case_dir, param_id, "output.gtf"))
-        control_exons = read_exons(control_gtf)
+        case_exons = read_exons(group_gtf(case_dir, param_id))
+        control_exons = read_exons(group_gtf(control_dir, param_id))
         for locus in loci:
             in_case = called(locus, case_exons)
             in_control = called(locus, control_exons)
@@ -148,12 +160,14 @@ def main():
     parser.add_argument("--loci", required=True)
     parser.add_argument("--case", required=True, help="tool output directory of the case group")
     parser.add_argument("--control", required=True)
+    parser.add_argument("--param-id", nargs="+",
+                        help="parameter combinations to read; default: all present in both groups")
     parser.add_argument("--out", required=True)
     parser.add_argument("--out-summary", required=True)
     parser.add_argument("--out-counts", required=True)
     args = parser.parse_args()
 
-    rows = collect(read_loci(args.loci), args.case, args.control)
+    rows = collect(read_loci(args.loci), args.case, args.control, args.param_id)
     write_csv(rows, args.out,
               ["gene", "param_id", SWEPT, "other_params",
                "called_case", "called_control", "separates"])

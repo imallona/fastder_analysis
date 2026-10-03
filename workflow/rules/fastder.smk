@@ -388,6 +388,9 @@ rule run_fastder:
         fastder_exe=op.join(FASTDER_BUILD_DIR, "fastder"),
         extract_done=op.join(FASTDER_DIR, "{scenario}", "extract.DONE"),
     output:
+        # The calls under a fixed name. Rules downstream read this file, so a
+        # change in the calls reaches them; gtf_path holds only a path.
+        gtf=op.join(FASTDER_DIR, "{scenario}", "runs", "{param_id}", "fastder.gtf"),
         gtf_path=op.join(FASTDER_DIR, "{scenario}", "run_fastder_{param_id}.gtf_path"),
         done=touch(op.join(FASTDER_DIR, "{scenario}", "run_fastder_{param_id}.DONE")),
     benchmark:
@@ -439,6 +442,7 @@ rule run_fastder:
             echo "ERROR: fastder did not produce a FASTDER_RESULT_*.gtf" >&2; exit 1
         fi
         echo "$gtf" > {output.gtf_path}
+        cp -f "$gtf" {output.gtf}
         """
 
 
@@ -449,7 +453,7 @@ rule run_fastder:
 # fastder: re-export the run_fastder GTF at the standardised path.
 rule link_fastder_gtf:
     input:
-        gtf_path=op.join(FASTDER_DIR, "{scenario}", "run_fastder_{param_id}.gtf_path"),
+        gtf=op.join(FASTDER_DIR, "{scenario}", "runs", "{param_id}", "fastder.gtf"),
     output:
         gtf=op.join(TOOLS_DIR, "fastder", "{scenario}", "{param_id}", "output.gtf"),
     benchmark:
@@ -464,7 +468,7 @@ rule link_fastder_gtf:
     shell:
         """
         mkdir -p $(dirname {output.gtf})
-        cp -f $(cat {input.gtf_path}) {output.gtf} 2> {log}
+        cp -f {input.gtf} {output.gtf} 2> {log}
         """
 
 

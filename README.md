@@ -13,9 +13,9 @@ conda create -c conda-forge -c bioconda -c nodefaults -n snakemake snakemake
 make submodules        # fetch the fastder and monorail-external submodules, once after cloning
 ```
 
-There is a `Makefile` including `make help` (`sim`, `simulations`, `tdp43`, `tdp43-panel`, `gtex`, `gtex-comparison`, `gtex-pick`, `meta`, `all`, `smoke`, `dryrun`, `unlock`). Override defaults on the command line, e.g. `make sim CORES=24` (`ULIMIT_KB` caps per-process virtual memory at 100 GB).
+There is a `Makefile`; `make help` lists its targets. `make all` runs every config the figures read and then `make figures`; `make smoke` is a small end-to-end test. Override defaults on the command line, e.g. `make sim CORES=24` (`ULIMIT_KB` caps per-process virtual memory at 100 GB).
 
-A local run makes three passes over a config: the inputs, then the tool runs whose wall clock is reported, one job at a time, then evaluation and reports. Keep the machine free of other work during the second pass.
+A local run makes three passes over a config: the inputs, then the tool runs whose wall clock is reported, one job at a time, then evaluation and reports. Keep the machine free of other work during the second pass. Timings are taken from the four depth configs, the two GTEx configs and the two TDP-43 configs. The replicates, the junction-filter sweep, the unannotated alignment and the three threshold ladders are read for accuracy only and run in one pass, each tool run once.
 
 Add `EULER=1` to any target to submit its rules to the ETH Euler cluster instead of running them here, e.g. `make gtex-comparison EULER=1`. The cluster settings live in `profiles/euler/config.yaml` and the sbatch wrappers in `slurm/`; see `slurm/README.md`. Without `EULER=1` the workflow runs locally exactly as before.
 
@@ -44,11 +44,11 @@ Our Snakemake workflow uses config files to define run properties.
 
 - `config_full_simulation.yaml`: paper simulation, 10 samples (the eight ASimulatoR event classes and two mixtures), 10M reads, chr21 and chr19, monorail_light, 20-combination fastder grid. The 10M point of the depth sweep; `_5M`/`_30M`/`_40M` variants come from `workflow/scripts/make_sim_configs.py`.
 - `config_full_simulation_rep2.yaml`, `_rep3.yaml`: the 10M simulation drawn again under seeds 11 and 12 (`make sim-replicates`). The cross-depth report and `ablation.csv` carry a `replicate` column and show the range. Written by the same script.
-- `config_unannotated_alignment.yaml`: the 10M reads aligned against a STAR index built without the annotation (`monorail.annotated_index: false`), fastder alone at its defaults (`make sim-unannotated`). `annotation.csv` compares it with the annotated run. Written by the same script.
-- The comparisons are made at 0.005 CPM, the threshold with the best exon-level F1 on `config_threshold_ladder.yaml`; `REFERENCE` in `workflow/scripts/param_grid.py` holds it. It is fastder's default coverage threshold; the default was 0.05 before.
+- `config_unannotated_alignment.yaml`: the 10M reads aligned against a STAR index built without the annotation (`monorail.annotated_index: false`), fastder, derfinder and the megadepth baseline at the reference point (`make sim-unannotated`). `annotation.csv` compares each with its annotated run. Written by the same script.
+- The comparisons are made at 0.005 CPM, the threshold with the best exon-level F1 on `config_threshold_ladder.yaml`; `REFERENCE` in `workflow/scripts/param_grid.py` holds it. It is fastder's default coverage threshold.
 - `config_threshold_ladder.yaml`: the 10M reads over eight `min_coverage` values for fastder, derfinder and the megadepth baseline (`make threshold-ladder`). `threshold_choice.csv` gives the mean exon-level and base-level F1 per threshold and flags the best. Written by the same script.
 - `config_min_junction_reads_sweep.yaml`: the 10M simulated data, fastder alone at its defaults, `min_junction_reads` over 0, 1, 2, 5, 10, 20. Written by the same script.
-- `config_klim_2019_tdp43_recount3.yaml`: TDP-43 knockdown vs control, motor-neuron RNA-seq (SRP166282, GSE121569), chr8/19/20. Showcase: at 0.05 CPM the STMN2 cryptic exon alone separates knockdown from control.
+- `config_klim_2019_tdp43_recount3.yaml`: TDP-43 knockdown vs control, motor-neuron RNA-seq (SRP166282, GSE121569), chr8 and chr19. Showcase: at 0.05 CPM the STMN2 cryptic exon alone separates knockdown from control.
 - `config_klim_2019_tdp43_recount3_panel.yaml`: same data at 0.005 CPM, where the most loci of the panel (STMN2, HDGFL2, ELAVL3, CELF5) separate the groups. Both thresholds come from the ladder below.
 - `config_klim_2019_tdp43_recount3_ladder.yaml`: same data, fastder alone over a ladder of `min_coverage` values (`make tdp43-ladder`). `threshold_range_summary.csv` gives, per cryptic exon locus, the lowest and highest threshold at which a region is called in knockdown and not in control. The loci are in `config/tdp43_cryptic_exons.tsv`, with their source.
 - `config_gtex_concordance.yaml`: fastder genome-wide on four GTEx tissues, eight sub-groups each. Clustering the 32 sub-group catalogs shows region shape carries tissue identity. `tools: [fastder]`.

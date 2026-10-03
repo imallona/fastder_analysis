@@ -12,7 +12,13 @@ suppressPackageStartupMessages({library(rtracklayer); library(GenomicRanges)})
 
 config <- "config_klim_2019_tdp43_recount3"
 groups <- c(knockdown = "knockdown", control = "control")
-gtf <- file.path(RESULTS_ROOT, config, "fastder", groups, "reference/mc1.0/gffcompare.annotated.gtf")
+# One parameter set per group: the config calls regions at one threshold.
+gtf <- vapply(groups, function(group) {
+  found <- Sys.glob(file.path(RESULTS_ROOT, config, "fastder", group, "reference", "*",
+                              "gffcompare.annotated.gtf"))
+  if (length(found) != 1) stop("expected one gffcompare.annotated.gtf for group ", group)
+  found
+}, character(1))
 
 load_exons <- function(path) {
   gr <- import(path)

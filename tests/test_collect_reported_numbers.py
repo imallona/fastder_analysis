@@ -152,6 +152,8 @@ def test_replicates_get_their_own_names(tree):
                       ["config_full_simulation", "config_full_simulation_rep2"])
     names = {n["name"] for n in numbers}
     assert f"sim.10M.rep2.{SCENARIO}.fastder.exon_prec" in names
+    assert not any(name.startswith("sim.10M.rep2.") and "wall" in name for name in names)
+    assert any(name.startswith("sim.10M.") and "wall" in name for name in names)
 
 
 def test_a_listed_config_with_a_missing_file_is_an_error(tree):
@@ -222,8 +224,8 @@ def test_ablation_junction_filter_and_annotation(tree):
     assert found[f"ablation.sim.10M.{SCENARIO}.stitched.exon_prec"] == pytest.approx(55.0)
     assert found[f"ablation.sim.10M.{SCENARIO}.unstitched.exon_prec"] == pytest.approx(1.0)
     assert found[f"junction_filter.{SCENARIO}.mjr5.exon_prec"] == pytest.approx(65.0)
-    assert found[f"annotation.{SCENARIO}.unannotated.exon_prec"] == pytest.approx(48.0)
-    assert found[f"annotation.{SCENARIO}.annotated.exon_prec"] == pytest.approx(55.0)
+    assert found[f"annotation.{SCENARIO}.fastder.unannotated.exon_prec"] == pytest.approx(48.0)
+    assert found[f"annotation.{SCENARIO}.fastder.annotated.exon_prec"] == pytest.approx(55.0)
 
 
 def test_a_listed_sweep_that_never_ran_is_an_error(tree):
