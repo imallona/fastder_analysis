@@ -4,6 +4,7 @@
 
 ### Changed
 
+- `fig_sim_schematic` shows the eight simulated event classes. Main Figure 1 reserves panel A when `Figure_1.pdf` is absent. Its legend lists tools only.
 - `scaling.csv` and `supp_scaling.pdf` hold two core sweeps: genome-wide GTEx and the simulation. Each row carries its workload's sample and chromosome counts. The figure marks them. It showed the simulation alone before.
 - Reports write figure files under `results/<config>/<report>_figs/`. They shared `workflow/reports/<report>_figs/` before. Each config overwrote the last one's files.
 - `reported_numbers.csv` adds the lowest peak memory per tool. The real-data comparison adds medians over scenarios. The collector writes the CSV only.
@@ -34,6 +35,7 @@
 
 ### Added
 
+- Rules `figure_gtex_concordance` and `figure_tdp43_track` call the heatmap and locus track scripts. No rule called them. `figure_main_2` takes the heatmap as input.
 - `summary.Rmd` draws exonic length and coverage against exon count as single plots again.
 - Rule `single_figure` draws the granularity, event Jaccard, genomic distribution and TDP-43 similarity figures. `manuscript_figures` requests them.
 - `PASSES=check` verifies a tree prepared elsewhere. It compares the commit and plans the preparation. The timed pass waits for a load below `QUIET_LOAD`. `make euler` records its commit. `slurm/04_prepare.sh` ends with the memory check.
