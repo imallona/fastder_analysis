@@ -1,4 +1,4 @@
-# Supplementary figures of the revision, one file each:
+# Parameter and scaling figures, one file each:
 #   supp_ablation.pdf              junction integration on and off, by depth
 #   supp_min_junction_reads.pdf    accuracy against the read-support filter
 #   supp_scaling.pdf               wall time and peak memory against cores

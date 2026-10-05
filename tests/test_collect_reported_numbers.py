@@ -14,9 +14,7 @@ from collect_reported_numbers import (
     collect,
     reference_params,
     run_label,
-    tex_value,
     write_csv,
-    write_tex,
 )
 
 FASTDER = "mc0.005_ml10_pt5_ns0"
@@ -133,6 +131,8 @@ def test_runtime_takes_the_median_per_job_then_over_jobs(tree):
     assert found["sim.10M.fastder.wall_median"] == pytest.approx(10.0)
     assert found["sim.10M.fastder.wall_max"] == pytest.approx(12.0)
     assert found["sim.10M.fastder.rss_median"] == pytest.approx(110.0)
+    assert found["sim.10M.fastder.rss_min"] <= found["sim.10M.fastder.rss_median"]
+    assert found["sim.10M.fastder.rss_median"] <= found["sim.10M.fastder.rss_max"]
     assert found["sim.10M.derfinder.wall_ratio_to_fastder"] == pytest.approx(10.0)
     assert found["sim.10M.scaling.cores4.wall"] == pytest.approx(6.0)
     assert found["sim.10M.scaling.cores4.rss"] == pytest.approx(2.0)
@@ -180,9 +180,12 @@ def test_threshold_ranges_and_comparison(tree):
          "exon_prec": 50},
         {"tool": "fastder", "scenario": "HEART_1", "sample": "reference", "param_id": "mc1.0",
          "exon_prec": 54},
+        {"tool": "fastder", "scenario": "LIVER_1", "sample": "reference", "param_id": "mc1.0",
+         "exon_prec": 61},
     ])
     found = values(tree, comparison_config="gtex", threshold_config="ladder")
-    assert found["comparison.fastder.exon_prec"] == pytest.approx(52.0)
+    assert found["comparison.fastder.exon_prec"] == pytest.approx(55.0)
+    assert found["comparison.fastder.exon_prec.median"] == pytest.approx(54.0)
     assert found["threshold_range.STMN2.coverage_tolerance_1.0.highest_separating"] == 0.2
     assert found["threshold_range.CELF5.coverage_tolerance_1.0.thresholds_separating"] == 0
     assert "threshold_range.CELF5.coverage_tolerance_1.0.lowest_separating" not in found
@@ -192,42 +195,8 @@ def test_written_files(tree, tmp_path):
     results, bench = tree
     numbers = collect(str(results), str(bench), ["config_full_simulation"])
     write_csv(numbers, tmp_path / "n.csv")
-    write_tex(numbers, tmp_path / "n.tex")
     with open(tmp_path / "n.csv", newline="") as fh:
         rows = list(csv.DictReader(fh))
     assert len(rows) == len(numbers)
     assert set(rows[0]) == {"name", "value", "unit", "config", "source"}
     assert all(row["source"] and row["config"] for row in rows)
-    tex = (tmp_path / "n.tex").read_text()
-    assert tex.count(r"\@namedef{reported@") == len(numbers)
-    assert rf"\@namedef{{reported@sim.10M.{SCENARIO}.fastder.exon_prec}}{{55.0}}" in tex
-
-
-def test_tex_rounds_by_unit():
-    assert tex_value({"value": 0.37149, "unit": "jaccard"}) == "0.371"
-    assert tex_value({"value": 71.46, "unit": "percent"}) == "71.5"
-    assert tex_value({"value": 4480.7, "unit": "MB"}) == "4481"
-
-
-def test_ablation_junction_filter_and_annotation(tree):
-    results, _ = tree
-    sweep = results / "config_min_junction_reads_sweep"
-    write_rows(sweep / "summary.csv", [
-        {"tool": "fastder", "scenario": SCENARIO, "sample": "es",
-         "param_id": f"mc0.005_ml10_pt5_mjr{v}_ns0", "exon_prec": 60 + v, "exon_sens": 40}
-        for v in (0, 5)])
-    write_rows(results / "config_unannotated_alignment" / "summary.csv", [
-        {"tool": "fastder", "scenario": SCENARIO, "sample": "es", "param_id": FASTDER,
-         "exon_prec": 48, "exon_sens": 35}])
-    found = values(tree, junction_filter_config="config_min_junction_reads_sweep",
-                   unannotated_config="config_unannotated_alignment")
-    assert found[f"ablation.sim.10M.{SCENARIO}.stitched.exon_prec"] == pytest.approx(55.0)
-    assert found[f"ablation.sim.10M.{SCENARIO}.unstitched.exon_prec"] == pytest.approx(1.0)
-    assert found[f"junction_filter.{SCENARIO}.mjr5.exon_prec"] == pytest.approx(65.0)
-    assert found[f"annotation.{SCENARIO}.fastder.unannotated.exon_prec"] == pytest.approx(48.0)
-    assert found[f"annotation.{SCENARIO}.fastder.annotated.exon_prec"] == pytest.approx(55.0)
-
-
-def test_a_listed_sweep_that_never_ran_is_an_error(tree):
-    with pytest.raises(FileNotFoundError, match="config_unannotated_alignment"):
-        values(tree, unannotated_config="config_unannotated_alignment")

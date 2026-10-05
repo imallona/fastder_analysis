@@ -318,7 +318,7 @@ rule capability_table:
         "python3 {input.script} {params.out_dir} > {log} 2>&1"
 
 
-# Every value the text quotes, from the configs behind the paper. A config
+# Headline values of the benchmark, from its configs. A config
 # listed here whose results are missing fails the rule.
 REPORTED_SIMULATIONS = ["config_full_simulation", "config_full_simulation_rep2",
                         "config_full_simulation_rep3", "config_full_simulation_5M",
@@ -333,7 +333,6 @@ rule collect_reported_numbers:
         script=op.join(WORKFLOW_DIR, "scripts", "collect_reported_numbers.py"),
     output:
         csv=op.join(FIG_DIR, "reported_numbers.csv"),
-        tex=op.join(FIG_DIR, "reported_numbers.tex"),
     log:
         op.join(LOG_DIR, "collect_reported_numbers.log"),
     params:
@@ -356,7 +355,7 @@ rule collect_reported_numbers:
             --threshold-range config_klim_2019_tdp43_recount3_ladder \
             --junction-filter config_min_junction_reads_sweep \
             --unannotated config_unannotated_alignment \
-            --out-csv {output.csv} --out-tex {output.tex} > {log} 2>&1
+            --out-csv {output.csv} > {log} 2>&1
         """
 
 
@@ -370,4 +369,4 @@ rule manuscript_figures:
         op.join(FIG_DIR, "supp_min_junction_reads.pdf"),
         op.join(FIG_DIR, "supp_scaling.pdf"),
         op.join(FIG_DIR, "annotation.csv"),
-        op.join(FIG_DIR, "reported_numbers.tex"),
+        op.join(FIG_DIR, "reported_numbers.csv"),
