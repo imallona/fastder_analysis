@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, op.join(workflow.basedir, "scripts"))
+import chr_prefix
 import data_layout
 import param_grid
 

@@ -12,11 +12,45 @@
 # stays unused, subject to the original contributor's agreement.
 
 
+# 7a. Reference annotation with chr-prefixed sequence names, the gffcompare
+# truth set of runs without a simulated one. Written once per config; each
+# scenario directory links to it.
+REF_LABEL = op.join(FASTDER_DIR, "reference_label" + LABEL_EXT)
+
+
+def _reference_annotation_path():
+    path = str(REF_ANNOTATION)
+    return path if op.isabs(path) else op.join(str(WORKFLOW_DIR), path)
+
+
+rule prefix_reference_annotation:
+    input:
+        _reference_annotation_path()
+    output:
+        REF_LABEL
+    benchmark:
+        op.join(BENCH_DIR, "prefix_reference_annotation.tsv")
+    log:
+        op.join(LOG_DIR, "prefix_reference_annotation.log")
+    resources:
+        mem_mb=1000,
+        runtime=30,
+    run:
+        chr_prefix.prefix_chromosomes(input[0], output[0])
+
+
 # 7b. Extract and organise all inputs that fastder needs into a flat directory.
 # The set of inputs depends on the backend: with monorail we read from the
 # unify/pump output dirs; with monorail_light we read from the ALIGN_DIR
 # scratch produced by the ml_* rules above.
 def _extract_inputs(wc):
+    result = _backend_inputs(wc)
+    if not HAS_SIM_TRUTH:
+        result["reference_label"] = REF_LABEL
+    return result
+
+
+def _backend_inputs(wc):
     if BACKEND == "recount3":
         # wc.scenario is a recount3 sample group. Inputs are the group's
         # lean MM/RR (built by recount3_group_junctions) and the downloaded
@@ -217,22 +251,7 @@ rule extract_fastder_inputs:
         # recount3 backend the truth is the reference annotation and there is
         # one pseudo-sample, "reference".
         # The label is chr-prefixed here, at creation, so gffcompare sees the
-        # same chromosome names as the tool GTFs. Doing it here rather than in
-        # a separate in-place rewrite rule avoids a stale-marker race that left
-        # variant_only labels unprefixed.
-        def _chr_prefix(path):
-            p = Path(path)
-            lines = []
-            for ln in p.read_text().splitlines(keepends=True):
-                if ln.startswith("#") or not ln.strip():
-                    lines.append(ln)
-                    continue
-                cols = ln.split("\t")
-                if not cols[0].startswith("chr"):
-                    cols[0] = "chr" + cols[0]
-                lines.append("\t".join(cols))
-            p.write_text("".join(lines))
-
+        # same chromosome names as the tool GTFs.
         if HAS_SIM_TRUTH:
             for sample in params.scenario_samples:
                 gff_src = (Path(str(params.asim_dir)) / sample
@@ -240,19 +259,12 @@ rule extract_fastder_inputs:
                 if not gff_src.exists():
                     gff_src = Path(str(params.asim_dir)) / sample / "splicing_variants.gff3"
                 if gff_src.exists():
-                    dst = fdir / f"{sample}_label.gff3"
-                    shutil.copy2(gff_src, dst)
-                    _chr_prefix(dst)
+                    chr_prefix.prefix_chromosomes(gff_src, fdir / f"{sample}_label.gff3")
         else:
-            ref_path = Path(str(REF_ANNOTATION))
-            if not ref_path.is_absolute():
-                ref_path = Path(str(WORKFLOW_DIR)) / ref_path
-            if not ref_path.exists():
-                raise FileNotFoundError(f"reference annotation not found: {ref_path}")
             for sample in params.scenario_samples:
-                dst = fdir / f"{sample}_label{ref_path.suffix}"
-                shutil.copy2(ref_path, dst)
-                _chr_prefix(dst)
+                dst = fdir / f"{sample}_label{LABEL_EXT}"
+                dst.unlink(missing_ok=True)
+                dst.symlink_to(op.relpath(input.reference_label, fdir))
 
 
 # 8. Match chr prefix convention for files used by gffcompare
@@ -275,7 +287,7 @@ rule match_chr_prefix:
     shell:
         """
         for file in {params.fastder_dir}/*_label.gff3 {params.fastder_dir}/*_label.gtf; do
-            [ -f "$file" ] || continue
+            [ -f "$file" ] && [ ! -L "$file" ] || continue
             tmp="${{file}}.tmp"
             awk 'BEGIN{{FS=OFS="\\t"}}
                 /^#/ {{ print; next }}
