@@ -94,15 +94,15 @@ if (length(chroms) == 0) {
 # keeps this rule's wall time comparable to fastder's, which gets the same
 # number from the BigWig summary header at no cost.
 lib_size_table <- read.delim(opt$`library-sizes`, stringsAsFactors = FALSE)
-lib_size_by_path <- setNames(as.numeric(lib_size_table$library_size),
-                             normalizePath(lib_size_table$bigwig, mustWork = FALSE))
+lib_size_by_file <- setNames(as.numeric(lib_size_table$library_size),
+                             basename(lib_size_table$bigwig))
 
 lookup_library_size <- function(bw_path) {
-  key <- normalizePath(bw_path, mustWork = FALSE)
-  if (!key %in% names(lib_size_by_path)) {
+  key <- basename(bw_path)
+  if (!key %in% names(lib_size_by_file)) {
     stop("no library size for ", bw_path, " in ", opt$`library-sizes`)
   }
-  lib_size_by_path[[key]]
+  lib_size_by_file[[key]]
 }
 
 message("[run_derfinder] ", length(flat_files), " BigWig files grouped into ",
