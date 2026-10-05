@@ -53,6 +53,21 @@ def test_a_local_run_adds_neither():
     assert "cores_used" not in out
 
 
+def test_a_local_run_has_a_memory_budget_in_every_pass():
+    out = dry_run("CONDA_INIT=/nonexistent/activate", "MEM_MB=5000")
+    assert out.count("mem_mb=5000") == 3
+
+
+def test_a_cluster_run_has_no_memory_budget():
+    out = dry_run("EULER=1", "CONDA_INIT=/nonexistent/activate", "MEM_MB=5000")
+    assert "mem_mb=" not in out
+
+
+def test_an_empty_budget_sets_no_limit():
+    out = dry_run("CONDA_INIT=/nonexistent/activate", "MEM_MB=")
+    assert "mem_mb=" not in out
+
+
 def test_dryrun_plans_with_the_flags_of_a_run():
     result = subprocess.run(["make", "-n", "dryrun"], cwd=ROOT,
                             capture_output=True, text=True, check=True)

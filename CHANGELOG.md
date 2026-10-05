@@ -31,6 +31,7 @@
 
 ### Added
 
+- Local runs pass `--resources mem_mb`. `MEM_MB` sets it, by default 80 percent of memory. Jobs were placed by cores alone before. `make memcheck` lists rules that exceeded their `mem_mb`.
 - `workflow/scripts/compute_library_sizes.py` and rule `compute_library_sizes`. Each scenario gets a `library_sizes.tsv`.
 - Grid support for `min_junction_reads` (`mjr`) and `no_stitch` (`ns`). `no_stitch` is a switch. The flag is passed only when true.
 - `scripts/split_chains.py` and rule `split_fastder_chains`. The stitched default run is rewritten one exon per record and graded as `fastder_split`. `ablation.csv` and `supp_ablation.pdf` gain it as a third configuration. Only configs sweeping `no_stitch` build it.
