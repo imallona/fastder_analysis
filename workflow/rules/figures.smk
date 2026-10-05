@@ -161,11 +161,57 @@ rule figure_main_1:
         "{_fig_exports} Rscript {input.script} {output} > {log} 2>&1"
 
 
+# Pairwise similarity of the per-sub-group catalogs of config_gtex_concordance.
+rule figure_gtex_concordance:
+    input:
+        script=op.join(FIG_SCRIPTS, "make_concordance_heatmap.R"),
+        gtfs=op.join(FIG_RESULTS, "config_gtex_concordance", "archive.DONE"),
+    output:
+        png=op.join(FIG_DIR, "fig_gtex_concordance.png"),
+        pdf=op.join(FIG_DIR, "fig_gtex_concordance.pdf"),
+    log:
+        op.join(LOG_DIR, "figure_gtex_concordance.log"),
+    resources:
+        mem_mb=8000,
+        runtime=60,
+    conda:
+        "../envs/figures.yaml"
+    shell:
+        "{_fig_exports} Rscript {input.script} > {log} 2>&1"
+
+
+# Coverage and calls at the STMN2 locus of the TDP-43 run. The BigWigs the
+# manifest names must be on disk.
+rule figure_tdp43_track:
+    input:
+        script=op.join(FIG_SCRIPTS, "make_stmn2_track.R"),
+        manifest=tdp43_manifest("config_klim_2019_tdp43_recount3"),
+        loci=op.join(WORKFLOW_DIR, "..", "config", "tdp43_cryptic_exons.tsv"),
+        reference_gtf=REF_GTF,
+    output:
+        svg=op.join(FIG_DIR, "fig_tdp43_stmn2.svg"),
+        pdf=op.join(FIG_DIR, "fig_tdp43_stmn2.pdf"),
+    log:
+        op.join(LOG_DIR, "figure_tdp43_track.log"),
+    resources:
+        mem_mb=8000,
+        runtime=60,
+    conda:
+        "../envs/figures.yaml"
+    shell:
+        """
+        Rscript {input.script} --manifest {input.manifest} --loci {input.loci} \
+            --reference-gtf {input.reference_gtf} --gene STMN2 \
+            --out {output.svg} --width 12 --height 5 > {log} 2>&1
+        """
+
+
 rule figure_main_2:
     input:
         helpers=op.join(FIG_SCRIPTS, "helpers.R"),
         script=op.join(FIG_SCRIPTS, "figure_main_2.R"),
         schematics=op.join(FIG_DIR, "fig_tdp43_scheme.pdf"),
+        concordance=op.join(FIG_DIR, "fig_gtex_concordance.png"),
         markers=op.join(FIG_DIR, "marker_loci.csv"),
         novel=op.join(FIG_DIR, "novel_exons.csv"),
         tdp43_novel=op.join(FIG_DIR, "tdp43_novel_exons.csv"),
@@ -254,6 +300,27 @@ rule collect_annotation_table:
 
 
 # The sweep runs under whichever config declares fastder.scaling_cores.
+# The two core sweeps: the genome-wide one, and the simulation, which has two
+# chromosomes to spread over. Sample and chromosome counts are where each
+# sweep stops gaining.
+SCALING_CONFIGS = {"GTEx, genome-wide": "config_gtex_concordance",
+                   "Simulation, chr19 and chr21": "config_full_simulation"}
+AUTOSOMES_AND_X = 23
+
+
+def scaling_workloads():
+    for label, name in SCALING_CONFIGS.items():
+        with open(op.join(WORKFLOW_DIR, "..", "config", name + ".yaml")) as handle:
+            sweep_config = yaml.safe_load(handle)
+        groups = (sweep_config.get("recount3") or {}).get("groups")
+        if groups:
+            samples = len(next(iter(groups.values()))["samples"])
+        else:
+            samples = len(sweep_config["asimulator"]["samples"])
+        chromosomes = len(sweep_config["fastder"].get("chromosomes") or []) or AUTOSOMES_AND_X
+        yield label, name, samples, chromosomes
+
+
 rule collect_scaling_table:
     input:
         script=op.join(WORKFLOW_DIR, "scripts", "collect_scaling.py"),
@@ -262,8 +329,9 @@ rule collect_scaling_table:
     log:
         op.join(LOG_DIR, "collect_scaling_table.log"),
     params:
-        bench_dir=op.join(LOGS_ROOT, "benchmarks",
-                          config.get("scaling_bench_config", "config_full_simulation")),
+        workloads=lambda wc: " ".join(
+            f"--workload '{label}' {op.join(LOGS_ROOT, 'benchmarks', name)} {samples} {chromosomes}"
+            for label, name, samples, chromosomes in scaling_workloads()),
     resources:
         mem_mb=2000,
         runtime=20,
@@ -271,8 +339,7 @@ rule collect_scaling_table:
         "../envs/base.yaml"
     shell:
         """
-        python3 {input.script} --bench-dir {params.bench_dir} \
-            --out {output.csv} > {log} 2>&1
+        python3 {input.script} {params.workloads} --out {output.csv} > {log} 2>&1
         """
 
 
@@ -401,3 +468,4 @@ rule manuscript_figures:
         op.join(FIG_DIR, "annotation.csv"),
         op.join(FIG_DIR, "reported_numbers.csv"),
         expand(op.join(FIG_DIR, "{figure}"), figure=SINGLE_FIGURES),
+        op.join(FIG_DIR, "fig_tdp43_stmn2.pdf"),
