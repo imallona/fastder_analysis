@@ -49,6 +49,8 @@ set-resources:
     mem_mb_per_cpu: 8000
   figure_supp_revision:
     mem_mb_per_cpu: 8000
+  single_figure:
+    mem_mb_per_cpu: 8000
   generate_stranded_bigwigs:
     mem_mb_per_cpu: 8000
   ml_bam_to_bigwig:

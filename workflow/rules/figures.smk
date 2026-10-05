@@ -11,6 +11,8 @@
 # rendered report figures, expected as PNGs in FASTDER_FIG_DIR; the troponin
 # marker loci read the per-sub-group GTFs of config_gtex_concordance.
 
+import re
+
 import yaml
 
 FIG_SCRIPTS = op.join(WORKFLOW_DIR, "scripts", "figures")
@@ -299,6 +301,34 @@ rule figure_supp_revision:
 
 
 # Capability table, replacing the two zero-bar panels. Reads no results.
+# Figures drawn by one script each, from the results of finished configs.
+SINGLE_FIGURES = {
+    "fig_sim_granularity.pdf": "figure_sim_granularity.R",
+    "fig_sim_event_jaccard.png": "figure_sim_event_jaccard.R",
+    "fig_gtexcmp_genomic_dist.pdf": "figure_gtex_genomic_dist.R",
+    "fig_tdp43_similarity.pdf": "figure_tdp43_similarity.R",
+}
+
+
+rule single_figure:
+    input:
+        helpers=op.join(FIG_SCRIPTS, "helpers.R"),
+        script=lambda wc: op.join(FIG_SCRIPTS, SINGLE_FIGURES[wc.figure]),
+    output:
+        op.join(FIG_DIR, "{figure}"),
+    wildcard_constraints:
+        figure="|".join(re.escape(name) for name in SINGLE_FIGURES),
+    log:
+        op.join(LOG_DIR, "single_figure_{figure}.log"),
+    resources:
+        mem_mb=8000,
+        runtime=60,
+    conda:
+        "../envs/figures.yaml"
+    shell:
+        "{_fig_exports} Rscript {input.script} {output} > {log} 2>&1"
+
+
 rule capability_table:
     input:
         script=op.join(FIG_SCRIPTS, "make_capability_table.py"),
@@ -370,3 +400,4 @@ rule manuscript_figures:
         op.join(FIG_DIR, "supp_scaling.pdf"),
         op.join(FIG_DIR, "annotation.csv"),
         op.join(FIG_DIR, "reported_numbers.csv"),
+        expand(op.join(FIG_DIR, "{figure}"), figure=SINGLE_FIGURES),
