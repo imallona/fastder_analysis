@@ -13,7 +13,7 @@ conda create -c conda-forge -c bioconda -c nodefaults -n snakemake snakemake
 make submodules        # fetch the fastder and monorail-external submodules, once after cloning
 ```
 
-There is a `Makefile`; `make help` lists its targets. `make all` runs every config the figures read and then `make figures`; `make smoke` is a small end-to-end test. Override defaults on the command line, e.g. `make sim CORES=24` (`ULIMIT_KB` caps per-process virtual memory at 100 GB).
+There is a `Makefile`; `make help` lists its targets. `make all` runs every config the figures read and then `make figures`; `make smoke` is a small end-to-end test. Override defaults on the command line, e.g. `make sim CORES=24` (`ULIMIT_KB` caps per-process virtual memory at 100 GB). Local runs start a job only while the `mem_mb` declared by the running jobs stays within `MEM_MB`, by default 80 percent of the machine's memory; a job that declares more than that runs alone. `make memcheck CONFIG=<config>.yaml` lists the rules of a finished config whose peak memory exceeded their `mem_mb`.
 
 A local run makes three passes over a config: the inputs, then the tool runs whose wall clock is reported, one job at a time, then evaluation and reports. Keep the machine free of other work during the second pass. Timings are taken from the four depth configs, the two GTEx configs and the two TDP-43 configs. The replicates, the junction-filter sweep, the unannotated alignment and the three threshold ladders are read for accuracy only and run in one pass, each tool run once.
 

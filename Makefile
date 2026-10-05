@@ -45,6 +45,8 @@
 ## Variables (override on the command line, e.g. make sim CORES=24):
 ##   CORES        snakemake --cores value (default 12)
 ##   TIMED_CORES  --cores for the pass that runs the timed rules alone (default 16)
+##   MEM_MB       memory that the jobs of a local run may declare in total
+##                (default 80 percent of the machine)
 ##   ULIMIT_KB    per-process virtual memory cap in KB, inherited by every
 ##                job shell (default 104857600, i.e. 100 GB)
 ##   CONDA_ENV    conda env that holds snakemake (default snakemake)
@@ -61,7 +63,12 @@ PROFILE_FLAG := $(if $(EULER),--profile $(CURDIR)/profiles/euler,)
 
 ## Cores held at once on the cluster; the es_platt share is 208.
 EULER_CORE_BUDGET ?= 32
-RESOURCE_FLAG := $(if $(EULER),--resources cores_used=$(EULER_CORE_BUDGET),)
+
+## Local runs start a job only while the declared mem_mb of the running jobs
+## stays within MEM_MB. Without /proc/meminfo there is no default and no limit.
+MEM_MB ?= $(shell awk '/^MemTotal:/ {print int($$2 / 1024 * 0.8)}' /proc/meminfo 2> /dev/null)
+MEM_RESOURCE := $(if $(MEM_MB),mem_mb=$(MEM_MB),)
+RESOURCE_FLAG := $(if $(EULER),--resources cores_used=$(EULER_CORE_BUDGET),$(if $(MEM_RESOURCE),--resources $(MEM_RESOURCE),))
 
 ## Conda env location. On Euler use project storage: $HOME caps inodes.
 CONDA_PREFIX_DIR ?=
@@ -105,7 +112,7 @@ define timed_pass
 $(if $(filter -n --dry-run --dryrun,$(EXTRA)),,$(call warm_inputs,$(1))) \
   snakemake --cores $(TIMED_CORES) -p $(CONDA_PREFIX_FLAG) $(EXTRA) $(2) \
     --until $(TIMED_PASS_RULES) --scheduler greedy \
-    --default-resources timed=1 --resources timed=1
+    --default-resources timed=1 --resources timed=1 $(MEM_RESOURCE)
 endef
 
 ## Run one config. Locally in three passes, so that no timed job shares the
@@ -135,11 +142,11 @@ endef
 .DEFAULT_GOAL := help
 .PHONY: help all submodules sim simulations sim-5m sim-30m sim-40m sim-replicates sim-unannotated threshold-ladder tdp43 \
         tdp43-panel tdp43-ladder gtex gtex-comparison gtex-smoke gtex-threshold-ladder gtex-pick meta reports \
-        composites figures smoke dryrun unlock envs mjr-sweep submodules-latest
+        composites figures smoke dryrun unlock envs mjr-sweep submodules-latest memcheck
 
 help:
-	@echo "Targets: submodules submodules-latest sim simulations sim-5m sim-30m sim-40m sim-replicates sim-unannotated threshold-ladder mjr-sweep tdp43 tdp43-panel tdp43-ladder gtex gtex-comparison gtex-smoke gtex-threshold-ladder gtex-pick meta reports composites figures smoke all dryrun unlock envs"
-	@echo "Variables: CORES=$(CORES) ULIMIT_KB=$(ULIMIT_KB) CONDA_ENV=$(CONDA_ENV) EULER=$(EULER) EULER_CORE_BUDGET=$(EULER_CORE_BUDGET) CONDA_PREFIX_DIR=$(CONDA_PREFIX_DIR)"
+	@echo "Targets: submodules submodules-latest sim simulations sim-5m sim-30m sim-40m sim-replicates sim-unannotated threshold-ladder mjr-sweep tdp43 tdp43-panel tdp43-ladder gtex gtex-comparison gtex-smoke gtex-threshold-ladder gtex-pick meta reports composites figures smoke all dryrun unlock envs memcheck"
+	@echo "Variables: CORES=$(CORES) ULIMIT_KB=$(ULIMIT_KB) CONDA_ENV=$(CONDA_ENV) EULER=$(EULER) EULER_CORE_BUDGET=$(EULER_CORE_BUDGET) CONDA_PREFIX_DIR=$(CONDA_PREFIX_DIR) MEM_MB=$(MEM_MB)"
 
 ## Every run the figures and the reported numbers read, then the figures.
 ## meta only needs the simulation results, so it runs before the tdp43 runs:
@@ -307,3 +314,9 @@ envs:
 	cd $(WORKFLOW_DIR) && bash -c '$(ACTIVATE) && \
 	  FASTDER_EVAL_CONFIG=../config/$(CONFIG) \
 	  $(SNAKEMAKE) --use-conda --use-singularity --conda-create-envs-only'
+
+## Rules of one finished config whose peak memory exceeded their mem_mb.
+memcheck:
+	python3 $(WORKFLOW_DIR)/scripts/check_declared_memory.py \
+	  --rules $(WORKFLOW_DIR)/rules \
+	  --benchmarks $(WORKFLOW_DIR)/logs/benchmarks/$(basename $(CONFIG))
