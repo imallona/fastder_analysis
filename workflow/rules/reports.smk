@@ -98,7 +98,8 @@ rule render_summary_report:
         Rscript -e "rmarkdown::render(
             input = '{input.rmd}',
             output_file = '$(realpath -m {output})',
-            params = list(summary_csv = '$(realpath {input.summary})',
+            params = list(fig_dir = '$(dirname $(realpath -m {output}))/summary_figs/',
+                          summary_csv = '$(realpath {input.summary})',
                           chain_stats_csv = '$(realpath {input.chain_stats})',
                           truth_chain_stats_csv = '$(realpath {input.truth_chain_stats})',
                           fuzzy_jaccard_csv = '$(realpath {input.jaccard})',
@@ -208,7 +209,8 @@ rule render_benchmarks_report:
         Rscript -e "rmarkdown::render(
             input = '{input.rmd}',
             output_file = '$(realpath -m {output})',
-            params = list(bench_dir = '$(realpath {params.bench_dir})',
+            params = list(fig_dir = '$(dirname $(realpath -m {output}))/benchmarks_figs/',
+                          bench_dir = '$(realpath {params.bench_dir})',
                           scenarios = '{params.scenarios}',
                           host_info = '$(realpath {input.host_info})'),
             quiet = TRUE)" > {log} 2>&1
@@ -360,7 +362,8 @@ rule render_recount3_report:
         Rscript -e "rmarkdown::render(
             input = '{input.rmd}',
             output_file = '$(realpath -m {output})',
-            params = list(manifest_csv = '$(realpath {input.manifest})',
+            params = list(fig_dir = '$(dirname $(realpath -m {output}))/recount3_figs/',
+                          manifest_csv = '$(realpath {input.manifest})',
                           summary_csv = '$(realpath {input.summary})',
                           reference_gtf = '{params.reference_gtf}',
                           loci_tsv = '$(realpath {input.loci})',
@@ -403,7 +406,8 @@ rule render_gtex_report:
         Rscript -e "rmarkdown::render(
             input = '{input.rmd}',
             output_file = '$(realpath -m {output})',
-            params = list(fastder_gtfs = '$gtfs',
+            params = list(fig_dir = '$(dirname $(realpath -m {output}))/gtex_concordance_figs/',
+                          fastder_gtfs = '$gtfs',
                           subgroups = '{params.subgroups}',
                           reference_gtf = '{params.reference_gtf}'),
             quiet = TRUE)" > {log} 2>&1

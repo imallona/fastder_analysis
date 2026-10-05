@@ -5,13 +5,14 @@ output:
     toc: true
     toc_float: true
 params:
+  fig_dir: "meta_figs/"
   results_root: NULL
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE,
                       fig.width = 9, fig.height = 5, fig.align = "center",
-                      dev = c("png", "pdf"), fig.path = "meta_figs/")
+                      dev = c("png", "pdf"), fig.path = params$fig_dir)
 library(readr)
 library(dplyr)
 library(tidyr)

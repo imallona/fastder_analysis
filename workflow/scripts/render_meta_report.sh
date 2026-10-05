@@ -25,5 +25,5 @@ fi
 
 PATH="$(dirname "$rscript"):$PATH" "$rscript" -e \
     "rmarkdown::render('$WORKFLOW/reports/meta.Rmd', output_file='$OUT', \
-     params = list(results_root = '$RESULTS'), quiet = TRUE)"
+     params = list(fig_dir = '$(dirname "$OUT")/meta_figs/', results_root = '$RESULTS'), quiet = TRUE)"
 echo "wrote $OUT"

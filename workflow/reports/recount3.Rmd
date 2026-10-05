@@ -6,6 +6,7 @@ output:
     toc_float: true
     df_print: paged
 params:
+  fig_dir: "recount3_figs/"
   manifest_csv: ""
   summary_csv: ""
   reference_gtf: ""
@@ -16,7 +17,7 @@ params:
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE,
                       fig.width = 10, fig.height = 6,
-                      dev = c("png", "pdf"), fig.path = "recount3_figs/")
+                      dev = c("png", "pdf"), fig.path = params$fig_dir)
 suppressPackageStartupMessages({
   library(rtracklayer)
   library(GenomicRanges)
