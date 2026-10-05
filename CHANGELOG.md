@@ -31,6 +31,7 @@
 
 ### Added
 
+- `PASSES=check` verifies a tree prepared elsewhere. It compares the commit and plans the preparation. The timed pass waits for a load below `QUIET_LOAD`. `make euler` records its commit. `slurm/04_prepare.sh` ends with the memory check.
 - `PASSES` picks the passes of a timed config. `make euler` prepares timed configs on the cluster. It runs accuracy-only configs in full. `slurm/04_prepare.sh` submits it. Timing then needs `PASSES="timed rest"` elsewhere.
 - Local runs pass `--resources mem_mb`. `MEM_MB` sets it, by default 80 percent of memory. Jobs were placed by cores alone before. `make memcheck` lists rules that exceeded their `mem_mb`.
 - `workflow/scripts/compute_library_sizes.py` and rule `compute_library_sizes`. Each scenario gets a `library_sizes.tsv`.

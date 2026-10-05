@@ -24,3 +24,11 @@ make euler "${MAKE_ARGS[@]}" EXTRA=-n 2>&1 | tail -30
 echo
 echo "=================== the run ==================="
 run_targets euler
+
+echo
+echo "=================== rules over their declared memory ==================="
+for benchmarks in workflow/logs/benchmarks/*/; do
+    echo "$benchmarks"
+    python3 workflow/scripts/check_declared_memory.py \
+        --rules workflow/rules --benchmarks "$benchmarks" || true
+done
