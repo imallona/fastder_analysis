@@ -106,14 +106,27 @@ class TestLibrarySize:
 class TestSharedLibrarySizes:
     """The pipeline passes a table so every tool divides by identical numbers."""
 
-    def test_read_library_sizes_keys_on_real_path(self, tmp_path):
-        bw = str(tmp_path / "a.all.bw")
-        _write_bw(bw, "chr1", 100, [(10, 20, 4.0)])
+    def test_read_library_sizes_keys_on_file_name(self, tmp_path):
         table = tmp_path / "library_sizes.tsv"
         table.write_text("bigwig\tsample\tlibrary_size\n"
-                         f"{bw}\ta\t1234.5\n")
+                         "a.all.bw\ta\t1234.5\n"
+                         "/somewhere/else/b.all.bw\tb\t99.0\n")
         sizes = rmb.read_library_sizes(str(table))
-        assert sizes[os.path.realpath(bw)] == pytest.approx(1234.5)
+        assert sizes == {"a.all.bw": pytest.approx(1234.5), "b.all.bw": pytest.approx(99.0)}
+
+    def test_sizes_are_found_after_the_directory_moves(self, tmp_path):
+        prepared = tmp_path / "prepared"
+        prepared.mkdir()
+        _write_bw(str(prepared / "a.all.bw"), "chr1", 100, [(10, 20, 4.0)])
+        script = op.join(op.dirname(op.dirname(op.abspath(__file__))),
+                         "workflow", "scripts", "compute_library_sizes.py")
+        subprocess.run([sys.executable, script, "--bigwig-dir", str(prepared),
+                        "--out", str(prepared / "library_sizes.tsv")], check=True)
+        moved = tmp_path / "moved"
+        prepared.rename(moved)
+        factors = rmb.sample_cpm_factors([[str(moved / "a.all.bw")]],
+                                         str(moved / "library_sizes.tsv"))
+        assert factors == pytest.approx([40.0 / 1e6])
 
     def test_table_overrides_the_computed_value(self, tmp_path):
         bw = str(tmp_path / "a.all.bw")

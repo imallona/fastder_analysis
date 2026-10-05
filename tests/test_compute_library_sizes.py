@@ -79,6 +79,7 @@ class TestCli:
 
         rows = [l.rstrip("\n").split("\t") for l in out.read_text().splitlines()]
         assert rows[0] == ["bigwig", "sample", "library_size"]
+        assert [r[0] for r in rows[1:]] == ["s1.all.bw", "s2.all.bw"]
         sizes = {r[1]: float(r[2]) for r in rows[1:]}
         assert sizes == {"s1": pytest.approx(40.0), "s2": pytest.approx(100.0)}
 

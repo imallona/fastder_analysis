@@ -85,6 +85,7 @@
 
 ### Fixed
 
+- `library_sizes.tsv` names BigWigs by file name, not path. The three runners look sizes up by file name. A copied tree lost its sizes before. Sizes are unchanged.
 - The reference annotation is chr-prefixed once per config. It is written line by line. Scenario directories link to it. Each scenario copied it and read it whole. On the full genome that took 8 GB per job.
 - The timed pass uses Snakemake's greedy scheduler. The default one ran its solver on about eight cores while a tool was being timed.
 - `run_grohmm.R` places window means by window name. `bigWigAverageOverBed` returns chromosomes in its own order. In another order, each chromosome got another one's signal. Single-chromosome runs were not affected.

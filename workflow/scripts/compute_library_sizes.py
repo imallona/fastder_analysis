@@ -13,7 +13,8 @@ chromosome to reach the same number. Charged inside its own rule, that would
 inflate derfinder's wall time by the ratio of the genome to the analysed
 subset.
 
-Output is a TSV of bigwig path, sample id and library size, sorted by path.
+Output is a TSV of bigwig file name, sample id and library size, sorted by
+name. File names, not paths, so the table stays valid when the directory moves.
 """
 
 import argparse
@@ -70,7 +71,7 @@ def main():
             size = library_size(path)
             if size <= 0:
                 print(f"WARN: {path} has an empty library size", file=sys.stderr)
-            out.write(f"{path}\t{sample_id(path)}\t{size:.6f}\n")
+            out.write(f"{os.path.basename(path)}\t{sample_id(path)}\t{size:.6f}\n")
 
 
 if __name__ == "__main__":

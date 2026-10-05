@@ -81,7 +81,7 @@ def chrom_length(bw_paths, chrom):
 
 
 def read_library_sizes(path):
-    """Whole-file library size per BigWig, from compute_library_sizes.py.
+    """Whole-file library size per BigWig file name, from compute_library_sizes.py.
 
     Reading them rather than recomputing keeps this rule's wall time
     comparable to fastder's, which takes the same number from the BigWig
@@ -92,7 +92,7 @@ def read_library_sizes(path):
         next(handle)
         for line in handle:
             bigwig, _sample, size = line.rstrip("\n").split("\t")
-            sizes[os.path.realpath(bigwig)] = float(size)
+            sizes[op.basename(bigwig)] = float(size)
     return sizes
 
 
@@ -105,7 +105,7 @@ def sample_cpm_factors(sample_groups, library_sizes_path):
     """
     if library_sizes_path:
         sizes = read_library_sizes(library_sizes_path)
-        lookup = lambda path: sizes[os.path.realpath(path)]
+        lookup = lambda path: sizes[op.basename(path)]
     else:
         lookup = library_size
     return [sum(lookup(p) for p in sample) / 1e6 for sample in sample_groups]
