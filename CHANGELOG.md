@@ -33,6 +33,8 @@
 
 ### Added
 
+- `summary.Rmd` draws exonic length and coverage against exon count as single plots again.
+- Rule `single_figure` draws the granularity, event Jaccard, genomic distribution and TDP-43 similarity figures. `manuscript_figures` requests them.
 - `PASSES=check` verifies a tree prepared elsewhere. It compares the commit and plans the preparation. The timed pass waits for a load below `QUIET_LOAD`. `make euler` records its commit. `slurm/04_prepare.sh` ends with the memory check.
 - `PASSES` picks the passes of a timed config. `make euler` prepares timed configs on the cluster. It runs accuracy-only configs in full. `slurm/04_prepare.sh` submits it. Timing then needs `PASSES="timed rest"` elsewhere.
 - Local runs pass `--resources mem_mb`. `MEM_MB` sets it, by default 80 percent of memory. Jobs were placed by cores alone before. `make memcheck` lists rules that exceeded their `mem_mb`.
@@ -88,6 +90,9 @@
 
 ### Fixed
 
+- `figure_sim_event_jaccard.R` leaves out `--no-stitch` runs. Their identifier has no tolerance, so they counted as tolerance 0.
+- `recount3.Rmd` sizes the gene-model track by its transcripts. Past about 25 transcripts the locus was drawn empty.
+- `summary.Rmd` plots fit ten samples: recall strips use sample codes, violins show 500 points each, locus titles are smaller. The boundary curve drops its 5 bp labels.
 - Simulated reads are keyed by sample order and chromosome scope too. Configs differing only in those shared one directory. Existing read directories get new names. `make memcheck` reads benchmark files in sub-directories. `extract_marker_loci.sh` checks one GTF per sub-group.
 - `library_sizes.tsv` names BigWigs by file name, not path. The three runners look sizes up by file name. A copied tree lost its sizes before. Sizes are unchanged.
 - The reference annotation is chr-prefixed once per config. It is written line by line. Scenario directories link to it. Each scenario copied it and read it whole. On the full genome that took 8 GB per job.
