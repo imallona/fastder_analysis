@@ -83,6 +83,7 @@
 
 ### Fixed
 
+- The reference annotation is chr-prefixed once per config. It is written line by line. Scenario directories link to it. Each scenario copied it and read it whole. On the full genome that took 8 GB per job.
 - The timed pass uses Snakemake's greedy scheduler. The default one ran its solver on about eight cores while a tool was being timed.
 - `run_grohmm.R` places window means by window name. `bigWigAverageOverBed` returns chromosomes in its own order. In another order, each chromosome got another one's signal. Single-chromosome runs were not affected.
 - Simulated reads are stored gzipped. `runASimulatoR.R` compresses them after the simulation. `make_scenario.py` writes its filtered copy compressed. STAR reads them with `--readFilesCommand zcat`. Plain FASTQ was about 680 GB. Compressed it is about 170 GB. Uncompressed reads on disk will re-simulate.
