@@ -42,6 +42,8 @@ sbatch slurm/02_gtex.sh          # chr19 four-tool comparison, then the genome-w
 sbatch slurm/03_tdp43.sh         # showcase and panel
 ```
 
+`sbatch slurm/04_prepare.sh` runs `make euler` instead: every timed config up to its timed rules and every accuracy-only config in full, for timing on another machine. The main README has the commands for the copy and the timed passes.
+
 Each is one driver job holding snakemake. `--signal=B:TERM@300` gives it five minutes to stop cleanly before the wall clock, so it writes its metadata instead of leaving a stale lock. If a driver is killed outright, `make unlock` clears the lock.
 
 ## CPU pin and core budget
