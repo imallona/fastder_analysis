@@ -12,12 +12,10 @@ source(file.path(dirname(sub("--file=", "",
 # Keyed by the sample names the configs use; an unlisted sample becomes NA.
 as_event_levels <- c("es", "mes", "ir", "a3", "a5", "mee", "afe", "ale",
   "mixed", "mixed_terminal", "mixed_internal")
-as_event_labels <- c(es = "exon skipping (ES)", mes = "multiple exon skipping (MES)",
-  ir = "intron retention (IR)", a3 = "alternative 3' site (A3)",
-  a5 = "alternative 5' site (A5)", mee = "mutually exclusive exons (MEE)",
-  afe = "alternative first exon (AFE)", ale = "alternative last exon (ALE)",
-  mixed = "mixed events", mixed_terminal = "mixed terminal",
-  mixed_internal = "mixed internal")
+# Codes, not names: ten columns leave no room for more.
+as_event_labels <- c(es = "ES", mes = "MES", ir = "IR", a3 = "A3", a5 = "A5",
+  mee = "MEE", afe = "AFE", ale = "ALE", mixed = "mixed",
+  mixed_terminal = "mixed\nterminal", mixed_internal = "mixed\ninternal")
 label_as <- function(v) factor(v, levels = as_event_levels, labels = as_event_labels[as_event_levels])
 scenario_palette <- c("Reference and variant" = "#1b9e77", "Variant" = "#d95f02")
 parse_param_id <- function(d) d %>% mutate(
@@ -27,6 +25,7 @@ parse_param_id <- function(d) d %>% mutate(
 
 fj <- read_result("config_full_simulation", "fuzzy_jaccard.csv") %>%
   filter(tool == "fastder") %>%
+  default_grid() %>%
   mutate(jaccard = as.numeric(jaccard), as_event = label_as(sample),
          scenario = relabel_scenario(scenario)) %>%
   parse_param_id() %>% mutate(param_sub = paste0("ml", min_length))
