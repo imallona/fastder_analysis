@@ -46,7 +46,9 @@
 ##   CORES        snakemake --cores value (default 12)
 ##   TIMED_CORES  --cores for the pass that runs the timed rules alone (default 16)
 ##   PASSES       passes of a timed config to run: prepare, timed, rest
-##                (default all three)
+##                (default all three); check verifies a tree prepared elsewhere
+##   QUIET_LOAD   one-minute load under which a timed pass starts (default 2;
+##                empty starts it at once). It fails after QUIET_WAIT_S seconds.
 ##   MEM_MB       memory that the jobs of a local run may declare in total
 ##                (default 80 percent of the machine)
 ##   ULIMIT_KB    per-process virtual memory cap in KB, inherited by every
@@ -106,12 +108,18 @@ if [ -d data/fastder/$(basename $(1)) ]; then \
   fi &&
 endef
 
+## Timings are taken on a quiet machine: the timed pass waits for the load to
+## fall under QUIET_LOAD.
+QUIET_LOAD   ?= 2
+QUIET_WAIT_S ?= 600
+wait_quiet = $(if $(QUIET_LOAD),python3 scripts/wait_quiet.py --below $(QUIET_LOAD) --timeout $(QUIET_WAIT_S) &&,)
+
 ## The timed rules, one job at a time: every job of this pass books the one
 ## timed slot. The greedy scheduler is used because the default one runs its
 ## solver on every core while a job is being timed. A dry run reads nothing.
 ## $(1) config file, $(2) snakemake flags.
 define timed_pass
-$(if $(filter -n --dry-run --dryrun,$(EXTRA)),,$(call warm_inputs,$(1))) \
+$(if $(filter -n --dry-run --dryrun,$(EXTRA)),,$(wait_quiet) $(call warm_inputs,$(1))) \
   snakemake --cores $(TIMED_CORES) -p $(CONDA_PREFIX_FLAG) $(EXTRA) $(2) \
     --until $(TIMED_PASS_RULES) --scheduler greedy \
     --default-resources timed=1 --resources timed=1 $(MEM_RESOURCE)
@@ -123,6 +131,10 @@ PASSES ?= prepare timed rest
 pass_prepare = $(SNAKEMAKE) $(2) --omit-from $(TIMED_PASS_RULES)
 pass_timed = $(call timed_pass,$(1),$(2))
 pass_rest = $(SNAKEMAKE) $(2)
+## For a tree prepared elsewhere: same commit, and nothing to prepare again.
+pass_check = python3 scripts/check_prepared.py --commit-file data/prepared_commit.txt \
+    --root data/fastder --manifest data/prepared_manifest.tsv && \
+  ( $(SNAKEMAKE) $(2) --omit-from $(TIMED_PASS_RULES) -n || true ) | python3 scripts/check_prepared.py --plan
 ## On the cluster one pass is enough; PASSES=prepare stops it before the
 ## timed rules.
 cluster_pass = $(if $(filter-out prepare,$(PASSES)),$(pass_rest),$(pass_prepare))
@@ -156,7 +168,7 @@ endef
 
 help:
 	@echo "Targets: submodules submodules-latest sim simulations sim-5m sim-30m sim-40m sim-replicates sim-unannotated threshold-ladder mjr-sweep tdp43 tdp43-panel tdp43-ladder gtex gtex-comparison gtex-smoke gtex-threshold-ladder gtex-pick meta reports composites figures smoke all dryrun unlock envs memcheck euler"
-	@echo "Variables: CORES=$(CORES) ULIMIT_KB=$(ULIMIT_KB) CONDA_ENV=$(CONDA_ENV) EULER=$(EULER) EULER_CORE_BUDGET=$(EULER_CORE_BUDGET) CONDA_PREFIX_DIR=$(CONDA_PREFIX_DIR) MEM_MB=$(MEM_MB) PASSES=$(PASSES)"
+	@echo "Variables: CORES=$(CORES) ULIMIT_KB=$(ULIMIT_KB) CONDA_ENV=$(CONDA_ENV) EULER=$(EULER) EULER_CORE_BUDGET=$(EULER_CORE_BUDGET) CONDA_PREFIX_DIR=$(CONDA_PREFIX_DIR) MEM_MB=$(MEM_MB) PASSES=$(PASSES) QUIET_LOAD=$(QUIET_LOAD)"
 
 ## Every run the figures and the reported numbers read, then the figures.
 ## meta only needs the simulation results, so it runs before the tdp43 runs:
@@ -172,10 +184,13 @@ ACCURACY_TARGETS := sim-replicates mjr-sweep sim-unannotated threshold-ladder \
 ## Cluster side of a split run: the timed configs up to their timed rules,
 ## then the accuracy-only configs in full. Copy workflow/data, workflow/results
 ## and workflow/logs to the timing machine and run there
-## make $(TIMED_TARGETS) PASSES="timed rest". EXTRA=-n lists the jobs.
+## make $(TIMED_TARGETS) PASSES="check timed rest". EXTRA=-n lists the jobs.
 euler:
 	$(MAKE) $(TIMED_TARGETS) EULER=1 PASSES=prepare
 	$(MAKE) $(ACCURACY_TARGETS) EULER=1
+	$(if $(filter -n --dry-run --dryrun,$(EXTRA)),,git rev-parse HEAD > $(WORKFLOW_DIR)/data/prepared_commit.txt)
+	$(if $(filter -n --dry-run --dryrun,$(EXTRA)),,python3 $(WORKFLOW_DIR)/scripts/check_prepared.py --write-manifest \
+	  --root $(WORKFLOW_DIR)/data/fastder --manifest $(WORKFLOW_DIR)/data/prepared_manifest.tsv)
 
 ## Submodules at their recorded commits. A clone leaves them empty.
 submodules:

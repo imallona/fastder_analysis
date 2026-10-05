@@ -20,14 +20,17 @@ To prepare on the cluster and time on one machine:
 ```
 sbatch slurm/04_prepare.sh        # cluster: make euler
 rsync -a <cluster>:<repo>/workflow/{data,results,logs} workflow/
-make simulations tdp43 tdp43-panel gtex-comparison gtex PASSES="timed rest" EXTRA=-n
-make simulations tdp43 tdp43-panel gtex-comparison gtex PASSES="timed rest"
+make simulations tdp43 tdp43-panel gtex-comparison gtex PASSES="check timed rest"
 make meta figures
 ```
 
 - `make euler` runs the timed configs up to their timed rules and the accuracy-only configs in full.
 - `make euler EXTRA=-n` lists the cluster jobs and submits none.
-- The dry run on the timing machine must plan `build_fastder`, the timed rules and what follows them: no simulation, alignment or download.
+- Copy into a fresh clone at the commit the cluster ran; `make euler` records it in `workflow/data/prepared_commit.txt`.
+- `make euler` also lists the files under `workflow/data/fastder`, with sizes, in `workflow/data/prepared_manifest.tsv`.
+- `check` stops a config if that commit is not checked out, a listed file is missing or of another size, or any preparation besides `build_fastder` would run again.
+- Each timed pass waits for a one-minute load below `QUIET_LOAD` (default 2) and fails after `QUIET_WAIT_S` seconds (default 600).
+- The cluster log ends with the rules that used more memory than they declared.
 
 A local run makes three passes over a config: the inputs, then the tool runs whose wall clock is reported, one job at a time, then evaluation and reports. Keep the machine free of other work during the second pass. Timings are taken from the four depth configs, the two GTEx configs and the two TDP-43 configs. The replicates, the junction-filter sweep, the unannotated alignment and the three threshold ladders are read for accuracy only and run in one pass, each tool run once.
 

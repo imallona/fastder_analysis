@@ -106,6 +106,38 @@ def test_euler_prepares_timed_configs_and_runs_the_others_in_full():
     }
 
 
+def test_the_check_pass_only_plans():
+    out = dry_run("CONDA_INIT=/nonexistent/activate", "PASSES=check")
+    assert "check_prepared.py --commit-file data/prepared_commit.txt" in out
+    assert "--root data/fastder --manifest data/prepared_manifest.tsv" in out
+    assert out.count("snakemake --cores") == 1
+    assert "-n || true ) | python3 scripts/check_prepared.py --plan" in out
+
+
+def test_the_timed_pass_waits_for_a_quiet_machine():
+    out = dry_run("CONDA_INIT=/nonexistent/activate", "QUIET_LOAD=1.5", "QUIET_WAIT_S=60")
+    assert out.count("wait_quiet.py --below 1.5 --timeout 60") == 1
+    assert out.index("wait_quiet.py") < out.index("--until run_fastder")
+
+
+def test_an_empty_quiet_load_starts_at_once():
+    assert "wait_quiet.py" not in dry_run("CONDA_INIT=/nonexistent/activate", "QUIET_LOAD=")
+
+
+def test_a_snakemake_dry_run_does_not_wait():
+    assert "wait_quiet.py" not in dry_run("CONDA_INIT=/nonexistent/activate", "EXTRA=-n")
+
+
+def test_euler_records_the_commit_unless_it_is_a_dry_run():
+    def recipe(*overrides):
+        return subprocess.run(["make", "-n", "euler", "CONDA_INIT=/nonexistent/activate", *overrides],
+                              cwd=ROOT, capture_output=True, text=True, check=True).stdout
+    assert "git rev-parse HEAD > workflow/data/prepared_commit.txt" in recipe()
+    assert "--write-manifest" in recipe()
+    assert "prepared_commit.txt" not in recipe("EXTRA=-n")
+    assert "--write-manifest" not in recipe("EXTRA=-n")
+
+
 def test_dryrun_plans_with_the_flags_of_a_run():
     result = subprocess.run(["make", "-n", "dryrun"], cwd=ROOT,
                             capture_output=True, text=True, check=True)
