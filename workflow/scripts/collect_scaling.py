@@ -5,8 +5,13 @@ repeat; each core count is reported by its median. Memory is reported next to
 wall time: each parsing thread holds one sample, so cores are traded against
 memory.
 
+A sweep saturates where its workload has nothing left to spread: parsing
+at the number of samples, averaging at the number of chromosomes. Each
+workload is given with both, so the figure can mark them.
+
 Usage:
-    python collect_scaling.py --bench-dir <dir> --out <csv>
+    python collect_scaling.py --out <csv> \
+        --workload <label> <bench dir> <samples> <chromosomes> [--workload ...]
 """
 import argparse
 import csv
@@ -64,8 +69,16 @@ def add_speedup(rows):
     return rows
 
 
+def collect_workload(label, bench_dir, samples, chromosomes):
+    rows = add_speedup(collect(bench_dir))
+    for row in rows:
+        row.update(workload=label, samples=int(samples), chromosomes=int(chromosomes))
+    return rows
+
+
 def write_csv(rows, path):
-    columns = ["cores", "wall_s", "peak_rss_gb", "repeats", "speedup"]
+    columns = ["workload", "cores", "wall_s", "peak_rss_gb", "repeats", "speedup",
+               "samples", "chromosomes"]
     with open(path, "w", newline="") as fh:
         writer = csv.DictWriter(fh, fieldnames=columns)
         writer.writeheader()
@@ -74,12 +87,14 @@ def write_csv(rows, path):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--bench-dir", required=True,
-                        help="benchmark directory of the config that ran the sweep")
+    parser.add_argument("--workload", nargs=4, action="append", required=True,
+                        metavar=("LABEL", "BENCH_DIR", "SAMPLES", "CHROMOSOMES"),
+                        help="one sweep: its label, the benchmark directory of the "
+                             "config that ran it, and its sample and chromosome counts")
     parser.add_argument("--out", required=True)
     args = parser.parse_args()
 
-    rows = add_speedup(collect(args.bench_dir))
+    rows = [row for workload in args.workload for row in collect_workload(*workload)]
     write_csv(rows, args.out)
     print(f"wrote {len(rows)} rows to {args.out}")
 

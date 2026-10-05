@@ -11,9 +11,6 @@ out_dir <- if (length(args) >= 1) args[[1]] else "."
 source(file.path(dirname(sub("--file=", "",
   grep("--file=", commandArgs(FALSE), value = TRUE))), "helpers.R"))
 
-# Ceilings of the scaling workload: ten samples, two chromosomes.
-scaling_samples <- as.integer(Sys.getenv("FASTDER_SCALING_SAMPLES", "10"))
-scaling_chroms <- as.integer(Sys.getenv("FASTDER_SCALING_CHROMS", "2"))
 
 save_both <- function(plot, name, width, height) {
   pdf_path <- file.path(out_dir, paste0(name, ".pdf"))
@@ -29,6 +26,5 @@ save_both(panel_ablation(file.path(out_dir, "ablation.csv")),
 save_both(panel_min_junction_reads(file.path(out_dir, "min_junction_reads.csv")),
           "supp_min_junction_reads", width = 7.0, height = 3.6)
 
-save_both(panel_scaling(file.path(out_dir, "scaling.csv"),
-                        samples = scaling_samples, chromosomes = scaling_chroms),
-          "supp_scaling", width = 7.0, height = 3.6)
+save_both(panel_scaling(file.path(out_dir, "scaling.csv")),
+          "supp_scaling", width = 7.0, height = 6.4)

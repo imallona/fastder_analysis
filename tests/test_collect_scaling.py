@@ -9,7 +9,7 @@ import csv
 
 import pytest
 
-from collect_scaling import add_speedup, collect, cores_of, write_csv
+from collect_scaling import add_speedup, collect, collect_workload, cores_of, write_csv
 
 BENCH_COLUMNS = ["s", "h:m:s", "max_rss", "max_vms", "max_uss", "max_pss",
                  "io_in", "io_out", "mean_load", "cpu_time"]
@@ -90,10 +90,13 @@ def test_speedup_is_blank_without_a_single_core_point(tmp_path):
 def test_written_csv_carries_every_column(tmp_path):
     make_sweep(tmp_path, [(1, 100.0, 4096)])
     out = tmp_path / "scaling.csv"
-    write_csv(add_speedup(collect(str(tmp_path))), out)
+    write_csv(collect_workload("genome-wide", str(tmp_path), "5", "23"), out)
     with open(out) as fh:
-        header = next(csv.reader(fh))
-    assert header == ["cores", "wall_s", "peak_rss_gb", "repeats", "speedup"]
+        rows = list(csv.DictReader(fh))
+    assert list(rows[0]) == ["workload", "cores", "wall_s", "peak_rss_gb", "repeats",
+                             "speedup", "samples", "chromosomes"]
+    assert (rows[0]["workload"], rows[0]["samples"], rows[0]["chromosomes"]) == (
+        "genome-wide", "5", "23")
 
 
 def test_missing_sweep_is_not_an_error(tmp_path):

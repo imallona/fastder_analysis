@@ -697,32 +697,34 @@ panel_min_junction_reads <- function(path = file.path(FIG_DIR, "min_junction_rea
 
 # Panel: wall time and peak memory against cores, one workload. The ceilings
 # are annotated: parsing caps at samples, averaging at chromosomes.
-panel_scaling <- function(path = file.path(FIG_DIR, "scaling.csv"),
-                          samples = NA_integer_, chromosomes = NA_integer_) {
+panel_scaling <- function(path = file.path(FIG_DIR, "scaling.csv")) {
   # All-blank peak_rss types logical, which clashes with wall_s below.
-  d <- read_panel_csv(path) %>% mutate(peak_rss_gb = as.numeric(peak_rss_gb))
+  d <- read_panel_csv(path) %>%
+    mutate(peak_rss_gb = as.numeric(peak_rss_gb),
+           workload = factor(workload, levels = unique(workload)))
   save_panel_data(d, "panel_scaling")
   # Wall time first; memory is its cost.
   metric_order <- c("Wall time (s)", "Peak resident memory (GiB)")
   long <- bind_rows(
-    d %>% transmute(cores, value = wall_s, metric = metric_order[1]),
+    d %>% transmute(workload, cores, value = wall_s, metric = metric_order[1]),
     d %>% filter(!is.na(peak_rss_gb)) %>%
-      transmute(cores, value = peak_rss_gb, metric = metric_order[2])
+      transmute(workload, cores, value = peak_rss_gb, metric = metric_order[2])
   ) %>% mutate(metric = factor(metric, levels = metric_order))
-  # Wall-time facet only. Labels sit inside the panel; Inf gets clipped.
-  wall_top <- max(long$value[long$metric == metric_order[1]], na.rm = TRUE)
-  ceilings <- data.frame(
-    cores = c(samples, chromosomes),
-    metric = factor(metric_order[1], levels = metric_order),
-    value = wall_top,
-    label = c("parsing: one thread per sample",
-              "averaging: one thread per chromosome")
-  ) %>% filter(!is.na(cores))
+  # Where each sweep stops gaining: wall-time panels only, labels inside.
+  ceilings <- d %>%
+    group_by(workload) %>%
+    summarise(value = max(wall_s), samples = first(samples),
+              chromosomes = first(chromosomes), top = max(cores), .groups = "drop") %>%
+    tidyr::pivot_longer(c(samples, chromosomes), names_to = "stage", values_to = "cores") %>%
+    filter(cores <= top) %>%
+    mutate(metric = factor(metric_order[1], levels = metric_order),
+           label = ifelse(stage == "samples", "parsing: one thread per sample",
+                          "averaging: one thread per chromosome"))
   p <- ggplot(long, aes(cores, value)) +
     geom_line(linewidth = 0.7, colour = "#FC8D62") +
     geom_point(size = 2.4, colour = "#FC8D62") +
     scale_x_continuous(trans = "log2", breaks = sort(unique(long$cores))) +
-    facet_wrap(~ metric, scales = "free_y") +
+    facet_wrap(workload ~ metric, scales = "free_y", ncol = 2) +
     labs(x = "Cores given to fastder", y = NULL) +
     theme_pub_square()
   if (nrow(ceilings) > 0) {

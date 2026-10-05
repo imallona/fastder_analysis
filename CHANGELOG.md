@@ -4,6 +4,7 @@
 
 ### Changed
 
+- `scaling.csv` and `supp_scaling.pdf` hold two core sweeps: genome-wide GTEx and the simulation. Each row carries its workload's sample and chromosome counts. The figure marks them. It showed the simulation alone before.
 - Reports write figure files under `results/<config>/<report>_figs/`. They shared `workflow/reports/<report>_figs/` before. Each config overwrote the last one's files.
 - `reported_numbers.csv` adds the lowest peak memory per tool. The real-data comparison adds medians over scenarios. The collector writes the CSV only.
 - Library sizes come from `compute_library_sizes.py`, once per scenario. `run_derfinder.R`, `run_grohmm.R` and `run_megadepth_baseline.py` read them. Each runner computed its own before.
