@@ -281,9 +281,16 @@ if (have_tool_data) {
     mutate(jaccard = as.numeric(jaccard),
            scenario = relabel_scenario(scenario),
            as_event = label_as(sample))
+  # At most 500 points per violin, so the points do not cover its outline.
+  set.seed(1)
+  fj_points <- fj %>%
+    group_by(tool, as_event) %>%
+    slice_sample(n = 500) %>%
+    ungroup()
   ggplot(fj, aes(x = tool, y = jaccard, fill = tool)) +
     geom_violin(alpha = 0.5, scale = "width", trim = TRUE, colour = "grey40") +
-    geom_jitter(width = 0.18, size = 0.25, alpha = 0.2, colour = "grey15") +
+    geom_jitter(data = fj_points, width = 0.18, size = 0.25, alpha = 0.2,
+                colour = "grey15") +
     stat_summary(fun = median, geom = "point", shape = 21, size = 2.6,
                  colour = "black", fill = "white", stroke = 0.7) +
     scale_fill_manual(values = tool_palette, guide = "none") +
@@ -310,15 +317,18 @@ if (have_tool_data) {
     mutate(threshold = as.numeric(threshold),
            recall = as.numeric(recall),
            scenario = relabel_scenario(scenario),
-           as_event = label_as(sample)) %>%
+           sample = factor(sample, levels = as_event_levels)) %>%
     filter(threshold == 0.5)
+  # Strips carry the sample codes: the long event names do not fit ten columns.
   ggplot(fr, aes(x = tool, y = recall, fill = tool)) +
     geom_col(position = position_dodge(width = 0.8), width = 0.7,
              alpha = 0.85, colour = "grey20") +
-    geom_text(aes(label = sprintf("%.2f", recall)), vjust = -0.4, size = 3.2) +
+    geom_text(aes(label = sprintf("%.2f", recall)), angle = 90, hjust = -0.15,
+              size = 2.6) +
     scale_fill_manual(values = tool_palette, guide = "none") +
-    facet_grid(scenario ~ as_event) +
-    coord_cartesian(ylim = c(0, 1)) +
+    scale_y_continuous(breaks = seq(0, 1, 0.25)) +
+    facet_grid(scenario ~ sample) +
+    coord_cartesian(ylim = c(0, 1.15)) +
     labs(x = NULL, y = "Locus recall at threshold 0.5") +
     pub_theme +
     theme(axis.text.x = element_text(angle = 30, hjust = 1, size = 10),
@@ -388,18 +398,10 @@ if (have_tool_data && !is.null(fuzzy_all$distances) && nrow(fuzzy_all$distances)
     mutate(scenario = relabel_scenario(scenario),
            threshold_label = factor(paste0("<=", threshold_bp, " bp"),
                                     levels = paste0("<=", thresholds_bp, " bp")))
-  # Label the 5 bp tolerance point on each tool's line, so the standalone
-  # 5 bp panel does not need to be read separately.
-  label_5bp <- fd_pct %>% filter(threshold_bp == 5)
   ggplot(fd_pct, aes(x = threshold_bp, y = pct, colour = tool, shape = tool,
                      group = tool)) +
     geom_line(linewidth = 0.7, alpha = 0.8) +
     geom_point(size = 3, alpha = 0.9) +
-    geom_vline(xintercept = log1p(5), linetype = "dashed",
-               colour = "grey60", linewidth = 0.4) +
-    geom_text(data = label_5bp,
-              aes(label = sprintf("%.1f%%", pct)),
-              vjust = -1.0, hjust = 0.5, size = 3, show.legend = FALSE) +
     scale_colour_manual(values = tool_palette, name = NULL) +
     scale_shape_manual(values = c(fastder = 16, derfinder = 17,
                                   megadepth_baseline = 15, grohmm = 18),
@@ -674,7 +676,7 @@ if (track_ok) {
            atrack(tool_gr$grohmm, "grohmm", tool_palette[["grohmm"]])),
       from = from, to = to, chromosome = chrom,
       background.title = "white", col.title = "black", col.axis = "black",
-      cex.title = 1.1, title.width = 1.4,
+      cex.title = 0.6, title.width = 0.9,
       main = sprintf("%s  %s:%d-%d", top, chrom, from, to), cex.main = 0.9)
     TRUE
   }, error = function(e) {
@@ -1513,6 +1515,29 @@ p_cov_vs_len <- ggplot(cs_plot, aes(x = total_exon_length, y = score)) +
 
 (p_length | p_cov_vs_n | p_cov_vs_len) +
   plot_annotation(caption = paste("parameter combination:", cs_pid))
+```
+
+The first two panels on their own, scenarios side by side.
+
+```{r length_hist, fig.width = 8, fig.height = 4}
+ggplot(cs_plot, aes(x = total_exon_length)) +
+  geom_histogram(bins = 30, fill = "grey60", colour = "grey30") +
+  facet_wrap(~ scenario, ncol = 2) +
+  scale_x_log10() +
+  labs(x = "Total exonic length per region (bp)",
+       y = "Number of regions",
+       caption = paste("parameter combination:", cs_pid)) +
+  pub_theme
+```
+
+```{r score_vs_n_exons, fig.width = 8, fig.height = 4}
+ggplot(cs_plot, aes(x = n_exons, y = score)) +
+  geom_point(alpha = 0.3) +
+  scale_y_log10() +
+  facet_wrap(~ scenario, ncol = 2) +
+  labs(x = "Exons per region", y = "Mean coverage",
+       caption = paste("parameter combination:", cs_pid)) +
+  pub_theme
 ```
 
 ## Mean coverage vs total exonic length
