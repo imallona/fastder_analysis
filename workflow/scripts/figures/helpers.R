@@ -98,19 +98,21 @@ theme_pub_square <- function(base_size = BASE_SIZE) {
 # always matches the plotted lines), plus the strand-class fill. Built from a
 # throwaway plot and extracted, because patchwork's guide collection rebuilds
 # the keys as point-only and drops the line type.
-make_combined_legend <- function() {
+make_combined_legend <- function(strand = TRUE) {
   suppressPackageStartupMessages(library(cowplot))
   tdf <- data.frame(tool = factor(names(tool_palette), levels = names(tool_palette)), x = 1, y = 1)
   cdf <- data.frame(category = factor(names(strand_palette), levels = names(strand_palette)), x = 1, y = 1)
   p <- ggplot() +
     geom_line(data = tdf, aes(x, y, colour = tool, linetype = tool)) +
     geom_point(data = tdf, aes(x, y, colour = tool, shape = tool), size = 2.6) +
-    geom_tile(data = cdf, aes(x, y, fill = category)) +
     scale_colour_manual(values = tool_palette, labels = tool_labels, name = NULL) +
     scale_shape_manual(values = tool_shapes, labels = tool_labels, name = NULL) +
     scale_linetype_manual(values = tool_linetypes, labels = tool_labels, name = NULL) +
-    scale_fill_manual(values = strand_palette, name = NULL) +
     theme_pub() + theme(legend.position = "bottom", legend.box = "vertical")
+  if (strand) {
+    p <- p + geom_tile(data = cdf, aes(x, y, fill = category)) +
+      scale_fill_manual(values = strand_palette, name = NULL)
+  }
   # ggplot2 >= 3.5: get_legend returns an empty box; take the bottom guide-box.
   legend_grob <- tryCatch(
     cowplot::get_plot_component(p, "guide-box-bottom", return_all = TRUE),

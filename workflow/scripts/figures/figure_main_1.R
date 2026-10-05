@@ -17,7 +17,10 @@ bench_dir <- Sys.getenv("FASTDER_BENCH_DIR",
 source(file.path(dirname(sub("--file=", "",
   grep("--file=", commandArgs(FALSE), value = TRUE))), "helpers.R"))
 
-p_pipeline  <- wrap_pdf(file.path(fig_dir, "Figure_1.pdf"), width_fill = TRUE)
+# The overview drawing is made by hand; without it the panel stays reserved.
+overview <- file.path(fig_dir, "Figure_1.pdf")
+p_pipeline <- if (file.exists(overview)) wrap_pdf(overview, width_fill = TRUE) else
+  panel_placeholder("panel A: overview drawing\n(place Figure_1.pdf in the figure directory)")
 p_sim       <- wrap_pdf(file.path(fig_dir, "fig_sim_schematic.pdf"))
 p_depth     <- panel_depth(which_levels = "Exon", tools = EXON_LEVEL_TOOLS)  # transcript level flat; full version supplementary
 p_boundary  <- panel_boundary(tools = EXON_LEVEL_TOOLS)
@@ -40,9 +43,9 @@ panels <- p_pipeline + p_sim + p_depth + p_boundary + p_cdf + p_speed +
   plot_annotation(tag_levels = "A") &
   theme(plot.tag = element_text(face = "bold", size = 16))
 
-# One dedicated legend (tools as line + symbol, plus strand fill) below the
-# panels, so the legend line types match the plotted lines exactly.
-fig <- cowplot::plot_grid(panels, make_combined_legend(), ncol = 1, rel_heights = c(1, 0.07))
+# One dedicated legend (tools as line + symbol) below the panels, so the
+# legend line types match the plotted lines exactly.
+fig <- cowplot::plot_grid(panels, make_combined_legend(strand = FALSE), ncol = 1, rel_heights = c(1, 0.05))
 
 ggsave(out, fig, width = 8.27, height = 16.0, limitsize = FALSE)
 ggsave(sub("\\.pdf$", ".svg", out), fig, width = 8.27, height = 16.0, limitsize = FALSE)
