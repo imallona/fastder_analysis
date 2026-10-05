@@ -4,6 +4,8 @@
 
 ### Changed
 
+- Reports write figure files under `results/<config>/<report>_figs/`. They shared `workflow/reports/<report>_figs/` before. Each config overwrote the last one's files.
+- `reported_numbers.csv` adds the lowest peak memory per tool. The real-data comparison adds medians over scenarios. The collector writes the CSV only.
 - Library sizes come from `compute_library_sizes.py`, once per scenario. `run_derfinder.R`, `run_grohmm.R` and `run_megadepth_baseline.py` read them. Each runner computed its own before.
 - Library size is now whole-file. It sums length times value, from the header. Analysed chromosomes no longer change it.
 - `run_derfinder`, `run_grohmm` and `run_megadepth_baseline` declare `threads: 1`.
