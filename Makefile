@@ -45,6 +45,8 @@
 ## Variables (override on the command line, e.g. make sim CORES=24):
 ##   CORES        snakemake --cores value (default 12)
 ##   TIMED_CORES  --cores for the pass that runs the timed rules alone (default 16)
+##   PASSES       passes of a timed config to run: prepare, timed, rest
+##                (default all three)
 ##   MEM_MB       memory that the jobs of a local run may declare in total
 ##                (default 80 percent of the machine)
 ##   ULIMIT_KB    per-process virtual memory cap in KB, inherited by every
@@ -115,15 +117,23 @@ $(if $(filter -n --dry-run --dryrun,$(EXTRA)),,$(call warm_inputs,$(1))) \
     --default-resources timed=1 --resources timed=1 $(MEM_RESOURCE)
 endef
 
+## Passes of a timed config. PASSES picks which ones run, so that inputs can
+## be prepared on one machine and timed on another.
+PASSES ?= prepare timed rest
+pass_prepare = $(SNAKEMAKE) $(2) --omit-from $(TIMED_PASS_RULES)
+pass_timed = $(call timed_pass,$(1),$(2))
+pass_rest = $(SNAKEMAKE) $(2)
+## On the cluster one pass is enough; PASSES=prepare stops it before the
+## timed rules.
+cluster_pass = $(if $(filter-out prepare,$(PASSES)),$(pass_rest),$(pass_prepare))
+
 ## Run one config. Locally in three passes, so that no timed job shares the
 ## machine: everything upstream of the timed rules, the timed rules alone, then
-## the rest. On the cluster the scheduler places the jobs and one pass is
-## enough. $(1) config file, $(2) snakemake flags.
+## the rest. On the cluster the scheduler places the jobs.
+## $(1) config file, $(2) snakemake flags.
 define run
 cd $(WORKFLOW_DIR) && bash -c '$(ACTIVATE) && export FASTDER_EVAL_CONFIG=../config/$(1) && \
-  $(if $(EULER),$(SNAKEMAKE) $(2),$(SNAKEMAKE) $(2) --omit-from $(TIMED_PASS_RULES) && \
-  $(call timed_pass,$(1),$(2)) && \
-  $(SNAKEMAKE) $(2))'
+  $(if $(EULER),$(call cluster_pass,$(1),$(2)),$(foreach pass,$(PASSES),$(call pass_$(pass),$(1),$(2)) &&) true)'
 endef
 
 ## Run one config in a single pass. For the configs read for accuracy only:
@@ -142,17 +152,30 @@ endef
 .DEFAULT_GOAL := help
 .PHONY: help all submodules sim simulations sim-5m sim-30m sim-40m sim-replicates sim-unannotated threshold-ladder tdp43 \
         tdp43-panel tdp43-ladder gtex gtex-comparison gtex-smoke gtex-threshold-ladder gtex-pick meta reports \
-        composites figures smoke dryrun unlock envs mjr-sweep submodules-latest memcheck
+        composites figures smoke dryrun unlock envs mjr-sweep submodules-latest memcheck euler
 
 help:
-	@echo "Targets: submodules submodules-latest sim simulations sim-5m sim-30m sim-40m sim-replicates sim-unannotated threshold-ladder mjr-sweep tdp43 tdp43-panel tdp43-ladder gtex gtex-comparison gtex-smoke gtex-threshold-ladder gtex-pick meta reports composites figures smoke all dryrun unlock envs memcheck"
-	@echo "Variables: CORES=$(CORES) ULIMIT_KB=$(ULIMIT_KB) CONDA_ENV=$(CONDA_ENV) EULER=$(EULER) EULER_CORE_BUDGET=$(EULER_CORE_BUDGET) CONDA_PREFIX_DIR=$(CONDA_PREFIX_DIR) MEM_MB=$(MEM_MB)"
+	@echo "Targets: submodules submodules-latest sim simulations sim-5m sim-30m sim-40m sim-replicates sim-unannotated threshold-ladder mjr-sweep tdp43 tdp43-panel tdp43-ladder gtex gtex-comparison gtex-smoke gtex-threshold-ladder gtex-pick meta reports composites figures smoke all dryrun unlock envs memcheck euler"
+	@echo "Variables: CORES=$(CORES) ULIMIT_KB=$(ULIMIT_KB) CONDA_ENV=$(CONDA_ENV) EULER=$(EULER) EULER_CORE_BUDGET=$(EULER_CORE_BUDGET) CONDA_PREFIX_DIR=$(CONDA_PREFIX_DIR) MEM_MB=$(MEM_MB) PASSES=$(PASSES)"
 
 ## Every run the figures and the reported numbers read, then the figures.
 ## meta only needs the simulation results, so it runs before the tdp43 runs:
 ## a tdp43 failure then cannot block the cross-depth report.
 all: simulations sim-replicates mjr-sweep sim-unannotated threshold-ladder meta \
      tdp43 tdp43-panel tdp43-ladder gtex-comparison gtex gtex-threshold-ladder figures
+
+## Configs whose run times are reported, and configs read for accuracy only.
+TIMED_TARGETS    := simulations tdp43 tdp43-panel gtex-comparison gtex
+ACCURACY_TARGETS := sim-replicates mjr-sweep sim-unannotated threshold-ladder \
+                    tdp43-ladder gtex-threshold-ladder
+
+## Cluster side of a split run: the timed configs up to their timed rules,
+## then the accuracy-only configs in full. Copy workflow/data, workflow/results
+## and workflow/logs to the timing machine and run there
+## make $(TIMED_TARGETS) PASSES="timed rest". EXTRA=-n lists the jobs.
+euler:
+	$(MAKE) $(TIMED_TARGETS) EULER=1 PASSES=prepare
+	$(MAKE) $(ACCURACY_TARGETS) EULER=1
 
 ## Submodules at their recorded commits. A clone leaves them empty.
 submodules:

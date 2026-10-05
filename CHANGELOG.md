@@ -31,6 +31,7 @@
 
 ### Added
 
+- `PASSES` picks the passes of a timed config. `make euler` prepares timed configs on the cluster. It runs accuracy-only configs in full. `slurm/04_prepare.sh` submits it. Timing then needs `PASSES="timed rest"` elsewhere.
 - Local runs pass `--resources mem_mb`. `MEM_MB` sets it, by default 80 percent of memory. Jobs were placed by cores alone before. `make memcheck` lists rules that exceeded their `mem_mb`.
 - `workflow/scripts/compute_library_sizes.py` and rule `compute_library_sizes`. Each scenario gets a `library_sizes.tsv`.
 - Grid support for `min_junction_reads` (`mjr`) and `no_stitch` (`ns`). `no_stitch` is a switch. The flag is passed only when true.

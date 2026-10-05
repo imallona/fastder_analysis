@@ -68,6 +68,44 @@ def test_an_empty_budget_sets_no_limit():
     assert "mem_mb=" not in out
 
 
+def test_the_prepare_pass_alone_runs_no_timed_rule():
+    out = dry_run("CONDA_INIT=/nonexistent/activate", "PASSES=prepare")
+    assert out.count("snakemake --cores") == 1
+    assert "--omit-from run_fastder" in out
+    assert "--until" not in out
+
+
+def test_the_timed_and_rest_passes_skip_the_preparation():
+    out = dry_run("CONDA_INIT=/nonexistent/activate", "PASSES=timed rest")
+    assert out.count("snakemake --cores") == 2
+    assert "--omit-from" not in out
+    assert "--until run_fastder" in out
+
+
+def test_a_cluster_prepare_pass_omits_the_timed_rules():
+    out = dry_run("EULER=1", "CONDA_INIT=/nonexistent/activate", "PASSES=prepare")
+    assert out.count("snakemake --cores") == 1
+    assert "--profile" in out
+    assert "--omit-from run_fastder" in out
+
+
+def test_euler_prepares_timed_configs_and_runs_the_others_in_full():
+    result = subprocess.run(["make", "-n", "euler", "CONDA_INIT=/nonexistent/activate"],
+                            cwd=ROOT, capture_output=True, text=True, check=True)
+    by_config = {}
+    for chunk in result.stdout.split("FASTDER_EVAL_CONFIG=../config/")[1:]:
+        by_config[chunk.split(".yaml")[0]] = chunk
+    assert len(by_config) == 15
+    assert all("--profile" in chunk for chunk in by_config.values())
+    prepared = {config for config, chunk in by_config.items() if "--omit-from run_fastder" in chunk}
+    assert prepared == {
+        "config_full_simulation", "config_full_simulation_5M",
+        "config_full_simulation_30M", "config_full_simulation_40M",
+        "config_klim_2019_tdp43_recount3", "config_klim_2019_tdp43_recount3_panel",
+        "config_gtex_comparison", "config_gtex_concordance",
+    }
+
+
 def test_dryrun_plans_with_the_flags_of_a_run():
     result = subprocess.run(["make", "-n", "dryrun"], cwd=ROOT,
                             capture_output=True, text=True, check=True)

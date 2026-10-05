@@ -15,6 +15,20 @@ make submodules        # fetch the fastder and monorail-external submodules, onc
 
 There is a `Makefile`; `make help` lists its targets. `make all` runs every config the figures read and then `make figures`; `make smoke` is a small end-to-end test. Override defaults on the command line, e.g. `make sim CORES=24` (`ULIMIT_KB` caps per-process virtual memory at 100 GB). Local runs start a job only while the `mem_mb` declared by the running jobs stays within `MEM_MB`, by default 80 percent of the machine's memory; a job that declares more than that runs alone. `make memcheck CONFIG=<config>.yaml` lists the rules of a finished config whose peak memory exceeded their `mem_mb`.
 
+To prepare on the cluster and time on one machine:
+
+```
+sbatch slurm/04_prepare.sh        # cluster: make euler
+rsync -a <cluster>:<repo>/workflow/{data,results,logs} workflow/
+make simulations tdp43 tdp43-panel gtex-comparison gtex PASSES="timed rest" EXTRA=-n
+make simulations tdp43 tdp43-panel gtex-comparison gtex PASSES="timed rest"
+make meta figures
+```
+
+- `make euler` runs the timed configs up to their timed rules and the accuracy-only configs in full.
+- `make euler EXTRA=-n` lists the cluster jobs and submits none.
+- The dry run on the timing machine must plan `build_fastder`, the timed rules and what follows them: no simulation, alignment or download.
+
 A local run makes three passes over a config: the inputs, then the tool runs whose wall clock is reported, one job at a time, then evaluation and reports. Keep the machine free of other work during the second pass. Timings are taken from the four depth configs, the two GTEx configs and the two TDP-43 configs. The replicates, the junction-filter sweep, the unannotated alignment and the three threshold ladders are read for accuracy only and run in one pass, each tool run once.
 
 Add `EULER=1` to any target to submit its rules to the ETH Euler cluster instead of running them here, e.g. `make gtex-comparison EULER=1`. The cluster settings live in `profiles/euler/config.yaml` and the sbatch wrappers in `slurm/`; see `slurm/README.md`. Without `EULER=1` the workflow runs locally exactly as before.
