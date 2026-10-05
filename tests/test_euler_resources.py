@@ -44,9 +44,13 @@ def declared():
                     out[current]["runtime"] = int(run.group(1))
                 threads = THREADS.match(line)
                 if threads:
-                    out[current]["threads"] = (
-                        CONFIGURED_CORES if "cores" in threads.group(1) else threads.group(1)
-                    )
+                    declared_threads = threads.group(1).strip()
+                    if "cores" in declared_threads:
+                        out[current]["threads"] = CONFIGURED_CORES
+                    elif declared_threads.isdigit():
+                        out[current]["threads"] = int(declared_threads)
+                    else:
+                        out[current]["threads"] = declared_threads
     return {name: spec for name, spec in out.items() if spec["mem_mb"]}
 
 

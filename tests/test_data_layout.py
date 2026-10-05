@@ -23,45 +23,53 @@ DESIGN = {"seq_depth": 10000000, "strand_specific": True,
 
 
 def test_reads_key_names_depth_and_seed():
-    assert reads_key(DESIGN, 10).startswith("depth_10000000_seed_10_")
+    assert reads_key(DESIGN, 10, "chr21").startswith("depth_10000000_seed_10_")
 
 
 def test_depth_key_ignores_number_format():
-    assert reads_key({**DESIGN, "seq_depth": 1e7}, 10) == reads_key(DESIGN, 10)
+    assert reads_key({**DESIGN, "seq_depth": 1e7}, 10, "chr21") == reads_key(DESIGN, 10, "chr21")
 
 
 def test_seed_and_every_design_setting_separate_reads():
     keys = {
-        reads_key(DESIGN, 10),
-        reads_key(DESIGN, 11),
-        reads_key({**DESIGN, "seq_depth": 5000000}, 10),
-        reads_key({**DESIGN, "strand_specific": False}, 10),
-        reads_key({**DESIGN, "samples": {"es": {"es": 1.0}}}, 10),
+        reads_key(DESIGN, 10, "chr21"),
+        reads_key(DESIGN, 11, "chr21"),
+        reads_key({**DESIGN, "seq_depth": 5000000}, 10, "chr21"),
+        reads_key({**DESIGN, "strand_specific": False}, 10, "chr21"),
+        reads_key({**DESIGN, "samples": {"es": {"es": 1.0}}}, 10, "chr21"),
     }
     assert len(keys) == 5
 
 
 def test_configs_sharing_reads_and_index_share_alignments():
-    base = alignment_key("config_full_simulation", "asimulator", DESIGN, 10, "chr19_chr21")
+    scope = "chr19_chr21"
+    base = alignment_key("config_full_simulation", "asimulator", DESIGN, 10, scope, scope)
     sweep = alignment_key("config_min_junction_reads_sweep", "asimulator", DESIGN, 10,
-                          "chr19_chr21")
-    assert base == sweep == f"{reads_key(DESIGN, 10)}_chr19_chr21"
+                          scope, scope)
+    assert base == sweep == f"{reads_key(DESIGN, 10, scope)}_{scope}"
 
 
-def test_chromosomes_separate_alignments():
-    assert (alignment_key("a", "asimulator", DESIGN, 10, "chr21")
-            != alignment_key("a", "asimulator", DESIGN, 10, "chr19_chr21"))
+def test_chromosomes_separate_reads_and_alignments():
+    assert reads_key(DESIGN, 10, "chr21") != reads_key(DESIGN, 10, "chr19_chr21")
+    assert (alignment_key("a", "asimulator", DESIGN, 10, "chr21", "chr21")
+            != alignment_key("a", "asimulator", DESIGN, 10, "chr19_chr21", "chr19_chr21"))
+
+
+def test_sample_order_separates_reads():
+    """The order sets each sample's seed, so another order is another simulation."""
+    reordered = {**DESIGN, "samples": dict(reversed(list(DESIGN["samples"].items())))}
+    assert reads_key(reordered, 10, "chr21") != reads_key(DESIGN, 10, "chr21")
 
 
 def test_an_unannotated_index_separates_alignments():
     assert index_key("chr21", True) == "chr21"
-    annotated = alignment_key("a", "asimulator", DESIGN, 10, index_key("chr21", True))
-    unannotated = alignment_key("b", "asimulator", DESIGN, 10, index_key("chr21", False))
+    annotated = alignment_key("a", "asimulator", DESIGN, 10, "chr21", index_key("chr21", True))
+    unannotated = alignment_key("b", "asimulator", DESIGN, 10, "chr21", index_key("chr21", False))
     assert annotated != unannotated
 
 
 def test_local_input_is_kept_per_config():
-    assert alignment_key("config_local", "local", None, 10, "chr21") == "config_local"
+    assert alignment_key("config_local", "local", None, 10, "chr21", "chr21") == "config_local"
 
 
 def test_every_sample_of_a_run_has_its_own_seed():

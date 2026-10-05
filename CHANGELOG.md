@@ -88,6 +88,7 @@
 
 ### Fixed
 
+- Simulated reads are keyed by sample order and chromosome scope too. Configs differing only in those shared one directory. Existing read directories get new names. `make memcheck` reads benchmark files in sub-directories. `extract_marker_loci.sh` checks one GTF per sub-group.
 - `library_sizes.tsv` names BigWigs by file name, not path. The three runners look sizes up by file name. A copied tree lost its sizes before. Sizes are unchanged.
 - The reference annotation is chr-prefixed once per config. It is written line by line. Scenario directories link to it. Each scenario copied it and read it whole. On the full genome that took 8 GB per job.
 - The timed pass uses Snakemake's greedy scheduler. The default one ran its solver on about eight cores while a tool was being timed.

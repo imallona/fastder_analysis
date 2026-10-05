@@ -52,3 +52,9 @@ def test_a_file_goes_to_the_longest_matching_rule(tmp_path):
     rules, benchmarks = write_tree(tmp_path, {"small_job_scaling_x.tsv": [5000.0]})
     declared = declared_memory(rules)
     assert set(measured_memory(benchmarks, declared)) == {"small_job_scaling"}
+
+
+def test_a_file_in_a_directory_named_after_the_rule_prefix_is_matched(tmp_path):
+    rules, benchmarks = write_tree(tmp_path, {"small/job_brain_1.tsv": [9000.0]})
+    declared = declared_memory(rules)
+    assert measured_memory(benchmarks, declared)["small_job"][0] == 9000.0

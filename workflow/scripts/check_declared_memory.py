@@ -32,8 +32,12 @@ def declared_memory(rules_dir):
 
 
 def rule_of(benchmark, benchmark_dir, rules):
-    """The rule a benchmark file belongs to: the longest rule name its path starts with."""
-    relative = Path(benchmark).relative_to(benchmark_dir).as_posix()
+    """The rule a benchmark file belongs to: the longest rule name its path starts with.
+
+    Some rules keep their files in a directory named after the rule's prefix,
+    so directory separators count as underscores.
+    """
+    relative = Path(benchmark).relative_to(benchmark_dir).as_posix().replace("/", "_")
     matches = [rule for rule in rules if relative.startswith(rule)]
     return max(matches, key=len) if matches else None
 

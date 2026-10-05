@@ -70,6 +70,6 @@ The nodes are not requested exclusively. An exclusive job holds all 128 cores wh
 
 The budget has to stay at or above the largest single job. The widest are the twelve-thread rules and the top point of the scaling sweep, `fastder.scaling_cores`, which is 16. A job asking for more cores than the budget never becomes runnable.
 
-`record_host_info` writes the CPU model, core count and memory of the machine that ran the benchmarks into `results/<config>/host_info.tsv`, and the benchmarks report depends on it. That is where the Methods sentence about the benchmark machine comes from, rather than from memory.
+`record_host_info` writes the CPU model, core count and memory of the machine it runs on into `results/<config>/host_info.tsv`, and the benchmarks report depends on it. In a local run that is the machine of the timed jobs. On the cluster it is the node of that one job, which is not pinned, so it does not describe the nodes of the timed jobs.
 
 `tests/test_euler_profile.py` asserts that the pinned set still matches the timed rules, so adding a tool to the comparison without pinning it fails the test rather than quietly producing an incomparable number.

@@ -144,13 +144,6 @@ LIGHT_DIR = op.join(DATA_DIR, "monorail_light")
 # recount3, sra or local input do not need it.
 ASIM_SAMPLES = list((config.get("asimulator") or {}).get("samples", {}).keys())
 
-# Asimulator outputs are keyed on the whole asimulator block and the seed, so
-# configs share reads only when they simulate the same thing. Configs without
-# an asimulator block still need ASIM_DIR defined so the rule files parse; the
-# rule never fires there.
-ASIM_DIR = op.join(DATA_DIR, "asim",
-                   data_layout.reads_key(config.get("asimulator"), config["seed"]))
-
 # Per the IMPORTANT note above, every downstream stage runs once per scenario.
 # The scenario axis depends on the input:
 #   ASimulatoR input has the two template/variant scenarios.
@@ -327,6 +320,13 @@ else:
     REF_SCOPE = "full_genome"
 
 REF_DIR = op.join(DATA_DIR, "reference", "GRCh38_Ensembl115_" + REF_SCOPE)
+
+# Asimulator outputs are keyed on the whole asimulator block, the seed and the
+# reference scope, so configs share reads only when they simulate the same
+# thing. Configs without an asimulator block still need ASIM_DIR defined so
+# the rule files parse; the rule never fires there.
+ASIM_DIR = op.join(DATA_DIR, "asim",
+                   data_layout.reads_key(config.get("asimulator"), config["seed"], REF_SCOPE))
 REF_CHROMS = [str(c).removeprefix("chr")
               for c in (_REF_CHROMS_CFG or [str(i) for i in range(1, 23)] + ["X"])]
 REF_GTF = op.join(REF_DIR, "Homo_sapiens.GRCh38.115.chr.gtf")
@@ -350,7 +350,8 @@ STAR_IDX_FILES = ["SA", "SAindex", "Genome", "chrNameLength.txt",
                   "genomeParameters.txt"]
 
 ALIGN_DIR = op.join(LIGHT_DIR, data_layout.alignment_key(
-    CONFIG_BASENAME, _PUMP_SOURCE_EARLY, config.get("asimulator"), config["seed"], _INDEX_KEY))
+    CONFIG_BASENAME, _PUMP_SOURCE_EARLY, config.get("asimulator"), config["seed"],
+    REF_SCOPE, _INDEX_KEY))
 
 # The grid itself lives in scripts/param_grid.py so it can be unit tested.
 _PARAM_COMBOS = param_grid.build_combos(FASTDER_CFG)

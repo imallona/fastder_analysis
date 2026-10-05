@@ -123,6 +123,8 @@ rule record_host_info:
         script=op.join(WORKFLOW_DIR, "scripts", "record_host_info.py"),
     output:
         tsv=op.join(RESULTS_DIR, "host_info.tsv"),
+    benchmark:
+        op.join(BENCH_DIR, "record_host_info.tsv")
     log:
         op.join(LOG_DIR, "record_host_info.log"),
     resources:

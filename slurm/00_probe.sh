@@ -59,6 +59,13 @@ make smoke EULER=1 ${CONDA_PREFIX_DIR:+CONDA_PREFIX_DIR="$CONDA_PREFIX_DIR"} \
 echo
 echo "host_info.tsv:"
 cat workflow/results/config_quick_light/host_info.tsv || echo "not written"
+benchmark=workflow/logs/benchmarks/config_quick_light/record_host_info.tsv
+if [ "$(wc -l < "$benchmark" 2> /dev/null || echo 0)" -ge 2 ]; then
+    echo "benchmark written by the child job:"
+    cat "$benchmark"
+else
+    echo "NO BENCHMARK ROW in $benchmark"
+fi
 echo
 
 echo "=================== 4. are the pinned nodes reachable ==================="

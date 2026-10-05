@@ -12,10 +12,17 @@ fastder_dir=$1
 out=$2
 reference_gtf=${3:-}
 
-gtfs=("$fastder_dir"/*/reference/*/gffcompare.annotated.gtf)
-sub_groups=("$fastder_dir"/*/reference)
-if [ ! -f "${gtfs[0]}" ] || [ "${#gtfs[@]}" -ne "${#sub_groups[@]}" ]; then
-    echo "expected one gffcompare.annotated.gtf per sub-group under $fastder_dir" >&2
+gtfs=()
+for sub_group in "$fastder_dir"/*/reference; do
+    found=("$sub_group"/*/gffcompare.annotated.gtf)
+    if [ "${#found[@]}" -ne 1 ] || [ ! -f "${found[0]}" ]; then
+        echo "expected one gffcompare.annotated.gtf under $sub_group" >&2
+        exit 1
+    fi
+    gtfs+=("${found[0]}")
+done
+if [ "${#gtfs[@]}" -eq 0 ]; then
+    echo "no sub-group under $fastder_dir" >&2
     exit 1
 fi
 
