@@ -213,7 +213,9 @@ for (i in seq_len(nrow(regions))) {
         body <- c(body, AnnotationTrack(
           in_window, name = "Ensembl", group = in_window$transcript_id,
           stacking = "squish", fill = "grey60", col = NA))
-        body_sizes <- c(body_sizes, 1.4)
+        # One row per transcript: a fixed height stops fitting past about 20.
+        n_transcripts <- length(unique(in_window$transcript_id))
+        body_sizes <- c(body_sizes, 1.4 * max(1, n_transcripts / 20))
       }
     }
 
