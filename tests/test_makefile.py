@@ -118,6 +118,13 @@ def test_timed_configs_runs_each_timed_config_in_the_passes_asked_for():
     assert recipe("PASSES=rest", "EULER=1").count("--profile") == 8
 
 
+def test_a_cluster_rest_pass_can_stop_at_a_timed_rule_left_to_run():
+    out = dry_run("EULER=1", "CONDA_INIT=/nonexistent/activate", "PASSES=untimed rest")
+    assert out.count("snakemake --cores") == 2
+    assert out.index("--plan --forbid run_fastder") < out.rindex("snakemake --cores")
+    assert "--omit-from" not in out
+
+
 def test_the_check_pass_only_plans():
     out = dry_run("CONDA_INIT=/nonexistent/activate", "PASSES=check")
     assert "check_prepared.py --commit-file data/prepared_commit.txt" in out

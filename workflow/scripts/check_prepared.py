@@ -5,6 +5,7 @@
 --manifest: every file listed there must be under --root with the same size.
 --plan: a Snakemake dry run of the preparation, read from stdin, must plan no
 rule besides the allowed ones.
+--forbid: with --plan, the dry run must plan none of the listed rules.
 --write-manifest: list the files under --root, with sizes, after preparing.
 """
 
@@ -43,6 +44,17 @@ def plan_problem(dry_run_output, allowed):
     if redone:
         listing = ", ".join(f"{rule} ({count})" for rule, count in sorted(redone.items()))
         return f"preparation would be redone: {listing}"
+    return None
+
+
+def forbidden_problem(dry_run_output, forbidden):
+    rules = planned_rules(dry_run_output)
+    if rules is None:
+        return "the dry run printed no plan"
+    left = {rule: count for rule, count in rules.items() if rule in forbidden}
+    if left:
+        listing = ", ".join(f"{rule} ({count})" for rule, count in sorted(left.items()))
+        return f"left to run: {listing}"
     return None
 
 
@@ -96,6 +108,7 @@ def main():
     parser.add_argument("--write-manifest", action="store_true")
     parser.add_argument("--plan", action="store_true")
     parser.add_argument("--allow", nargs="*", default=["build_fastder"])
+    parser.add_argument("--forbid", nargs="*")
     args = parser.parse_args()
 
     if args.write_manifest:
@@ -109,7 +122,9 @@ def main():
         head = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True,
                               text=True, check=True).stdout.strip()
         problems.append(commit_problem(args.commit_file, head))
-    if args.plan:
+    if args.plan and args.forbid:
+        problems.append(forbidden_problem(sys.stdin.read(), set(args.forbid)))
+    elif args.plan:
         problems.append(plan_problem(sys.stdin.read(), set(args.allow)))
     problems = [problem for problem in problems if problem]
     for problem in problems:

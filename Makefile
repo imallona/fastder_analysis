@@ -46,7 +46,8 @@
 ##   CORES        snakemake --cores value (default 12)
 ##   TIMED_CORES  --cores for the pass that runs the timed rules alone (default 16)
 ##   PASSES       passes of a timed config to run: prepare, timed, rest
-##                (default all three); check verifies a tree prepared elsewhere
+##                (default all three); check verifies a tree prepared elsewhere;
+##                untimed fails if a timed rule is left to run
 ##   QUIET_LOAD   one-minute load under which a timed pass starts (default 2;
 ##                empty starts it at once). It fails after QUIET_WAIT_S seconds.
 ##   MEM_MB       memory that the jobs of a local run may declare in total
@@ -135,9 +136,13 @@ pass_rest = $(SNAKEMAKE) $(2)
 pass_check = python3 scripts/check_prepared.py --commit-file data/prepared_commit.txt \
     --root data/fastder --manifest data/prepared_manifest.tsv && \
   ( $(SNAKEMAKE) $(2) --omit-from $(TIMED_PASS_RULES) -n || true ) | python3 scripts/check_prepared.py --plan
+## Before a rest pass on the cluster, where a timed rule left to run would be
+## a Slurm job of its own.
+pass_untimed = ( $(SNAKEMAKE) $(2) -n || true ) | python3 scripts/check_prepared.py --plan --forbid $(TIMED_RULES)
 ## On the cluster one pass is enough; PASSES=prepare stops it before the
 ## timed rules.
-cluster_pass = $(if $(filter-out prepare,$(PASSES)),$(pass_rest),$(pass_prepare))
+cluster_pass = $(if $(filter untimed,$(PASSES)),$(pass_untimed) &&) \
+  $(if $(filter-out prepare untimed,$(PASSES)),$(pass_rest),$(pass_prepare))
 
 ## Run one config. Locally in three passes, so that no timed job shares the
 ## machine: everything upstream of the timed rules, the timed rules alone, then

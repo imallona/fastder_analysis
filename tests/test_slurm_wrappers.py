@@ -72,6 +72,10 @@ def test_the_timed_script_submits_no_rule():
     assert "QUIET_LOAD=\n" in text
 
 
+def test_the_finish_script_submits_no_timed_rule():
+    assert 'PASSES="untimed rest"' in (SLURM_DIR / "03_finish.sh").read_text()
+
+
 def test_the_timed_script_requests_the_cpu_model_of_the_profile():
     yaml = pytest.importorskip("yaml", reason="PyYAML not installed in this env")
     profile = yaml.safe_load((SLURM_DIR.parent / "profiles" / "euler" / "config.yaml").read_text())

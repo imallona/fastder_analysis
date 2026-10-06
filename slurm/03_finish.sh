@@ -1,8 +1,10 @@
 #!/bin/bash
 # Evaluation and reports of the timed configs, one Slurm job per rule, then
-# the figures. Runs after 02_timed.sh.
+# the figures. Runs after 02_timed.sh and stops at a config with a timed
+# rule left to run.
 #
-#   sbatch slurm/03_finish.sh
+#   sbatch slurm/03_finish.sh                      # every timed config, figures
+#   sbatch slurm/03_finish.sh tdp43 tdp43-panel    # some of them, no figures
 #
 # The cross-depth report is rendered in this job.
 #
@@ -18,12 +20,12 @@ set -euo pipefail
 repo="${SLURM_SUBMIT_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
 source "$repo/slurm/common.sh"
 
-announce timed-configs PASSES=rest
-echo
-echo "=================== the plan ==================="
-make timed-configs PASSES=rest "${MAKE_ARGS[@]}" EXTRA=-n 2>&1 | tail -30
+targets=("${@:-timed-configs}")
+MAKE_ARGS+=(PASSES="untimed rest")
 
+announce "${targets[@]}"
 echo
-echo "=================== the run ==================="
-run_targets timed-configs PASSES=rest
-run_targets figures
+run_targets "${targets[@]}"
+if [ "$#" -eq 0 ]; then
+    run_targets figures
+fi

@@ -17,16 +17,16 @@ sbatch slurm/00_probe.sh
 ## Run
 
 ```
-make euler EXTRA=-n          # lists the jobs
-sbatch slurm/01_prepare.sh   # make euler
-sbatch slurm/02_timed.sh     # timed rules
-sbatch slurm/03_finish.sh    # evaluation, reports, figures
+make euler EXTRA=-n    # lists the jobs
+prepare=$(sbatch --parsable slurm/01_prepare.sh)
+timed=$(sbatch --parsable --dependency=afterok:$prepare slurm/02_timed.sh)
+sbatch --dependency=afterok:$timed slurm/03_finish.sh
 ```
 
-- Each script starts after the previous one has ended: `sbatch --dependency=afterok:<job id>`.
 - `01_prepare.sh` runs the timed configs up to their timed rules and the accuracy-only configs in full, one Slurm job per rule.
-- `02_timed.sh` checks the prepared tree, then runs the timed rules one at a time on its own 16 cores. Arguments select configs: `sbatch slurm/02_timed.sh tdp43 tdp43-panel`.
-- `03_finish.sh` submits the remaining rules and the figures.
+- `02_timed.sh` checks the prepared tree, then runs the timed rules one at a time on its own 16 cores.
+- `03_finish.sh` submits evaluation, reports and figures. It stops at a config with a timed rule left to run.
+- Arguments select configs in both: `sbatch slurm/02_timed.sh tdp43 tdp43-panel`. `03_finish.sh` with arguments draws no figures.
 - After a killed job: `make unlock`.
 
 ## Timing
@@ -38,7 +38,7 @@ sbatch slurm/03_finish.sh    # evaluation, reports, figures
 ## Core limit
 
 - `EULER=1` passes `--resources cores_used=32`, and each job counts its threads. `EULER_CORE_BUDGET` sets another value.
-- The largest job has 12 threads and does not start under a lower value.
+- A job with more threads than this value does not start. Rules submitted by `01_prepare.sh` and `03_finish.sh` have up to 12; `run_fastder_scaling` as a Slurm job has up to 16.
 
 ## Storage
 
