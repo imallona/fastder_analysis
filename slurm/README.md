@@ -11,7 +11,7 @@ sbatch slurm/00_probe.sh
 ```
 
 - `site.env` has the paths of conda, the conda environments and the container cache, all on project storage.
-- `make envs CONFIG=<config>.yaml EULER=1` builds the conda environments on a login node.
+- `01_prepare.sh` builds the conda environments in its own job, before it submits a rule.
 - The probe checks submission from a batch job, the benchmark files and the `EPYC_7763` nodes.
 
 ## Run

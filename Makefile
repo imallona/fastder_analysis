@@ -359,7 +359,7 @@ dryrun:
 unlock:
 	cd $(WORKFLOW_DIR) && bash -c '$(ACTIVATE) && snakemake --unlock'
 
-## Build one config's conda envs, on a login node: the proxy is shared.
+## Build one config's conda envs without running a rule.
 CONFIG ?= config_full_simulation.yaml
 
 envs:
