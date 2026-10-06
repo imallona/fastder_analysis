@@ -6,7 +6,7 @@ the failure surfaces one rule later.
 
 import gzip
 
-from make_scenario import fastq_iter, filter_fastq, passthrough
+from make_scenario import fastq_iter, filter_fastq, hardlink, passthrough
 
 TEMPLATE = "ENST_TEMPLATE"
 VARIANT = "ENST_VARIANT"
@@ -56,6 +56,18 @@ def test_reader_takes_either_form(tmp_path):
     write_fastq(plain, [VARIANT])
     write_fastq(packed, [VARIANT])
     assert list(fastq_iter(str(plain))) == list(fastq_iter(str(packed)))
+
+
+def test_a_hard_linked_file_outlives_its_source(tmp_path):
+    src = tmp_path / "sample_01_1.fastq.gz"
+    dst = tmp_path / "template_and_variant" / "sample_01_1.fastq.gz"
+    write_fastq(src, [TEMPLATE, VARIANT])
+
+    hardlink(str(src), str(dst))
+    src.unlink()
+
+    with gzip.open(dst, "rt") as fh:
+        assert fh.read().count("@read") == 2
 
 
 def test_passthrough_links_rather_than_copies(tmp_path):

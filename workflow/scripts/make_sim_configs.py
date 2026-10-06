@@ -84,8 +84,21 @@ def key_at(line, indent):
 def write(path, header, lines):
     with open(path, "w") as fh:
         fh.write(header)
-        fh.writelines(lines)
+        fh.writelines(without_kept_reads(lines))
     print(f"wrote {path}")
+
+
+def without_kept_reads(lines):
+    """Drops keep_simulated_reads and its comment: a derived config deletes
+    the reads it aligns."""
+    out = []
+    for line in lines:
+        if key_at(line, 0) == "keep_simulated_reads":
+            if out and out[-1].startswith("#"):
+                out.pop()
+            continue
+        out.append(line)
+    return out
 
 
 def without_scaling(base_lines, rewrite):

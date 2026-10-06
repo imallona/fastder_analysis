@@ -11,7 +11,7 @@ sbatch slurm/00_probe.sh
 ```
 
 - `site.env` has the paths of conda, the conda environments and the container cache, all on project storage.
-- `make envs CONFIG=<config>.yaml EULER=1` builds the conda environments on a login node.
+- `01_prepare.sh` builds the conda environments in its own job, before it submits a rule.
 - The probe checks submission from a batch job, the benchmark files and the `EPYC_7763` nodes.
 
 ## Run
@@ -44,5 +44,5 @@ sbatch --dependency=afterok:$timed slurm/03_finish.sh
 
 - `$HOME` has a 500k inode limit and scratch is purged after 15 days, so the clone is on project storage.
 - GTEx: about 100 GB, from 160 BigWigs of 124 MB and one junction matrix per tissue.
-- Simulation: about 170 GB of gzipped reads. Scenario FASTQ and BAM files are `temp()`.
+- `SCRATCH_DIR` in `site.env`: FASTQ and BAM files go to scratch. All are `temp()`, except the 10M reads, deleted by `config_unannotated_alignment`.
 - `ml_star_align` and `ml_star_index` write STAR's temporary files to `$TMPDIR`; the profile requests `--tmp` for both.

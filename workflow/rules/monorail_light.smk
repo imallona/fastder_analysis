@@ -82,8 +82,8 @@ def ml_star_fastq_input(wc):
         sample_cfg = config["monorail"]["local_samples"][wc.sample]
         return {"fq1": sample_cfg["fq1"], "fq2": sample_cfg["fq2"]}
     return {
-        "fq1": op.join(ASIM_DIR, wc.sample, wc.scenario, "sample_01_1.fastq.gz"),
-        "fq2": op.join(ASIM_DIR, wc.sample, wc.scenario, "sample_01_2.fastq.gz"),
+        "fq1": op.join(READS_DIR, wc.sample, wc.scenario, "sample_01_1.fastq.gz"),
+        "fq2": op.join(READS_DIR, wc.sample, wc.scenario, "sample_01_2.fastq.gz"),
     }
 
 
@@ -93,16 +93,16 @@ rule ml_star_align:
         idx=[op.join(LIGHT_STAR_IDX, f) for f in STAR_IDX_FILES],
     output:
         # Read by the bigwig and junction rules, and by nothing after.
-        bam=temp(op.join(ALIGN_DIR, "{scenario}", "{sample}", "Aligned.sortedByCoord.out.bam")),
+        bam=temp(op.join(BAM_DIR, "{scenario}", "{sample}", "Aligned.sortedByCoord.out.bam")),
         # Declared so it goes with the BAM instead of being left behind.
-        bai=temp(op.join(ALIGN_DIR, "{scenario}", "{sample}", "Aligned.sortedByCoord.out.bam.bai")),
+        bai=temp(op.join(BAM_DIR, "{scenario}", "{sample}", "Aligned.sortedByCoord.out.bam.bai")),
         sj=op.join(ALIGN_DIR, "{scenario}", "{sample}", "SJ.out.tab"),
     benchmark:
         op.join(BENCH_DIR, "ml_star_align", "{sample}_{scenario}.tsv")
     log:
         op.join(LOG_DIR, "ml_star_align", "{sample}_{scenario}.log"),
     params:
-        outprefix=lambda wc: op.join(ALIGN_DIR, wc.scenario, wc.sample) + "/",
+        outprefix=lambda wc: op.join(BAM_DIR, wc.scenario, wc.sample) + "/",
         idx_dir=LIGHT_STAR_IDX,
     threads: config["cores"]
     resources:
@@ -132,6 +132,9 @@ rule ml_star_align:
         rm {params.outprefix}Aligned.out.bam
         rm -rf "$scratch"
         samtools index {output.bam} >> {log} 2>&1
+        if [ ! {params.outprefix}SJ.out.tab -ef {output.sj} ]; then
+            cp {params.outprefix}SJ.out.tab {output.sj}
+        fi
         """
 
 
@@ -144,7 +147,7 @@ rule ml_star_align:
 # to the original contributor's agreement.
 rule ml_bam_to_bigwig:
     input:
-        bam=op.join(ALIGN_DIR, "{scenario}", "{sample}", "Aligned.sortedByCoord.out.bam"),
+        bam=op.join(BAM_DIR, "{scenario}", "{sample}", "Aligned.sortedByCoord.out.bam"),
     output:
         bws=(
             [op.join(ALIGN_DIR, "{scenario}", "{sample}.plus.bw"),

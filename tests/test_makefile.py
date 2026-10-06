@@ -125,6 +125,13 @@ def test_a_cluster_rest_pass_can_stop_at_a_timed_rule_left_to_run():
     assert "--omit-from" not in out
 
 
+def test_scratch_dir_is_exported_to_the_run():
+    out = dry_run("CONDA_INIT=/nonexistent/activate", "SCRATCH_DIR=/scratch/x")
+    assert out.index("export FASTDER_EVAL_SCRATCH=/scratch/x") < out.index("snakemake --cores")
+    assert out.count('--singularity-args "--bind /scratch/x"') == 3
+    assert "FASTDER_EVAL_SCRATCH" not in dry_run("CONDA_INIT=/nonexistent/activate")
+
+
 def test_the_check_pass_only_plans():
     out = dry_run("CONDA_INIT=/nonexistent/activate", "PASSES=check")
     assert "check_prepared.py --commit-file data/prepared_commit.txt" in out

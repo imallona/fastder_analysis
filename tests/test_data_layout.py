@@ -85,6 +85,23 @@ def test_runs_under_consecutive_seeds_share_no_sample_seed():
     assert not first & second
 
 
+def test_simulated_reads_and_monorail_light_bams_are_under_the_scratch_root():
+    offenders = [
+        f"{name}:{number}"
+        for name in ("simulate.smk", "monorail_light.smk")
+        for number, line in enumerate((RULES_DIR / name).read_text().splitlines(), start=1)
+        if re.search(r"op\.join\((ASIM_DIR|ALIGN_DIR),.*\.(fastq\.gz|bam|bai)\b", line)
+    ]
+    assert offenders == []
+
+
+def test_only_the_base_simulation_config_keeps_its_reads():
+    configs = RULES_DIR.parents[1] / "config"
+    keeping = {path.name for path in configs.glob("*.yaml")
+               if re.search(r"^keep_simulated_reads:\s*true", path.read_text(), re.M)}
+    assert keeping == {"config_full_simulation.yaml"}
+
+
 def test_no_rule_writes_a_scenario_into_a_shared_directory():
     offenders = [
         f"{path.name}:{number}"

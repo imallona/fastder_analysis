@@ -69,6 +69,7 @@ MAKE_ARGS=(EULER="${EULER-1}")
 [ -n "${CONDA_INIT:-}" ] && MAKE_ARGS+=(CONDA_INIT="$CONDA_INIT")
 [ -n "${CONDA_ENV:-}" ] && MAKE_ARGS+=(CONDA_ENV="$CONDA_ENV")
 [ -n "$CONDA_PREFIX_DIR" ] && MAKE_ARGS+=(CONDA_PREFIX_DIR="$CONDA_PREFIX_DIR")
+[ -n "${SCRATCH_DIR:-}" ] && MAKE_ARGS+=(SCRATCH_DIR="$SCRATCH_DIR")
 
 announce() {
     echo "host $(hostname), job ${SLURM_JOB_ID:-none}, $(date -Is)"

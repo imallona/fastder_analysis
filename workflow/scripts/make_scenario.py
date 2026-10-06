@@ -122,6 +122,14 @@ def passthrough(src, dst):
     os.symlink(op.abspath(src), dst)
 
 
+def hardlink(src, dst):
+    """A second name for src, valid after src is removed."""
+    if op.isfile(dst) or op.islink(dst):
+        os.remove(dst)
+    os.makedirs(op.dirname(dst), exist_ok=True)
+    os.link(src, dst)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--scenario", required=True,
@@ -138,8 +146,8 @@ def main():
 
     if args.scenario == "template_and_variant":
         passthrough(args.gff_in, args.gff_out)
-        passthrough(args.fq1_in, args.fq1_out)
-        passthrough(args.fq2_in, args.fq2_out)
+        hardlink(args.fq1_in, args.fq1_out)
+        hardlink(args.fq2_in, args.fq2_out)
         return
 
     template_ids = template_transcript_ids(args.gff_in)

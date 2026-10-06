@@ -12,8 +12,8 @@ rule run_asimulator:
         # Explicit file outputs (rather than the parent directory) so snakemake
         # can chain make_scenario back to this rule via the FASTQ + GFF inputs.
         gff=op.join(ASIM_DIR, "{sample}", "splicing_variants.gff3"),
-        fq1=op.join(ASIM_DIR, "{sample}", "sample_01_1.fastq.gz"),
-        fq2=op.join(ASIM_DIR, "{sample}", "sample_01_2.fastq.gz"),
+        fq1=simulated_reads(op.join(READS_DIR, "{sample}", "sample_01_1.fastq.gz")),
+        fq2=simulated_reads(op.join(READS_DIR, "{sample}", "sample_01_2.fastq.gz")),
         meta=op.join(ASIM_DIR, "{sample}", "simulation_metadata.yaml"),
     benchmark:
         op.join(BENCH_DIR, "run_asimulator", "{sample}.tsv")
@@ -23,7 +23,7 @@ rule run_asimulator:
         # These read config["asimulator"] lazily, so a config without an
         # asimulator block still parses. This rule only runs when
         # pump_source is asimulator, where the block is present.
-        outdir=lambda wc: op.join(ASIM_DIR, wc.sample),
+        outdir=lambda wc: op.join(READS_DIR, wc.sample),
         events=lambda wc: config["asimulator"]["samples"][wc.sample],
         seq_depth=lambda wc: config["asimulator"]["seq_depth"],
         multi_events_per_exon=lambda wc: config["asimulator"]["multi_events_per_exon"],
@@ -42,7 +42,7 @@ rule run_asimulator:
 
 
 # 2b. Materialise the per-scenario asimulator outputs.
-# template_and_variant symlinks the original ASimulatoR output unchanged.
+# template_and_variant links the original ASimulatoR output unchanged.
 # variant_only filters the FASTQ to drop reads whose source transcript carries
 # template=TRUE in splicing_variants.gff3 and rewrites the GFF to keep only
 # the alternative isoforms, so the truth set used by gffcompare contains
@@ -50,14 +50,14 @@ rule run_asimulator:
 rule make_scenario:
     input:
         gff=op.join(ASIM_DIR, "{sample}", "splicing_variants.gff3"),
-        fq1=op.join(ASIM_DIR, "{sample}", "sample_01_1.fastq.gz"),
-        fq2=op.join(ASIM_DIR, "{sample}", "sample_01_2.fastq.gz"),
+        fq1=op.join(READS_DIR, "{sample}", "sample_01_1.fastq.gz"),
+        fq2=op.join(READS_DIR, "{sample}", "sample_01_2.fastq.gz"),
     output:
         gff=op.join(ASIM_DIR, "{sample}", "{scenario}", "splicing_variants.gff3"),
         # Deleted once aligned. variant_only is a copy, hundreds of GB
         # over four depths. --notemp keeps them.
-        fq1=temp(op.join(ASIM_DIR, "{sample}", "{scenario}", "sample_01_1.fastq.gz")),
-        fq2=temp(op.join(ASIM_DIR, "{sample}", "{scenario}", "sample_01_2.fastq.gz")),
+        fq1=temp(op.join(READS_DIR, "{sample}", "{scenario}", "sample_01_1.fastq.gz")),
+        fq2=temp(op.join(READS_DIR, "{sample}", "{scenario}", "sample_01_2.fastq.gz")),
     benchmark:
         op.join(BENCH_DIR, "make_scenario", "{sample}_{scenario}.tsv")
     log:
