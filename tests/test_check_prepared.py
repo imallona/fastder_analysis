@@ -1,4 +1,5 @@
-from check_prepared import commit_problem, manifest_problem, plan_problem, planned_rules, write_manifest
+from check_prepared import (commit_problem, forbidden_problem, manifest_problem, plan_problem,
+                            planned_rules, write_manifest)
 
 PLAN = """Building DAG of jobs...
 Job stats:
@@ -26,6 +27,12 @@ def test_a_finished_preparation_has_no_problem():
 
 def test_a_rule_that_would_run_again_is_named():
     assert plan_problem(PLAN, {"build_fastder"}) == "preparation would be redone: ml_star_align (4)"
+
+
+def test_a_listed_rule_left_to_run_is_named():
+    assert forbidden_problem(PLAN, {"ml_star_align"}) == "left to run: ml_star_align (4)"
+    assert forbidden_problem(PLAN, {"run_fastder"}) is None
+    assert forbidden_problem("", {"run_fastder"}) == "the dry run printed no plan"
 
 
 def test_a_failed_dry_run_is_a_problem():

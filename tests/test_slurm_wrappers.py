@@ -4,6 +4,7 @@ Slurm copies the script to a spool directory, so $(dirname "$0") points there
 and common.sh never loads. Job 11285331 died that way in seven seconds.
 """
 
+import re
 from pathlib import Path
 
 import pytest
@@ -58,6 +59,38 @@ def test_no_site_paths_are_hardcoded():
         text = path.read_text()
         assert "/cluster/" not in text, path.name
         assert "miniforge3" not in text, path.name
+
+
+def sbatch_option(path, name):
+    return re.search(rf"^#SBATCH --{name}=(\S+)$", path.read_text(), re.M).group(1)
+
+
+def test_the_timed_script_submits_no_rule():
+    text = (SLURM_DIR / "02_timed.sh").read_text()
+    assert text.index("\nEULER=\n") < text.index("common.sh")
+    assert 'PASSES="check timed"' in text
+    assert "QUIET_LOAD=\n" in text
+
+
+def test_the_finish_script_submits_no_timed_rule():
+    assert 'PASSES="untimed rest"' in (SLURM_DIR / "03_finish.sh").read_text()
+
+
+def test_the_timed_script_requests_the_cpu_model_of_the_profile():
+    yaml = pytest.importorskip("yaml", reason="PyYAML not installed in this env")
+    profile = yaml.safe_load((SLURM_DIR.parent / "profiles" / "euler" / "config.yaml").read_text())
+    models = {str(resources["constraint"]) for resources in profile["set-resources"].values()
+              if resources.get("constraint")}
+    assert models == {sbatch_option(SLURM_DIR / "02_timed.sh", "constraint")}
+
+
+def test_the_timed_script_has_the_cores_of_the_largest_scaling_point():
+    yaml = pytest.importorskip("yaml", reason="PyYAML not installed in this env")
+    largest = max(
+        max((yaml.safe_load(path.read_text()).get("fastder") or {}).get("scaling_cores") or [0])
+        for path in (SLURM_DIR.parent / "config").glob("*.yaml")
+    )
+    assert int(sbatch_option(SLURM_DIR / "02_timed.sh", "cpus-per-task")) >= largest > 0
 
 
 def test_fastder_submodule_tracks_the_revision_branch():

@@ -2,7 +2,7 @@
 # Cluster side of a split run: the timed configs up to their timed rules,
 # then the accuracy-only configs in full. The timed rules run elsewhere.
 #
-#   sbatch slurm/04_prepare.sh
+#   sbatch slurm/01_prepare.sh
 #
 #SBATCH --job-name=fastder-prepare
 #SBATCH --time=120:00:00

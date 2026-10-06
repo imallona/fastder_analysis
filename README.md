@@ -18,9 +18,9 @@ There is a `Makefile`; `make help` lists its targets. `make all` runs every conf
 To prepare on the cluster and time on one machine:
 
 ```
-sbatch slurm/04_prepare.sh        # cluster: make euler
+sbatch slurm/01_prepare.sh        # cluster: make euler
 rsync -a <cluster>:<repo>/workflow/{data,results,logs} workflow/
-make simulations tdp43 tdp43-panel gtex-comparison gtex PASSES="check timed rest"
+make timed-configs PASSES="check timed rest"
 make meta figures
 ```
 
@@ -31,6 +31,7 @@ make meta figures
 - `check` stops a config if that commit is not checked out, a listed file is missing or of another size, or any preparation besides `build_fastder` would run again.
 - Each timed pass waits for a one-minute load below `QUIET_LOAD` (default 2) and fails after `QUIET_WAIT_S` seconds (default 600).
 - The cluster log ends with the rules that used more memory than they declared.
+- On the cluster alone, `slurm/02_timed.sh` and `slurm/03_finish.sh` replace the copy and the last two commands.
 
 A local run makes three passes over a config: the inputs, then the tool runs whose wall clock is reported, one job at a time, then evaluation and reports. Keep the machine free of other work during the second pass. Timings are taken from the four depth configs, the two GTEx configs and the two TDP-43 configs. The replicates, the junction-filter sweep, the unannotated alignment and the three threshold ladders are read for accuracy only and run in one pass, each tool run once.
 
