@@ -22,6 +22,8 @@ configfile: _CFG_PATH
 # Internal path constants.
 WORKFLOW_DIR = workflow.basedir
 DATA_DIR = op.join(WORKFLOW_DIR, "data")
+# Root of the FASTQ and BAM paths. FASTDER_EVAL_SCRATCH names another one.
+SCRATCH_DIR = os.environ.get("FASTDER_EVAL_SCRATCH") or DATA_DIR
 # Logs and benchmark TSVs are kept per config, under logs/<config>/ and
 # logs/benchmarks/<config>/, so one config's run does not overwrite another's.
 LOGS_ROOT = op.join(WORKFLOW_DIR, "logs")
@@ -325,8 +327,12 @@ REF_DIR = op.join(DATA_DIR, "reference", "GRCh38_Ensembl115_" + REF_SCOPE)
 # reference scope, so configs share reads only when they simulate the same
 # thing. Configs without an asimulator block still need ASIM_DIR defined so
 # the rule files parse; the rule never fires there.
-ASIM_DIR = op.join(DATA_DIR, "asim",
-                   data_layout.reads_key(config.get("asimulator"), config["seed"], REF_SCOPE))
+_READS_KEY = data_layout.reads_key(config.get("asimulator"), config["seed"], REF_SCOPE)
+ASIM_DIR = op.join(DATA_DIR, "asim", _READS_KEY)
+READS_DIR = op.join(SCRATCH_DIR, "asim", _READS_KEY)
+# Simulated reads are deleted once aligned. keep_simulated_reads keeps them
+# for a config run later on the same reads.
+simulated_reads = (lambda path: path) if config.get("keep_simulated_reads") else temp
 REF_CHROMS = [str(c).removeprefix("chr")
               for c in (_REF_CHROMS_CFG or [str(i) for i in range(1, 23)] + ["X"])]
 REF_GTF = op.join(REF_DIR, "Homo_sapiens.GRCh38.115.chr.gtf")
@@ -349,9 +355,11 @@ LIGHT_STAR_IDX = op.join(LIGHT_DIR, "star_idx_" + _INDEX_KEY)
 STAR_IDX_FILES = ["SA", "SAindex", "Genome", "chrNameLength.txt",
                   "genomeParameters.txt"]
 
-ALIGN_DIR = op.join(LIGHT_DIR, data_layout.alignment_key(
+_ALIGN_KEY = data_layout.alignment_key(
     CONFIG_BASENAME, _PUMP_SOURCE_EARLY, config.get("asimulator"), config["seed"],
-    REF_SCOPE, _INDEX_KEY))
+    REF_SCOPE, _INDEX_KEY)
+ALIGN_DIR = op.join(LIGHT_DIR, _ALIGN_KEY)
+BAM_DIR = op.join(SCRATCH_DIR, "monorail_light", _ALIGN_KEY)
 
 # The grid itself lives in scripts/param_grid.py so it can be unit tested.
 _PARAM_COMBOS = param_grid.build_combos(FASTDER_CFG)

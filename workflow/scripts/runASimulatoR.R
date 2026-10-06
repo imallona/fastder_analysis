@@ -76,4 +76,11 @@ metadata <- list(
   )
 )
 
-write_yaml(metadata, file.path(outdir, "simulation_metadata.yaml"))
+write_yaml(metadata, snakemake@output[["meta"]])
+
+# The simulator writes the annotation next to the reads.
+gff_out <- snakemake@output[["gff"]]
+gff_sim <- file.path(outdir, basename(gff_out))
+if (normalizePath(gff_sim) != normalizePath(gff_out, mustWork = FALSE)) {
+  if (!file.copy(gff_sim, gff_out, overwrite = TRUE)) stop("copy failed: ", gff_sim)
+}

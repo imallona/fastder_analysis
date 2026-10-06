@@ -13,7 +13,7 @@ conda create -c conda-forge -c bioconda -c nodefaults -n snakemake snakemake
 make submodules        # fetch the fastder and monorail-external submodules, once after cloning
 ```
 
-There is a `Makefile`; `make help` lists its targets. `make all` runs every config the figures read and then `make figures`; `make smoke` is a small end-to-end test. Override defaults on the command line, e.g. `make sim CORES=24` (`ULIMIT_KB` caps per-process virtual memory at 100 GB). Local runs start a job only while the `mem_mb` declared by the running jobs stays within `MEM_MB`, by default 80 percent of the machine's memory; a job that declares more than that runs alone. `make memcheck CONFIG=<config>.yaml` lists the rules of a finished config whose peak memory exceeded their `mem_mb`.
+There is a `Makefile`; `make help` lists its targets. `make all` runs every config the figures read and then `make figures`; `make smoke` is a small end-to-end test. Override defaults on the command line, e.g. `make sim CORES=24` (`ULIMIT_KB` caps per-process virtual memory at 100 GB). `SCRATCH_DIR=<dir>` writes the FASTQ and BAM files under `<dir>`; the default is `workflow/data`. Local runs start a job only while the `mem_mb` declared by the running jobs stays within `MEM_MB`, by default 80 percent of the machine's memory; a job that declares more than that runs alone. `make memcheck CONFIG=<config>.yaml` lists the rules of a finished config whose peak memory exceeded their `mem_mb`.
 
 To prepare on the cluster and time on one machine:
 
@@ -85,6 +85,7 @@ Our Snakemake workflow uses config files to define run properties.
 - `fastder.stranded`: unstranded `all.bw` vs per-strand `plus`/`minus.bw`. Not supported by the recount3 backend.
 - `tools`: subset of `fastder`, `derfinder`, `megadepth_baseline`, `grohmm`. Omit to run all four.
 - `asimulator.*` (when `pump_source: asimulator`): `seq_depth`, `samples` (sample to event-mix map), `probs_as_freq`, `strand_specific`.
+- `keep_simulated_reads`: `true` keeps the simulated reads after alignment. Default `false`. `config_full_simulation.yaml` sets it, because `config_unannotated_alignment.yaml` aligns the same reads.
 - `seed`: the run seed. Sample number i of `asimulator.samples`, from 0, is simulated under `seed * 1000 + i`.
 - `monorail.annotated_index`: `false` builds the monorail_light STAR index without `--sjdbGTFfile`. Default `true`.
 - `monorail.local_samples` / `monorail.sra_samples`: for the `local` / `sra` sources.

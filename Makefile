@@ -54,6 +54,7 @@
 ##                (default 80 percent of the machine)
 ##   ULIMIT_KB    per-process virtual memory cap in KB, inherited by every
 ##                job shell (default 104857600, i.e. 100 GB)
+##   SCRATCH_DIR  root of the FASTQ and BAM files (default workflow/data)
 ##   CONDA_ENV    conda env that holds snakemake (default snakemake)
 ##   CONDA_INIT   conda activation script (default ~/miniconda3/bin/activate)
 
@@ -88,9 +89,13 @@ WORKFLOW_DIR := workflow
 ## already activated environment is then used as it stands. Caps per-process
 ## virtual memory at 100 GB, which per-job shells inherit.
 CONDA_ACTIVATE := $(if $(wildcard $(CONDA_INIT)),source $(CONDA_INIT) && conda activate $(CONDA_ENV) && ,)
-ACTIVATE := $(CONDA_ACTIVATE) ulimit -v $(ULIMIT_KB)
+SCRATCH_DIR ?=
+SCRATCH_ENV := $(if $(SCRATCH_DIR),mkdir -p $(SCRATCH_DIR) && export FASTDER_EVAL_SCRATCH=$(SCRATCH_DIR) && ,)
+## The container of run_asimulator mounts the workflow directory only.
+SCRATCH_BIND := $(if $(SCRATCH_DIR),--singularity-args "--bind $(SCRATCH_DIR)",)
+ACTIVATE := $(CONDA_ACTIVATE) $(SCRATCH_ENV) ulimit -v $(ULIMIT_KB)
 
-SNAKEMAKE := snakemake --cores $(CORES) -p $(PROFILE_FLAG) $(RESOURCE_FLAG) $(CONDA_PREFIX_FLAG) $(EXTRA)
+SNAKEMAKE := snakemake --cores $(CORES) -p $(PROFILE_FLAG) $(RESOURCE_FLAG) $(CONDA_PREFIX_FLAG) $(SCRATCH_BIND) $(EXTRA)
 
 ## Rules whose wall clock is reported.
 TIMED_RULES := run_fastder run_fastder_scaling run_derfinder run_grohmm run_megadepth_baseline
@@ -121,7 +126,7 @@ wait_quiet = $(if $(QUIET_LOAD),python3 scripts/wait_quiet.py --below $(QUIET_LO
 ## $(1) config file, $(2) snakemake flags.
 define timed_pass
 $(if $(filter -n --dry-run --dryrun,$(EXTRA)),,$(wait_quiet) $(call warm_inputs,$(1))) \
-  snakemake --cores $(TIMED_CORES) -p $(CONDA_PREFIX_FLAG) $(EXTRA) $(2) \
+  snakemake --cores $(TIMED_CORES) -p $(CONDA_PREFIX_FLAG) $(SCRATCH_BIND) $(EXTRA) $(2) \
     --until $(TIMED_PASS_RULES) --scheduler greedy \
     --default-resources timed=1 --resources timed=1 $(MEM_RESOURCE)
 endef

@@ -35,6 +35,7 @@
 
 ### Added
 
+- `SCRATCH_DIR` is the root of the FASTQ and BAM paths. The default is `workflow/data`. Simulated reads are `temp()`. `keep_simulated_reads` keeps them, set in `config_full_simulation.yaml`. `slurm/site.env` sets `SCRATCH_DIR` to scratch.
 - Rules `figure_gtex_concordance` and `figure_tdp43_track` call the heatmap and locus track scripts. No rule called them. `figure_main_2` takes the heatmap as input.
 - `summary.Rmd` draws exonic length and coverage against exon count as single plots again.
 - Rule `single_figure` draws the granularity, event Jaccard, genomic distribution and TDP-43 similarity figures. `manuscript_figures` requests them.
