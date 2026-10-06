@@ -66,7 +66,8 @@ rule make_scenario:
         script=op.join(WORKFLOW_DIR, "scripts", "make_scenario.py"),
     resources:
         mem_mb=4000,
-        runtime=30,
+        # About one minute per million reads.
+        runtime=120,
     conda:
         "../envs/base.yaml"
     shell:
