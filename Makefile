@@ -28,6 +28,7 @@
 ##   make figures            # reports then composites
 ##   make smoke              # quick 2-sample smoke test
 ##   make all                # simulations, replicates, meta, both tdp43 runs, then gtex
+##   make timed-configs      # the configs with reported run times
 ##   make dryrun             # snakemake -n for the 10M simulation config
 ##   make unlock             # release a stale snakemake lock
 ##   make envs               # build every conda environment without running anything
@@ -39,8 +40,7 @@
 ## one at a time, then evaluation and reports.
 ##
 ## Cluster runs: add EULER=1 to any target above to submit its rules to Slurm
-## through profiles/euler. slurm/ holds sbatch wrappers that do this for the
-## four run groups.
+## through profiles/euler. slurm/ holds the sbatch scripts.
 ##
 ## Variables (override on the command line, e.g. make sim CORES=24):
 ##   CORES        snakemake --cores value (default 12)
@@ -164,10 +164,11 @@ endef
 .DEFAULT_GOAL := help
 .PHONY: help all submodules sim simulations sim-5m sim-30m sim-40m sim-replicates sim-unannotated threshold-ladder tdp43 \
         tdp43-panel tdp43-ladder gtex gtex-comparison gtex-smoke gtex-threshold-ladder gtex-pick meta reports \
-        composites figures smoke dryrun unlock envs mjr-sweep submodules-latest memcheck euler
+        composites figures smoke dryrun unlock envs mjr-sweep submodules-latest memcheck euler \
+        timed-configs
 
 help:
-	@echo "Targets: submodules submodules-latest sim simulations sim-5m sim-30m sim-40m sim-replicates sim-unannotated threshold-ladder mjr-sweep tdp43 tdp43-panel tdp43-ladder gtex gtex-comparison gtex-smoke gtex-threshold-ladder gtex-pick meta reports composites figures smoke all dryrun unlock envs memcheck euler"
+	@echo "Targets: submodules submodules-latest sim simulations sim-5m sim-30m sim-40m sim-replicates sim-unannotated threshold-ladder mjr-sweep tdp43 tdp43-panel tdp43-ladder gtex gtex-comparison gtex-smoke gtex-threshold-ladder gtex-pick meta reports composites figures smoke all timed-configs dryrun unlock envs memcheck euler"
 	@echo "Variables: CORES=$(CORES) ULIMIT_KB=$(ULIMIT_KB) CONDA_ENV=$(CONDA_ENV) EULER=$(EULER) EULER_CORE_BUDGET=$(EULER_CORE_BUDGET) CONDA_PREFIX_DIR=$(CONDA_PREFIX_DIR) MEM_MB=$(MEM_MB) PASSES=$(PASSES) QUIET_LOAD=$(QUIET_LOAD)"
 
 ## Every run the figures and the reported numbers read, then the figures.
@@ -181,10 +182,13 @@ TIMED_TARGETS    := simulations tdp43 tdp43-panel gtex-comparison gtex
 ACCURACY_TARGETS := sim-replicates mjr-sweep sim-unannotated threshold-ladder \
                     tdp43-ladder gtex-threshold-ladder
 
+timed-configs: $(TIMED_TARGETS)
+
 ## Cluster side of a split run: the timed configs up to their timed rules,
-## then the accuracy-only configs in full. Copy workflow/data, workflow/results
-## and workflow/logs to the timing machine and run there
-## make $(TIMED_TARGETS) PASSES="check timed rest". EXTRA=-n lists the jobs.
+## then the accuracy-only configs in full. The timed rules follow with
+## make timed-configs PASSES="check timed rest", in slurm/02_timed.sh or on a
+## copy of workflow/data, workflow/results and workflow/logs. EXTRA=-n lists
+## the jobs.
 euler:
 	$(MAKE) $(TIMED_TARGETS) EULER=1 PASSES=prepare
 	$(MAKE) $(ACCURACY_TARGETS) EULER=1

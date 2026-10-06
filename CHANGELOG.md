@@ -38,8 +38,8 @@
 - Rules `figure_gtex_concordance` and `figure_tdp43_track` call the heatmap and locus track scripts. No rule called them. `figure_main_2` takes the heatmap as input.
 - `summary.Rmd` draws exonic length and coverage against exon count as single plots again.
 - Rule `single_figure` draws the granularity, event Jaccard, genomic distribution and TDP-43 similarity figures. `manuscript_figures` requests them.
-- `PASSES=check` verifies a tree prepared elsewhere. It compares the commit and plans the preparation. The timed pass waits for a load below `QUIET_LOAD`. `make euler` records its commit. `slurm/04_prepare.sh` ends with the memory check.
-- `PASSES` picks the passes of a timed config. `make euler` prepares timed configs on the cluster. It runs accuracy-only configs in full. `slurm/04_prepare.sh` submits it. Timing then needs `PASSES="timed rest"` elsewhere.
+- `PASSES=check` verifies a tree prepared elsewhere. It compares the commit and plans the preparation. The timed pass waits for a load below `QUIET_LOAD`. `make euler` records its commit. `slurm/01_prepare.sh` ends with the memory check.
+- `PASSES` picks the passes of a timed config. `make euler` prepares timed configs on the cluster. It runs accuracy-only configs in full. `slurm/01_prepare.sh` submits it. Timing then needs `PASSES="timed rest"` elsewhere.
 - Local runs pass `--resources mem_mb`. `MEM_MB` sets it, by default 80 percent of memory. Jobs were placed by cores alone before. `make memcheck` lists rules that exceeded their `mem_mb`.
 - `workflow/scripts/compute_library_sizes.py` and rule `compute_library_sizes`. Each scenario gets a `library_sizes.tsv`.
 - Grid support for `min_junction_reads` (`mjr`) and `no_stitch` (`ns`). `no_stitch` is a switch. The flag is passed only when true.
@@ -57,7 +57,7 @@
 - `scripts/collect_tool_versions.py` and rule `collect_tool_versions`. Each run writes `tool_versions.csv` and `tool_versions.tex`. Versions come from the built environments, the fastder checkout and the ASimulatoR container.
 - `profiles/euler/config.yaml`, a profile for ETH Euler. It holds every cluster setting. The Slurm account is `es_platt`. Five timed rules pin `--constraint=EPYC_7763`. Nodes are not requested exclusively. Co-tenancy stays a caveat for Methods. Nothing under `workflow/` mentions Slurm.
 - A core budget for cluster runs. Each job books its thread count. `EULER=1` passes `--resources cores_used=32`. The `es_platt` share is 208 cores. `--cores` cannot bound a cluster run. Override with `EULER_CORE_BUDGET`.
-- `slurm/`, sbatch wrappers for four run groups. They are probe, simulation, GTEx and TDP-43. `slurm/README.md` covers storage and first-time setup.
+- `slurm/`, sbatch scripts: probe, prepare, timed, finish. `02_timed.sh` runs the timed rules in one allocation. `03_finish.sh` submits evaluation, reports and figures. `make timed-configs` runs every timed config. `slurm/README.md` has setup and storage.
 - `EULER=1`, `CONDA_PREFIX_DIR`, `EXTRA` and `make envs`. `make gtex EULER=1` submits to Slurm. Without `EULER=1` nothing changes.
 - `tests/test_euler_profile.py`, checking the profile against the rules. Every executing rule declares memory and runtime. The CPU pin covers exactly the timed rules. Rules using node scratch request `--tmp`.
 - `scripts/collect_param_sweeps.py` and `scripts/collect_scaling.py`. They write `ablation.csv`, `min_junction_reads.csv` and `scaling.csv`. Panels plot these rather than recomputing.

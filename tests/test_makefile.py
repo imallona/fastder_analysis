@@ -106,6 +106,18 @@ def test_euler_prepares_timed_configs_and_runs_the_others_in_full():
     }
 
 
+def test_timed_configs_runs_each_timed_config_in_the_passes_asked_for():
+    def recipe(*overrides):
+        return subprocess.run(["make", "-n", "timed-configs", "CONDA_INIT=/nonexistent/activate", *overrides],
+                              cwd=ROOT, capture_output=True, text=True, check=True).stdout
+    here = recipe("PASSES=check timed", "EULER=", "QUIET_LOAD=")
+    assert here.count("FASTDER_EVAL_CONFIG=../config/") == 8
+    assert here.count("--until run_fastder") == 8
+    assert "--profile" not in here
+    assert "wait_quiet.py" not in here
+    assert recipe("PASSES=rest", "EULER=1").count("--profile") == 8
+
+
 def test_the_check_pass_only_plans():
     out = dry_run("CONDA_INIT=/nonexistent/activate", "PASSES=check")
     assert "check_prepared.py --commit-file data/prepared_commit.txt" in out

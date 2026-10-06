@@ -63,7 +63,9 @@ if ! python -c "import snakemake_executor_plugin_slurm" 2> /dev/null; then
     exit 1
 fi
 
-MAKE_ARGS=(EULER=1)
+# EULER=1 submits each rule to Slurm. A script that runs its rules inside its
+# own allocation sets EULER to empty before sourcing this file.
+MAKE_ARGS=(EULER="${EULER-1}")
 [ -n "${CONDA_INIT:-}" ] && MAKE_ARGS+=(CONDA_INIT="$CONDA_INIT")
 [ -n "${CONDA_ENV:-}" ] && MAKE_ARGS+=(CONDA_ENV="$CONDA_ENV")
 [ -n "$CONDA_PREFIX_DIR" ] && MAKE_ARGS+=(CONDA_PREFIX_DIR="$CONDA_PREFIX_DIR")
