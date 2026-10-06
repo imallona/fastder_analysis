@@ -22,7 +22,8 @@ configfile: _CFG_PATH
 # Internal path constants.
 WORKFLOW_DIR = workflow.basedir
 DATA_DIR = op.join(WORKFLOW_DIR, "data")
-# Root of the FASTQ and BAM paths. FASTDER_EVAL_SCRATCH names another one.
+# Root of the simulated reads and the monorail_light BAM files.
+# FASTDER_EVAL_SCRATCH names another one.
 SCRATCH_DIR = os.environ.get("FASTDER_EVAL_SCRATCH") or DATA_DIR
 # Logs and benchmark TSVs are kept per config, under logs/<config>/ and
 # logs/benchmarks/<config>/, so one config's run does not overwrite another's.

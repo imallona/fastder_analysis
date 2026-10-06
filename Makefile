@@ -54,7 +54,8 @@
 ##                (default 80 percent of the machine)
 ##   ULIMIT_KB    per-process virtual memory cap in KB, inherited by every
 ##                job shell (default 104857600, i.e. 100 GB)
-##   SCRATCH_DIR  root of the FASTQ and BAM files (default workflow/data)
+##   SCRATCH_DIR  root of the simulated reads and the monorail_light BAM files
+##                (default workflow/data)
 ##   CONDA_ENV    conda env that holds snakemake (default snakemake)
 ##   CONDA_INIT   conda activation script (default ~/miniconda3/bin/activate)
 

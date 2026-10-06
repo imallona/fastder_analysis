@@ -85,7 +85,7 @@ def test_runs_under_consecutive_seeds_share_no_sample_seed():
     assert not first & second
 
 
-def test_reads_and_bams_are_under_the_scratch_root():
+def test_simulated_reads_and_monorail_light_bams_are_under_the_scratch_root():
     offenders = [
         f"{name}:{number}"
         for name in ("simulate.smk", "monorail_light.smk")

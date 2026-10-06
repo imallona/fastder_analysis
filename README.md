@@ -13,7 +13,7 @@ conda create -c conda-forge -c bioconda -c nodefaults -n snakemake snakemake
 make submodules        # fetch the fastder and monorail-external submodules, once after cloning
 ```
 
-There is a `Makefile`; `make help` lists its targets. `make all` runs every config the figures read and then `make figures`; `make smoke` is a small end-to-end test. Override defaults on the command line, e.g. `make sim CORES=24` (`ULIMIT_KB` caps per-process virtual memory at 100 GB). `SCRATCH_DIR=<dir>` writes the FASTQ and BAM files under `<dir>`; the default is `workflow/data`. Local runs start a job only while the `mem_mb` declared by the running jobs stays within `MEM_MB`, by default 80 percent of the machine's memory; a job that declares more than that runs alone. `make memcheck CONFIG=<config>.yaml` lists the rules of a finished config whose peak memory exceeded their `mem_mb`.
+There is a `Makefile`; `make help` lists its targets. `make all` runs every config the figures read and then `make figures`; `make smoke` is a small end-to-end test. Override defaults on the command line, e.g. `make sim CORES=24` (`ULIMIT_KB` caps per-process virtual memory at 100 GB). `SCRATCH_DIR=<dir>` writes the simulated reads and the `monorail_light` BAM files under `<dir>`; the default is `workflow/data`. Local runs start a job only while the `mem_mb` declared by the running jobs stays within `MEM_MB`, by default 80 percent of the machine's memory; a job that declares more than that runs alone. `make memcheck CONFIG=<config>.yaml` lists the rules of a finished config whose peak memory exceeded their `mem_mb`.
 
 To prepare on the cluster and time on one machine:
 
