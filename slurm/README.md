@@ -38,6 +38,13 @@ sbatch --dependency=afterok:$timed slurm/03_finish.sh
 ## Core limit
 
 - `EULER=1` passes `--resources cores_used=32`, and each job counts its threads. `EULER_CORE_BUDGET` sets another value.
+- The profile also caps the jobs in the queue at once, `jobs: 32`. With one-core jobs this cap is reached before the core limit.
+- Short jobs spend most of their time waiting in the queue, so raise both for a stage with many of them:
+
+```
+EULER_CORE_BUDGET=150 EXTRA="--jobs 150" sbatch slurm/03_finish.sh
+```
+
 - A job with more threads than this value does not start. Rules submitted by `01_prepare.sh` and `03_finish.sh` have up to 12; `run_fastder_scaling` as a Slurm job has up to 16.
 
 ## Storage

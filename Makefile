@@ -69,6 +69,7 @@ EULER ?=
 PROFILE_FLAG := $(if $(EULER),--profile $(CURDIR)/profiles/euler,)
 
 ## Cores held at once on the cluster; the es_platt share is 208.
+## The profile also caps the jobs in the queue at 32; EXTRA="--jobs N" raises it.
 EULER_CORE_BUDGET ?= 32
 
 ## Local runs start a job only while the declared mem_mb of the running jobs

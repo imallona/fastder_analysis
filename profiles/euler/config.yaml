@@ -98,7 +98,8 @@ set-resources:
   unify:
     mem_mb_per_cpu: 2700
 
-# Concurrent jobs. cores_used above is the binding limit.
+# Jobs in the queue at once. Reached before cores_used when jobs have one
+# core; --jobs on the command line sets another value.
 jobs: 32
 
 # Euler asks that Slurm not be flooded; the default is ten per second.
