@@ -6,6 +6,7 @@ output:
     toc_float: true
     code_folding: hide
 params:
+  fig_dir: "summary_figs/"
   summary_csv: NULL
   chain_stats_csv: NULL
   truth_chain_stats_csv: NULL
@@ -30,7 +31,7 @@ knitr::opts_chunk$set(
   fig.height = 6,
   fig.align = "center",
   dev = c("png", "pdf"),
-  fig.path = "summary_figs/"
+  fig.path = params$fig_dir
 )
 library(readr)
 library(dplyr)
@@ -44,20 +45,37 @@ suppressPackageStartupMessages({
   library(patchwork)
 })
 
-as_event_levels <- c("es", "mes", "afe", "ale", "mixed")
+# The ASimulatoR event classes, keyed by the sample names the configs use. A
+# sample with no entry becomes NA in every faceted plot and stops the heatmap
+# annotation. tests/test_as_event_levels.py keeps the three in step with the
+# configs. The mixtures are grey; the single-event classes carry the colour.
+as_event_levels <- c("es", "mes", "ir", "a3", "a5", "mee", "afe", "ale",
+                     "mixed", "mixed_terminal", "mixed_internal")
 as_event_labels <- c(
   es = "exon skip (ES)",
-  mes = "mutually exclusive (MES)",
+  mes = "multiple exon skip (MES)",
+  ir = "intron retention (IR)",
+  a3 = "alt 3' site (A3)",
+  a5 = "alt 5' site (A5)",
+  mee = "mutually exclusive (MEE)",
   afe = "alt first exon (AFE)",
   ale = "alt last exon (ALE)",
-  mixed = "mixed events"
+  mixed = "mixed events",
+  mixed_terminal = "mixed terminal",
+  mixed_internal = "mixed internal"
 )
 as_event_palette <- c(
   es = "#1b9e77",
   mes = "#d95f02",
+  ir = "#66a61e",
+  a3 = "#e6ab02",
+  a5 = "#a6761d",
+  mee = "#1f78b4",
   afe = "#7570b3",
   ale = "#e7298a",
-  mixed = "#666666"
+  mixed = "#666666",
+  mixed_terminal = "#333333",
+  mixed_internal = "#999999"
 )
 
 # Tool palette. Visual identity follows RColorBrewer Set2 so plots that
@@ -163,6 +181,23 @@ fuzzy_all <- lapply(fuzzy_paths, function(p) {
   if (is.null(p) || !file.exists(p)) NULL else read_csv(p, show_col_types = FALSE)
 })
 
+# Unstitched (ns1) and junction-filtered (mjr above 0) runs are kept out of
+# every table below, so no chunk averages over them or picks one as the best
+# combination. They are reported in their own section at the end. Identifiers
+# come from scripts/param_grid.py, whose tests pin both patterns; helpers.R and
+# meta.Rmd apply the same filter.
+off_default_grid <- function(param_id) {
+  mjr <- suppressWarnings(as.integer(str_extract(param_id, "(?<=mjr)[0-9]+")))
+  grepl("(^|_)ns1(_|$)", param_id) | (!is.na(mjr) & mjr > 0L)
+}
+default_grid <- function(d) {
+  if (is.null(d)) NULL else d %>% filter(!off_default_grid(param_id))
+}
+df_off_grid <- df_all %>% filter(off_default_grid(param_id))
+df_all <- default_grid(df_all)
+cs <- default_grid(cs)
+fuzzy_all <- lapply(fuzzy_all, default_grid)
+
 # Sections below the "Tool comparison" block are fastder-only: they sweep
 # fastder's full parameter grid and facet by AS event class. The
 # baselines participate only along the shared axes (min_coverage and, for
@@ -246,9 +281,16 @@ if (have_tool_data) {
     mutate(jaccard = as.numeric(jaccard),
            scenario = relabel_scenario(scenario),
            as_event = label_as(sample))
+  # At most 500 points per violin, so the points do not cover its outline.
+  set.seed(1)
+  fj_points <- fj %>%
+    group_by(tool, as_event) %>%
+    slice_sample(n = 500) %>%
+    ungroup()
   ggplot(fj, aes(x = tool, y = jaccard, fill = tool)) +
     geom_violin(alpha = 0.5, scale = "width", trim = TRUE, colour = "grey40") +
-    geom_jitter(width = 0.18, size = 0.25, alpha = 0.2, colour = "grey15") +
+    geom_jitter(data = fj_points, width = 0.18, size = 0.25, alpha = 0.2,
+                colour = "grey15") +
     stat_summary(fun = median, geom = "point", shape = 21, size = 2.6,
                  colour = "black", fill = "white", stroke = 0.7) +
     scale_fill_manual(values = tool_palette, guide = "none") +
@@ -275,15 +317,18 @@ if (have_tool_data) {
     mutate(threshold = as.numeric(threshold),
            recall = as.numeric(recall),
            scenario = relabel_scenario(scenario),
-           as_event = label_as(sample)) %>%
+           sample = factor(sample, levels = as_event_levels)) %>%
     filter(threshold == 0.5)
+  # Strips carry the sample codes: the long event names do not fit ten columns.
   ggplot(fr, aes(x = tool, y = recall, fill = tool)) +
     geom_col(position = position_dodge(width = 0.8), width = 0.7,
              alpha = 0.85, colour = "grey20") +
-    geom_text(aes(label = sprintf("%.2f", recall)), vjust = -0.4, size = 3.2) +
+    geom_text(aes(label = sprintf("%.2f", recall)), angle = 90, hjust = -0.15,
+              size = 2.6) +
     scale_fill_manual(values = tool_palette, guide = "none") +
-    facet_grid(scenario ~ as_event) +
-    coord_cartesian(ylim = c(0, 1)) +
+    scale_y_continuous(breaks = seq(0, 1, 0.25)) +
+    facet_grid(scenario ~ sample) +
+    coord_cartesian(ylim = c(0, 1.15)) +
     labs(x = NULL, y = "Locus recall at threshold 0.5") +
     pub_theme +
     theme(axis.text.x = element_text(angle = 30, hjust = 1, size = 10),
@@ -353,18 +398,10 @@ if (have_tool_data && !is.null(fuzzy_all$distances) && nrow(fuzzy_all$distances)
     mutate(scenario = relabel_scenario(scenario),
            threshold_label = factor(paste0("<=", threshold_bp, " bp"),
                                     levels = paste0("<=", thresholds_bp, " bp")))
-  # Label the 5 bp tolerance point on each tool's line, so the standalone
-  # 5 bp panel does not need to be read separately.
-  label_5bp <- fd_pct %>% filter(threshold_bp == 5)
   ggplot(fd_pct, aes(x = threshold_bp, y = pct, colour = tool, shape = tool,
                      group = tool)) +
     geom_line(linewidth = 0.7, alpha = 0.8) +
     geom_point(size = 3, alpha = 0.9) +
-    geom_vline(xintercept = log1p(5), linetype = "dashed",
-               colour = "grey60", linewidth = 0.4) +
-    geom_text(data = label_5bp,
-              aes(label = sprintf("%.1f%%", pct)),
-              vjust = -1.0, hjust = 0.5, size = 3, show.legend = FALSE) +
     scale_colour_manual(values = tool_palette, name = NULL) +
     scale_shape_manual(values = c(fastder = 16, derfinder = 17,
                                   megadepth_baseline = 15, grohmm = 18),
@@ -639,7 +676,7 @@ if (track_ok) {
            atrack(tool_gr$grohmm, "grohmm", tool_palette[["grohmm"]])),
       from = from, to = to, chromosome = chrom,
       background.title = "white", col.title = "black", col.axis = "black",
-      cex.title = 1.1, title.width = 1.4,
+      cex.title = 0.6, title.width = 0.9,
       main = sprintf("%s  %s:%d-%d", top, chrom, from, to), cex.main = 0.9)
     TRUE
   }, error = function(e) {
@@ -710,7 +747,7 @@ The sections below sweep fastder's parameter grid and facet by AS event class. T
 
 # Method performance across AS event types
 
-Each ASimulatoR sample carries one alternative-splicing event class: exon skipping (ES), mutually exclusive exons (MES), alternative first exon (AFE), alternative last exon (ALE), or a four-way mix.
+Each ASimulatoR sample carries one alternative-splicing event class: exon skipping (ES), multiple exon skipping (MES), intron retention (IR), alternative 3' site (A3), alternative 5' site (A5), mutually exclusive exons (MEE), alternative first exon (AFE), alternative last exon (ALE), or a mix. The mixtures are `mixed_terminal` over ES, MES, AFE and ALE, and `mixed_internal` over IR, A3, A5 and MEE.
 
 Each event class is run through two scenarios that differ in which transcripts contribute reads to the coverage track that fastder sees. In *template + variant* (ASimulatoR default) both the canonical transcript and the alternative form are simulated. An exon that the variant skips then still receives reads from the template and shows up as a coverage dip rather than a hard zero. In *variant only* the FASTQ is post-filtered to keep reads sourced from the alternative transcript, and the truth GFF is rewritten to remove templates. The alternative-splicing signal is then unambiguous: the skipped exon has zero coverage and the truth contains only the alternative isoform.
 
@@ -1480,6 +1517,29 @@ p_cov_vs_len <- ggplot(cs_plot, aes(x = total_exon_length, y = score)) +
   plot_annotation(caption = paste("parameter combination:", cs_pid))
 ```
 
+The first two panels on their own, scenarios side by side.
+
+```{r length_hist, fig.width = 8, fig.height = 4}
+ggplot(cs_plot, aes(x = total_exon_length)) +
+  geom_histogram(bins = 30, fill = "grey60", colour = "grey30") +
+  facet_wrap(~ scenario, ncol = 2) +
+  scale_x_log10() +
+  labs(x = "Total exonic length per region (bp)",
+       y = "Number of regions",
+       caption = paste("parameter combination:", cs_pid)) +
+  pub_theme
+```
+
+```{r score_vs_n_exons, fig.width = 8, fig.height = 4}
+ggplot(cs_plot, aes(x = n_exons, y = score)) +
+  geom_point(alpha = 0.3) +
+  scale_y_log10() +
+  facet_wrap(~ scenario, ncol = 2) +
+  labs(x = "Exons per region", y = "Mean coverage",
+       caption = paste("parameter combination:", cs_pid)) +
+  pub_theme
+```
+
 ## Mean coverage vs total exonic length
 
 ```{r score_vs_length, fig.width = 8, fig.height = 4}
@@ -1712,5 +1772,24 @@ if (!is.null(fuzzy$strand) && nrow(fuzzy$strand) > 0) {
            pct_unstranded = unstranded / total * 100,
            pct_unmatched = unmatched / total * 100)
   collapsible_kable(fs_wide, "Show strand counts and fractions", digits = 2)
+}
+```
+
+# Unstitched and junction-filtered runs
+
+Runs with `--no-stitch` (`ns1`) or with `--min-junction-reads` above 0 (`mjr`), averaged over samples. No section above includes them.
+
+```{r off_grid_table, results = "asis"}
+if (nrow(df_off_grid) > 0) {
+  knitr::kable(
+    df_off_grid %>%
+      group_by(tool, scenario, param_id) %>%
+      summarise(samples = n(),
+                across(c(base_sens, base_prec, exon_sens, exon_prec),
+                       ~ mean(.x, na.rm = TRUE)),
+                .groups = "drop"),
+    digits = 1)
+} else {
+  cat("None in this config.\n")
 }
 ```

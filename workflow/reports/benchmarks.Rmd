@@ -6,8 +6,10 @@ output:
     toc_float: true
     code_folding: hide
 params:
+  fig_dir: "benchmarks_figs/"
   bench_dir: NULL
   scenarios: ""
+  host_info: NULL
 ---
 
 ```{r setup, include=FALSE}
@@ -19,7 +21,7 @@ knitr::opts_chunk$set(
   fig.height = 6,
   fig.align = "center",
   dev = c("png", "pdf"),
-  fig.path = "benchmarks_figs/"
+  fig.path = params$fig_dir
 )
 library(readr)
 library(dplyr)
@@ -61,14 +63,14 @@ if (is.null(bench_dir) || !dir.exists(bench_dir)) {
 # figure, so a reader knows whether a plot is simulation, GTEx, or TDP-43.
 config_name <- basename(normalizePath(bench_dir, mustWork = FALSE))
 dataset_labels <- c(
-  config_full_simulation                 = "Simulation (ASimulatoR chr21, 10M reads/sample)",
-  config_full_simulation_5M              = "Simulation (chr21, 5M reads/sample)",
-  config_full_simulation_30M             = "Simulation (chr21, 30M reads/sample)",
-  config_full_simulation_40M             = "Simulation (chr21, 40M reads/sample)",
+  config_full_simulation                 = "Simulation (ASimulatoR chr21 and chr19, 10M reads/sample)",
+  config_full_simulation_5M              = "Simulation (chr21 and chr19, 5M reads/sample)",
+  config_full_simulation_30M             = "Simulation (chr21 and chr19, 30M reads/sample)",
+  config_full_simulation_40M             = "Simulation (chr21 and chr19, 40M reads/sample)",
   config_gtex_comparison                 = "GTEx chr19 (4 tissues, 32 sub-groups)",
   config_gtex_concordance                = "GTEx genome-wide (4 tissues, 32 sub-groups)",
-  config_klim_2019_tdp43_recount3        = "TDP-43 STMN2 showcase (recount3 SRP166282, 1 CPM)",
-  config_klim_2019_tdp43_recount3_panel  = "TDP-43 cryptic-exon panel (recount3 SRP166282, 0.02 CPM)"
+  config_klim_2019_tdp43_recount3        = "TDP-43 STMN2 showcase (recount3 SRP166282)",
+  config_klim_2019_tdp43_recount3_panel  = "TDP-43 cryptic-exon panel (recount3 SRP166282)"
 )
 dataset_label <- if (config_name %in% names(dataset_labels)) {
   unname(dataset_labels[config_name])
@@ -79,6 +81,13 @@ files <- list.files(bench_dir, pattern = "\\.tsv$", recursive = TRUE, full.names
 if (length(files) == 0) {
   stop("no .tsv benchmark files found under ", bench_dir)
 }
+# A benchmark file has one row per repeat of the job.
+median_over_repeats <- function(d) {
+  d %>% summarise(s = median(as.numeric(s), na.rm = TRUE),
+                  max_rss = median(as.numeric(max_rss), na.rm = TRUE),
+                  repeats = n())
+}
+
 parse_one <- function(path) {
   rel <- sub(paste0(bench_dir, .Platform$file.sep), "", path)
   parts <- strsplit(rel, .Platform$file.sep, fixed = TRUE)[[1]]
@@ -89,7 +98,7 @@ parse_one <- function(path) {
     rule <- parts[1]
     wc   <- sub("\\.tsv$", "", paste(parts[-1], collapse = "_"))
   }
-  d <- read_tsv(path, show_col_types = FALSE)
+  d <- median_over_repeats(read_tsv(path, show_col_types = FALSE))
   d$rule <- rule
   d$wildcards <- wc
   d
@@ -158,12 +167,24 @@ df$param_id <- str_extract(df$wildcards, "mc[0-9.]+(?:_[a-z]+[0-9.]+)*")
 
 `r bench_dir` (`r length(files)` files).
 
-`max_rss` comes from snakemake's benchmark TSVs. It is the per-process peak resident set size in MiB, sampled by snakemake every 10 s. Multi-process rules report the parent only, so high-fan-out runs (derfinder loading per-sample BigWigs at once) may under-report.
+`max_rss` comes from snakemake's benchmark TSVs. It is the per-process peak resident set size in MiB. Snakemake samples every 0.5 s for the first 30 samples and every 30 s after that, so a rule finishing inside the first sample can have a wall clock and no memory figure. A job repeated through `benchmark_repeats` is reported by the median over its repeats. Multi-process rules report the parent only, so high-fan-out runs (derfinder loading per-sample BigWigs at once) may under-report.
+
+## Benchmark machine
+
+A wall clock is only interpretable next to the machine that produced it, and on a cluster that machine is whichever node the scheduler picked. `record_host_info` writes it during the run.
+
+```{r host}
+if (!is.null(params$host_info) && nzchar(params$host_info) && file.exists(params$host_info)) {
+  knitr::kable(read_tsv(params$host_info, show_col_types = FALSE), format = "html")
+} else {
+  cat("No host_info.tsv passed to this report.\n")
+}
+```
 
 ```{r table, results = "asis"}
 cat('<details><summary>Click to expand the full per-invocation table</summary>\n\n')
 cat(knitr::kable(
-  df %>% select(rule, wildcards, wall_s, max_rss_mb) %>% arrange(rule, wildcards),
+  df %>% select(rule, wildcards, repeats, wall_s, max_rss_mb) %>% arrange(rule, wildcards),
   digits = 1, format = "html"
 ))
 cat('\n\n</details>\n\n')

@@ -1,0 +1,5 @@
+gene	chrom	start	end	ce_start	ce_end	source
+STMN2	chr8	79606000	79671000	79616821	79617200	knockdown-specific junction and knockdown coverage peak, recount3 SRP166282
+HDGFL2	chr19	4467000	4507000	4492015	4492152	gap between a knockdown-specific junction pair, recount3 SRP166282
+ELAVL3	chr19	11446000	11486000	11463496	11463662	gap between a knockdown-specific junction pair, recount3 SRP166282
+CELF5	chr19	3219000	3302000	3278200	3278400	knockdown-specific junction and knockdown coverage peak, recount3 SRP166282

@@ -4,4 +4,4 @@ channels:
   - conda-forge
   - defaults
 dependencies:
-  - gffcompare
+  - gffcompare=0.12.10

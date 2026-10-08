@@ -1,0 +1,69 @@
+# Real-data config: TDP-43 knockdown vs control over a ladder of thresholds.
+#
+# The same data and groups as config_klim_2019_tdp43_recount3.yaml. fastder
+# runs at every min_coverage of the ladder, and threshold_range.csv records
+# where the cryptic exon loci separate knockdown from control.
+#
+# Run with:
+#   FASTDER_EVAL_CONFIG=../config/config_klim_2019_tdp43_recount3_ladder.yaml \
+#     snakemake --use-conda --cores 8
+
+seed: 10
+cores: 8
+
+monorail:
+  ref_version: hg38
+  project_name: "recount3"
+  project_id: 102
+  backend: recount3
+
+# recount3 backend settings.
+recount3:
+  # SRA study accession; all samples below must belong to it.
+  study_acc: SRP166282
+  # Host serving recount3 BigWig and junction files.
+  base_url: "http://duffel.rail.bio/recount3"
+  # Host serving recount3 metadata files.
+  metadata_url: "http://idies.jhu.edu/recount3/data"
+  # Sample groups. Key is the group name (becomes the scenario label in the
+  # results); value is the list of SRA run accessions in that group. Each
+  # group is processed separately. rail_id mapping is resolved from the
+  # downloaded study metadata.
+  groups:
+    knockdown:
+      - SRR8083867   # GSM3439292, TDP43 siRNA rep1
+      - SRR8083868   # GSM3439293, TDP43 siRNA rep2
+    control:
+      - SRR8083865   # GSM3439290, scramble siRNA rep1
+      - SRR8083866   # GSM3439291, scramble siRNA rep2
+
+# fastder alone: the question is at which thresholds its calls separate the
+# two groups.
+tools: [fastder]
+
+fastder:
+  stranded: false
+  # min_coverage in CPM, in 1-2-5 steps. The showcase and panel configs each
+  # use one value from inside this range.
+  min_coverage: [0.0002, 0.0005, 0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1.0]
+  # The panel config's stitching gate, and fastder's default, which is
+  # effectively open. Each gets its own range.
+  coverage_tolerance: [1.0, 1000.0]
+  chromosomes: ["chr8", "chr19"]
+
+# Per locus, the thresholds at which a region is called in the case group and
+# not in the control group. Loci are the ce_start and ce_end columns.
+threshold_range:
+  loci: ../config/tdp43_cryptic_exons.tsv
+  case: knockdown
+  control: control
+
+gffcompare:
+  # The truth set for the recount3 backend is the downloaded Ensembl
+  # annotation, copied per sample by extract_fastder_inputs. Leave
+  # reference_annotation empty to use that download (the scope-keyed reference
+  # path is resolved by the workflow). The TDP-43 cryptic exons are not in the
+  # annotation, so they are reported as novel rather than as true positives;
+  # the cryptic-exon result is read from the report, not from the gffcompare
+  # precision numbers.
+  reference_annotation: ""

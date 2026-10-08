@@ -1,0 +1,128 @@
+# Changelog
+
+## [Unreleased]
+
+### Changed
+
+- `fig_sim_schematic` shows the eight simulated event classes. Main Figure 1 reserves panel A when `Figure_1.pdf` is absent. Its legend lists tools only.
+- `scaling.csv` and `supp_scaling.pdf` hold two core sweeps: genome-wide GTEx and the simulation. Each row carries its workload's sample and chromosome counts. The figure marks them. It showed the simulation alone before.
+- Reports write figure files under `results/<config>/<report>_figs/`. They shared `workflow/reports/<report>_figs/` before. Each config overwrote the last one's files.
+- `reported_numbers.csv` adds the lowest peak memory per tool. The real-data comparison adds medians over scenarios. The collector writes the CSV only.
+- Library sizes come from `compute_library_sizes.py`, once per scenario. `run_derfinder.R`, `run_grohmm.R` and `run_megadepth_baseline.py` read them. Each runner computed its own before.
+- Library size is now whole-file. It sums length times value, from the header. Analysed chromosomes no longer change it.
+- `run_derfinder`, `run_grohmm` and `run_megadepth_baseline` declare `threads: 1`.
+- Local runs make three passes: inputs, timed rules, the rest. Timed rules run one job at a time. Their inputs are read once first, except on a dry run.
+- `run_fastder` takes threads from `FASTDER_CORES`. `fastder.cores` sets it. `config["cores"]` is the fallback.
+- Main Figure 1 drops two panels. Both plotted three tools at zero. groHMM leaves the exon accuracy and boundary panels. Its 50 nt binning cannot place exon boundaries. groHMM stays in the CDF and base-level panels. The figure runs A to F. Manuscript panel citations must move.
+- The GTEx exon precision panel leaves groHMM out, as the simulation exon panels do.
+- Main Figure 2 drops the transcript-level panel. That level measures isoform reconstruction. No tool in the comparison attempts it. It now writes `supp_gtex_transcript_precision.pdf` instead. Nothing is deleted, so no number disappears. The figure runs A to J.
+- Figure scripts default to `results/` and `results/figures/` under the workflow. Report labels name both simulated chromosomes.
+- `config_full_simulation.yaml`: `fastder.cores` is 1.
+- The reference threshold is 0.005 CPM. It has the best exon-level F1 on the threshold ladder. `config_full_simulation.yaml` sweeps 0.005 and 0.05. Tables and the sweep configs use 0.005.
+- The depth and boundary panels read the reference threshold only. `meta.Rmd` does too.
+- `config_full_simulation.yaml`: chromosomes are chr21 and chr19. It was chr21 alone.
+- `config_full_simulation.yaml`: ten samples per scenario. All eight ASimulatoR event classes run. It was five over four classes. Added `ir`, `a3`, `a5`, `mee` and a mixture.
+- Each simulated sample has its own seed. It is the run seed times 1000 plus its position.
+- `config_gtex_comparison.yaml`: `fastder.cores` is 1.
+- Corrected the `position_tolerance` comment in `config_full_simulation.yaml`. `pt0` needs exact agreement between edge and junction. It does not disable stitching.
+- The runtime panel's axis reads wall time per run. One run covers all samples of a scenario.
+- Depth configs are regenerated from `config_full_simulation.yaml`. All four depths share one grid.
+- Combinations differing only in an ignored parameter collapse. `--no-stitch` ignores `position_tolerance` and `coverage_tolerance`.
+- `summary.Rmd` leaves unstitched and junction-filtered runs out of every aggregate and best-combination pick. They get their own table at the end.
+- The parameter grid moved to `workflow/scripts/param_grid.py`. The Snakefile imports it. Job counts are unchanged.
+- README lists the current configs, grids and groHMM. Library-size comments say whole file.
+- `run_megadepth_baseline.py` takes `--library-sizes` as optional. Without it, sizes come from the BigWig headers.
+
+### Added
+
+- `SCRATCH_DIR` is the root of simulated reads and `monorail_light` BAM files. The default is `workflow/data`. Simulated reads are `temp()`. `keep_simulated_reads` keeps them, set in `config_full_simulation.yaml`. `slurm/site.env` sets `SCRATCH_DIR` to scratch.
+- Rules `figure_gtex_concordance` and `figure_tdp43_track` call the heatmap and locus track scripts. No rule called them. `figure_main_2` takes the heatmap as input.
+- `summary.Rmd` draws exonic length and coverage against exon count as single plots again.
+- Rule `single_figure` draws the granularity, event Jaccard, genomic distribution and TDP-43 similarity figures. `manuscript_figures` requests them.
+- `PASSES=check` verifies a tree prepared elsewhere. It compares the commit and plans the preparation. The timed pass waits for a load below `QUIET_LOAD`. `make euler` records its commit. `slurm/01_prepare.sh` ends with the memory check.
+- `PASSES` picks the passes of a timed config. `make euler` prepares timed configs on the cluster. It runs accuracy-only configs in full. `slurm/01_prepare.sh` submits it. Timing then needs `PASSES="timed rest"` elsewhere.
+- Local runs pass `--resources mem_mb`. `MEM_MB` sets it, by default 80 percent of memory. Jobs were placed by cores alone before. `make memcheck` lists rules that exceeded their `mem_mb`.
+- `workflow/scripts/compute_library_sizes.py` and rule `compute_library_sizes`. Each scenario gets a `library_sizes.tsv`.
+- Grid support for `min_junction_reads` (`mjr`) and `no_stitch` (`ns`). `no_stitch` is a switch. The flag is passed only when true.
+- `scripts/split_chains.py` and rule `split_fastder_chains`. The stitched default run is rewritten one exon per record and graded as `fastder_split`. `ablation.csv` and `supp_ablation.pdf` gain it as a third configuration. Only configs sweeping `no_stitch` build it.
+- `config_full_simulation.yaml`: `no_stitch: [false, true]`.
+- Rule `run_fastder_scaling`, timing fastder at each core count. It reads `fastder.scaling_cores` and `fastder.scaling_scenario`. An empty `scaling_cores` leaves it out.
+- `benchmark_repeats`, default 1, repeats each timed job. Reports and `scaling.csv` use the median. The simulation and GTEx configs set 3.
+- `config_gtex_concordance.yaml`: `scaling_cores: [1, 2, 4, 8, 16]`.
+- `config_gtex_threshold_ladder.yaml`, generated by `scripts/make_gtex_ladder_config.py`. One sub-group per tissue, chr19, three tools, ten thresholds. Run it with `make gtex-threshold-ladder`.
+- `config_full_simulation.yaml`: `scaling_cores: [1, 2, 4, 8, 16]`. It contrasts with the genome-wide sweep. Parsing saturates at ten samples. Averaging saturates at two chromosomes. `make_sim_configs.py` drops the key from depth configs.
+- Every executing rule declares `mem_mb` and `runtime`. Both bound concurrency locally through `--resources`. Both become scheduler requests on a cluster. The fastder rules size their request by scope. Benchmarks peaked under 2 GB per chromosome. They peaked at 30 GB genome-wide.
+- Rule `record_host_info`, recording the benchmark machine. It writes CPU model, cores and memory. Output is `results/<config>/host_info.tsv`. The benchmarks report depends on it.
+- `host_info.tsv` gains physical cores, threads per core, turbo and load. Unexposed values are `NA`. Available cores come from the scheduler affinity.
+- `record_host_info` runs in the timed pass of a local run. Its load figure is the load during timing.
+- `scripts/collect_tool_versions.py` and rule `collect_tool_versions`. Each run writes `tool_versions.csv` and `tool_versions.tex`. Versions come from the built environments, the fastder checkout and the ASimulatoR container.
+- `profiles/euler/config.yaml`, a profile for ETH Euler. It holds every cluster setting. The Slurm account is `es_platt`. Five timed rules pin `--constraint=EPYC_7763`. Nodes are not requested exclusively. Co-tenancy stays a caveat for Methods. Nothing under `workflow/` mentions Slurm.
+- A core budget for cluster runs. Each job books its thread count. `EULER=1` passes `--resources cores_used=32`. The `es_platt` share is 208 cores. `--cores` cannot bound a cluster run. Override with `EULER_CORE_BUDGET`.
+- `slurm/`, sbatch scripts: probe, prepare, timed, finish. `02_timed.sh` runs the timed rules in one allocation. `03_finish.sh` submits evaluation, reports and figures, after `PASSES=untimed`. `make timed-configs` runs every timed config. `slurm/README.md` has setup and storage.
+- `EULER=1`, `CONDA_PREFIX_DIR`, `EXTRA` and `make envs`. `make gtex EULER=1` submits to Slurm. Without `EULER=1` nothing changes.
+- `tests/test_euler_profile.py`, checking the profile against the rules. Every executing rule declares memory and runtime. The CPU pin covers exactly the timed rules. Rules using node scratch request `--tmp`.
+- `scripts/collect_param_sweeps.py` and `scripts/collect_scaling.py`. They write `ablation.csv`, `min_junction_reads.csv` and `scaling.csv`. Panels plot these rather than recomputing.
+- `param_grid.parse_param_id()`, the inverse of `param_id()`. A results table can be grouped by axis.
+- `scripts/collect_reported_numbers.py` and rule `collect_reported_numbers`. One CSV holds every quoted value. Each row names its config and source file. `reported_numbers.tex` defines `\reported{name}` per value. A listed config without results fails the rule.
+- `scripts/figures/figure_supp_revision.R` and rule `figure_supp_revision`. It writes `supp_ablation.pdf`, `supp_min_junction_reads.pdf` and `supp_scaling.pdf`. SVGs go with them. Each panel saves its data as `panel_<name>.csv`.
+- `config_threshold_ladder.yaml`, `scripts/choose_threshold.py` and rule `choose_threshold`. Three tools run over eight coverage thresholds. `threshold_choice.csv` flags the threshold with the best mean exon-level F1. Run it with `make threshold-ladder`.
+- The scaling panel annotates its ceilings. Parsing runs one thread per loaded sample. Averaging runs one thread per chromosome. Stitching is serial.
+- `tests/test_collect_param_sweeps.py` and `tests/test_collect_scaling.py`. `test_param_grid.py` gained identifier round-trip tests. They pin the patterns `helpers.R` greps for.
+- `config_min_junction_reads_sweep.yaml`, generated by `scripts/make_sim_configs.py`. fastder runs alone, at its defaults, on the 10M data. `min_junction_reads` sweeps 0, 1, 2, 5, 10, 20. Zero reproduces the published behaviour. Run it with `make mjr-sweep`.
+- `config_full_simulation_rep2.yaml` and `_rep3.yaml`, the 10M simulation under seeds 11 and 12. Simulated reads are keyed by depth, seed and a digest of the `asimulator` block. `ablation.csv` and the cross-depth report carry `replicate`. Run them with `make sim-replicates`.
+- `scripts/figures/make_capability_table.py` and rule `capability_table`. They write `tool_capabilities.csv` and `tool_capabilities.tex`. Each cell cites its source in a comment. It replaces the two zero-bar panels.
+- `monorail.annotated_index`, default true. False builds the STAR index without the annotation. `config_unannotated_alignment.yaml` runs fastder on such an alignment. `annotation.csv` compares it with the annotated run. Run it with `make sim-unannotated`.
+- `tests/test_capability_table.py`, guarding the snapping cell. A bare yes there fails the test. Snapping reaches internal chain edges only.
+- `tests/test_make_scenario.py`, covering the compressed round trip.
+- `config_klim_2019_tdp43_recount3_ladder.yaml` and rule `collect_threshold_range`. fastder runs over a ladder of `min_coverage` values. `threshold_range_summary.csv` gives the separating range per cryptic exon locus. The loci are in `config/tdp43_cryptic_exons.tsv`, with a source per row. Run it with `make tdp43-ladder`.
+- The TDP-43 ladder runs twelve thresholds, 0.0002 to 1.0 CPM. `threshold_range_counts.csv` counts the separating loci per threshold. It flags the threshold with the most.
+- `collect_threshold_range` reads the config's parameter combinations only. Runs of an earlier grid stay on disk.
+- TDP-43 thresholds come from the ladder. The showcase runs at 0.05 CPM. The panel runs at 0.005 CPM.
+- KCNQ2 is out of the TDP-43 panel. Its box overlapped an annotated exon. The TDP-43 configs run chr8 and chr19.
+- Rule logs go to `logs/<config>/`.
+- Tool, aligner and gffcompare environments name exact versions. The ASimulatoR image is named by digest.
+- `run_fastder` declares its GTF, `runs/<param_id>/fastder.gtf`. The rules downstream take it as input. New calls rerun them.
+- Four figure scripts read the config's one run directory. They stop when a sub-group has several.
+- `envs/figures.yaml` has svglite, for SVG output. It has Gviz, for `make_stmn2_track.R`.
+- `make all` runs `mjr-sweep` and the three threshold ladders.
+- Accuracy-only configs run in one pass, each tool once. These are the replicates, sweep, unannotated run and ladders. Run times are exported for timed configs only.
+- The two TDP-43 configs repeat each timed run three times. Their run times are exported.
+- `config_unannotated_alignment.yaml` also runs derfinder and the megadepth baseline. `annotation.csv` and the exported numbers carry the tool.
+- The collectors read `fuzzy_distances.csv` once per run. They keep counts of the distances.
+- The three GTEx configs call regions at 0.005 CPM. It has the best exon-level F1 on the GTEx ladder.
+- Rules `figure_tdp43_novel_exons` and `figure_tdp43_jaccard` write two TDP-43 tables. Figure 2 reads them.
+
+### Fixed
+
+- `figure_sim_event_jaccard.R` leaves out `--no-stitch` runs. Their identifier has no tolerance, so they counted as tolerance 0.
+- `recount3.Rmd` sizes the gene-model track by its transcripts. Past about 25 transcripts the locus was drawn empty.
+- `summary.Rmd` plots fit ten samples: recall strips use sample codes, violins show 500 points each, locus titles are smaller. The boundary curve drops its 5 bp labels.
+- Simulated reads are keyed by sample order and chromosome scope too. Configs differing only in those shared one directory. Existing read directories get new names. `make memcheck` reads benchmark files in sub-directories. `extract_marker_loci.sh` checks one GTF per sub-group.
+- `library_sizes.tsv` names BigWigs by file name, not path. The three runners look sizes up by file name. A copied tree lost its sizes before. Sizes are unchanged.
+- The reference annotation is chr-prefixed once per config. It is written line by line. Scenario directories link to it. Each scenario copied it and read it whole. On the full genome that took 8 GB per job.
+- The timed pass uses Snakemake's greedy scheduler. The default one ran its solver on about eight cores while a tool was being timed.
+- `run_grohmm.R` places window means by window name. `bigWigAverageOverBed` returns chromosomes in its own order. In another order, each chromosome got another one's signal. Single-chromosome runs were not affected.
+- Simulated reads are stored gzipped. `runASimulatoR.R` compresses them after the simulation. `make_scenario.py` writes its filtered copy compressed. STAR reads them with `--readFilesCommand zcat`. Plain FASTQ was about 680 GB. Compressed it is about 170 GB. Uncompressed reads on disk will re-simulate.
+- Scenario FASTQ files and sorted BAMs are `temp()`. Nothing was reclaimed as the DAG advanced. The BAMs held 110 GB too. BigWigs, junction tables and results survive. ASimulatoR reads stay, being costly to regenerate.
+- Tool inputs and outputs are kept per config, under `data/fastder/<config>` and `data/tools/<config>`. Alignments are keyed by read depth and chromosome scope. Configs sharing both reuse them. A second config no longer overwrites the first. `make dryrun` plans with the flags of a run.
+- The fastder submodule tracks `revision` upstream. The pin is `e22b388`. It carries whole-file library size, `--min-junction-reads` and `--no-stitch`. It matches coverage files to samples by file name. Its default `--min-coverage` is 0.005 CPM; parsing stays within `--cores`.
+- The Makefile skips `conda activate` when `CONDA_INIT` names nothing. An already activated environment is then used as it stands. Job 11290024 died sourcing a `$HOME/miniconda3` Euler does not have.
+- Defaults sit inside the checkout, so no configuration is needed. Conda environments go to `workflow/.snakemake/conda`. The container cache goes to `.apptainer-cache`. A repo on project storage keeps both off `$HOME`.
+- The Euler profile sends memory as `--mem-per-cpu`. Euler's cli_filter rejects `--mem`, which `mem_mb` becomes. The plugin prefers `mem_mb_per_cpu` and emits the accepted flag. Rules keep their portable `mem_mb`; the profile translates.
+- The profile pins no partition. Euler routes by requested runtime, so every rule declares one. Checked against a working run: job 11288220 pinned nothing and got `normal.24h`.
+- `tests/test_euler_resources.py` keeps the translation in step. Every rule over the default declares a per-cpu figure. Totals must cover the request without wasting ten times it. Runtimes must fit their partition.
+- The probe filters node features with grep. `sinfo` has no `--constraint`, so the check exited non-zero and failed the job.
+- `common.sh` creates the directories it points at. apptainer refuses to build into a missing one. Job 11293212 died on the first container pull.
+- `record_host_info` reads MemTotal with awk. The sed version tripped a Python SyntaxWarning on every run.
+- Run paths live in `slurm/site.env`, sourced by `common.sh`. Conda environments and the image cache go to project storage. That is NFS; scratch is Lustre, which handles many small files badly. `sbatch` exports the submitting shell, so an activated environment carries over.
+- The probe reads the plugin version from package metadata. Plugin 2.7.1 exposes no `__version__`.
+- The CPU pin of the timed rules is the `constraint` resource. Plugin 2.7.1 sets `--constraint` itself and refuses it in `slurm_extra`. Every `run_fastder` and `run_fastder_scaling` submission of job 11304206 failed on that. `sbatch` still gets `-C EPYC_7763`.
+- The AS event levels, labels and palette cover the eleven sample names the configs use. `summary.Rmd` and `figure_sim_event_jaccard.R` listed five. The revision added `ir`, `a3`, `a5`, `mee` and two mixtures, so those samples became NA in every plot faceted by event class. `render_summary_report` then stopped on a colour it could not map and failed job 11377514 after two hours of tool runs. `tests/test_as_event_levels.py` checks the vectors against the configs.
+- `summary.Rmd` labelled `mes` mutually exclusive, in the palette and in the prose above the event panels. It is multiple exon skipping; `mee` is the mutually exclusive one. `event_annotation.tsv` gives `mes` a list of skipped exons and `mee` a single pair. The prose also listed four classes and a four-way mix, which is the pre-revision set. `figure_sim_event_jaccard.R` had the label right.
+- The sbatch wrappers populate the submodules themselves. A clone leaves them empty. `build_fastder` then has no sources. `make submodules-latest` moves a pin deliberately.
+- The sbatch wrappers source `common.sh` correctly. Slurm copies the script to a spool directory. `$0` pointed there, not at the repo. Job 11285331 died after seven seconds. `SLURM_SUBMIT_DIR` locates the repo now. `common.sh` also checks its prerequisites first.
+- `ml_star_align` writes scratch to `$TMPDIR`. STAR temp and sort spill move there. The Euler profile requests `--tmp` for both rules.
+- Aggregate panels keep the default configuration. `--no-stitch` and `--min-junction-reads` are not accuracy settings. Folding them in moved the headline numbers. `default_grid()` in `helpers.R` holds the corner. `best_pids()` picks among default runs only.
+- `meta.Rmd` filters to the default configuration. Its curves no longer average ablation runs.
+- `benchmarks.Rmd` reports the machine from `host_info.tsv`. It states the sampling interval correctly. Sampling is 0.5 s, then 30 s. The text said 10 s.
+- `tests/test_run_megadepth_baseline.py` used the old scoped size. It called `library_size(path, chroms)`, now gone. Rewritten for whole-file behaviour.

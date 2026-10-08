@@ -26,9 +26,12 @@ load_exons <- function(path) {
   reduce(granges(gr), ignore.strand = TRUE)
 }
 
-gtfs <- Sys.glob(file.path(fastder_dir, "*", "reference", "mc1.0",
+# One parameter set per sub-group: the config calls regions at one threshold.
+gtfs <- Sys.glob(file.path(fastder_dir, "*", "reference", "*",
                            "gffcompare.annotated.gtf"))
 subgroups <- basename(dirname(dirname(dirname(gtfs))))  # <tissue>_<n>
+if (length(gtfs) == 0) stop("no sub-group GTFs under ", fastder_dir)
+if (anyDuplicated(subgroups)) stop("more than one parameter set per sub-group under ", fastder_dir)
 tissue_of <- sub("_[0-9]+$", "", subgroups)
 tissue_levels <- intersect(c("brain", "heart", "muscle", "blood"), unique(tissue_of))
 

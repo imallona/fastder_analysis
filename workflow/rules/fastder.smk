@@ -12,11 +12,45 @@
 # stays unused, subject to the original contributor's agreement.
 
 
+# 7a. Reference annotation with chr-prefixed sequence names, the gffcompare
+# truth set of runs without a simulated one. Written once per config; each
+# scenario directory links to it.
+REF_LABEL = op.join(FASTDER_DIR, "reference_label" + LABEL_EXT)
+
+
+def _reference_annotation_path():
+    path = str(REF_ANNOTATION)
+    return path if op.isabs(path) else op.join(str(WORKFLOW_DIR), path)
+
+
+rule prefix_reference_annotation:
+    input:
+        _reference_annotation_path()
+    output:
+        REF_LABEL
+    benchmark:
+        op.join(BENCH_DIR, "prefix_reference_annotation.tsv")
+    log:
+        op.join(LOG_DIR, "prefix_reference_annotation.log")
+    resources:
+        mem_mb=1000,
+        runtime=30,
+    run:
+        chr_prefix.prefix_chromosomes(input[0], output[0])
+
+
 # 7b. Extract and organise all inputs that fastder needs into a flat directory.
 # The set of inputs depends on the backend: with monorail we read from the
-# unify/pump output dirs; with monorail_light we read from the LIGHT_DIR
+# unify/pump output dirs; with monorail_light we read from the ALIGN_DIR
 # scratch produced by the ml_* rules above.
 def _extract_inputs(wc):
+    result = _backend_inputs(wc)
+    if not HAS_SIM_TRUTH:
+        result["reference_label"] = REF_LABEL
+    return result
+
+
+def _backend_inputs(wc):
     if BACKEND == "recount3":
         # wc.scenario is a recount3 sample group. Inputs are the group's
         # lean MM/RR (built by recount3_group_junctions) and the downloaded
@@ -28,16 +62,16 @@ def _extract_inputs(wc):
             )
         group_samples = R3_GROUPS[wc.scenario]
         return {
-            "rr": op.join(R3_DIR, wc.scenario, "junctions.ALL.RR"),
-            "mm": op.join(R3_DIR, wc.scenario, "junctions.ALL.MM"),
-            "samples_tsv": op.join(R3_DIR, wc.scenario, "junctions.ALL.samples.tsv"),
+            "rr": op.join(R3_GROUP_DIR, wc.scenario, "junctions.ALL.RR"),
+            "mm": op.join(R3_GROUP_DIR, wc.scenario, "junctions.ALL.MM"),
+            "samples_tsv": op.join(R3_GROUP_DIR, wc.scenario, "junctions.ALL.samples.tsv"),
             "bws": [op.join(R3_DIR, "bw", f"{s}.all.bw") for s in group_samples],
             # The reference annotation is the gffcompare truth set; depend on
             # the download so it is present before extract_fastder_inputs runs.
             "reference_gtf": REF_GTF,
         }
     if BACKEND == "monorail_light":
-        light_scn = op.join(LIGHT_DIR, wc.scenario)
+        light_scn = op.join(ALIGN_DIR, wc.scenario)
         result = {
             "rr": op.join(light_scn, "junctions.ALL.RR"),
             "mm": op.join(light_scn, "junctions.ALL.MM"),
@@ -90,7 +124,7 @@ rule extract_fastder_inputs:
     params:
         fastder_dir=lambda wc: op.join(FASTDER_DIR, wc.scenario),
         pump_dir=op.join(DATA_DIR, "pump"),
-        light_dir=lambda wc: op.join(LIGHT_DIR, wc.scenario),
+        light_dir=lambda wc: op.join(ALIGN_DIR, wc.scenario),
         scenario=lambda wc: wc.scenario,
         scenario_samples=lambda wc: SAMPLES_BY_SCENARIO[wc.scenario],
         asim_dir=ASIM_DIR,
@@ -100,6 +134,9 @@ rule extract_fastder_inputs:
         stranded_bw_dir=op.join(DATA_DIR, "stranded_bigwigs"),
         samples_tsv_script=op.join(WORKFLOW_DIR, "scripts", "create_bigwig_list.sh"),
         backend=BACKEND,
+    resources:
+        mem_mb=2000,
+        runtime=30,
     run:
         import shutil, gzip
 
@@ -214,22 +251,7 @@ rule extract_fastder_inputs:
         # recount3 backend the truth is the reference annotation and there is
         # one pseudo-sample, "reference".
         # The label is chr-prefixed here, at creation, so gffcompare sees the
-        # same chromosome names as the tool GTFs. Doing it here rather than in
-        # a separate in-place rewrite rule avoids a stale-marker race that left
-        # variant_only labels unprefixed.
-        def _chr_prefix(path):
-            p = Path(path)
-            lines = []
-            for ln in p.read_text().splitlines(keepends=True):
-                if ln.startswith("#") or not ln.strip():
-                    lines.append(ln)
-                    continue
-                cols = ln.split("\t")
-                if not cols[0].startswith("chr"):
-                    cols[0] = "chr" + cols[0]
-                lines.append("\t".join(cols))
-            p.write_text("".join(lines))
-
+        # same chromosome names as the tool GTFs.
         if HAS_SIM_TRUTH:
             for sample in params.scenario_samples:
                 gff_src = (Path(str(params.asim_dir)) / sample
@@ -237,19 +259,12 @@ rule extract_fastder_inputs:
                 if not gff_src.exists():
                     gff_src = Path(str(params.asim_dir)) / sample / "splicing_variants.gff3"
                 if gff_src.exists():
-                    dst = fdir / f"{sample}_label.gff3"
-                    shutil.copy2(gff_src, dst)
-                    _chr_prefix(dst)
+                    chr_prefix.prefix_chromosomes(gff_src, fdir / f"{sample}_label.gff3")
         else:
-            ref_path = Path(str(REF_ANNOTATION))
-            if not ref_path.is_absolute():
-                ref_path = Path(str(WORKFLOW_DIR)) / ref_path
-            if not ref_path.exists():
-                raise FileNotFoundError(f"reference annotation not found: {ref_path}")
             for sample in params.scenario_samples:
-                dst = fdir / f"{sample}_label{ref_path.suffix}"
-                shutil.copy2(ref_path, dst)
-                _chr_prefix(dst)
+                dst = fdir / f"{sample}_label{LABEL_EXT}"
+                dst.unlink(missing_ok=True)
+                dst.symlink_to(op.relpath(input.reference_label, fdir))
 
 
 # 8. Match chr prefix convention for files used by gffcompare
@@ -264,12 +279,15 @@ rule match_chr_prefix:
         op.join(LOG_DIR, "match_chr_prefix_{scenario}.log")
     params:
         fastder_dir=lambda wc: op.join(FASTDER_DIR, wc.scenario),
+    resources:
+        mem_mb=2000,
+        runtime=30,
     conda:
         "../envs/base.yaml"
     shell:
         """
         for file in {params.fastder_dir}/*_label.gff3 {params.fastder_dir}/*_label.gtf; do
-            [ -f "$file" ] || continue
+            [ -f "$file" ] && [ ! -L "$file" ] || continue
             tmp="${{file}}.tmp"
             awk 'BEGIN{{FS=OFS="\\t"}}
                 /^#/ {{ print; next }}
@@ -311,6 +329,9 @@ rule bigwig_to_bedgraph:
         op.join(LOG_DIR, "bigwig_to_bedgraph_{scenario}.log")
     params:
         fastder_dir=lambda wc: op.join(FASTDER_DIR, wc.scenario),
+    resources:
+        mem_mb=4000,
+        runtime=120,
     conda:
         "../envs/ucsc_tools.yaml"
     shell:
@@ -352,6 +373,9 @@ rule build_fastder:
         fastder_src=op.join(WORKFLOW_DIR, "external", "fastder"),
         build_dir=str(FASTDER_BUILD_DIR),
     threads: config["cores"]
+    resources:
+        mem_mb=4000,
+        runtime=60,
     conda:
         "../envs/fastder_build.yaml"
     shell:
@@ -367,7 +391,7 @@ rule build_fastder:
 
 
 # 10. Run fastder for each parameter combination.
-# Each run gets its own working directory (data/fastder/runs/{param_id}/) with
+# Each run gets its own working directory (data/fastder/<config>/{scenario}/runs/{param_id}/) with
 # symlinks to the shared inputs. This allows parallel execution without races
 # on the FASTDER_RESULT_*.gtf output filenames. Symlinks include .bw files
 # directly; fastder reads them via libBigWig.
@@ -376,10 +400,13 @@ rule run_fastder:
         fastder_exe=op.join(FASTDER_BUILD_DIR, "fastder"),
         extract_done=op.join(FASTDER_DIR, "{scenario}", "extract.DONE"),
     output:
+        # The calls under a fixed name. Rules downstream read this file, so a
+        # change in the calls reaches them; gtf_path holds only a path.
+        gtf=op.join(FASTDER_DIR, "{scenario}", "runs", "{param_id}", "fastder.gtf"),
         gtf_path=op.join(FASTDER_DIR, "{scenario}", "run_fastder_{param_id}.gtf_path"),
         done=touch(op.join(FASTDER_DIR, "{scenario}", "run_fastder_{param_id}.DONE")),
     benchmark:
-        op.join(BENCH_DIR, "run_fastder", "{scenario}_{param_id}.tsv")
+        repeat(op.join(BENCH_DIR, "run_fastder", "{scenario}_{param_id}.tsv"), BENCHMARK_REPEATS)
     log:
         op.join(LOG_DIR, "run_fastder", "{scenario}_{param_id}.log")
     params:
@@ -392,7 +419,10 @@ rule run_fastder:
             if FASTDER_CFG.get("chromosomes")
             else ""
         ),
-    threads: config["cores"]
+    threads: FASTDER_CORES
+    resources:
+        mem_mb=FASTDER_MEM_MB,
+        runtime=120,
     conda:
         "../envs/fastder_build.yaml"
     shell:
@@ -424,27 +454,105 @@ rule run_fastder:
             echo "ERROR: fastder did not produce a FASTDER_RESULT_*.gtf" >&2; exit 1
         fi
         echo "$gtf" > {output.gtf_path}
+        cp -f "$gtf" {output.gtf}
         """
 
 
 # 11b. Per-tool runners. Each rule produces a GTF at
-# data/tools/{tool}/{scenario}/{param_id}/output.gtf so run_gffcompare and
+# data/tools/<config>/{tool}/{scenario}/{param_id}/output.gtf so run_gffcompare and
 # eval_fuzzy_metrics can compare the methods on the same simulated truth.
 
 # fastder: re-export the run_fastder GTF at the standardised path.
 rule link_fastder_gtf:
     input:
-        gtf_path=op.join(FASTDER_DIR, "{scenario}", "run_fastder_{param_id}.gtf_path"),
+        gtf=op.join(FASTDER_DIR, "{scenario}", "runs", "{param_id}", "fastder.gtf"),
     output:
-        gtf=op.join(DATA_DIR, "tools", "fastder", "{scenario}", "{param_id}", "output.gtf"),
+        gtf=op.join(TOOLS_DIR, "fastder", "{scenario}", "{param_id}", "output.gtf"),
     benchmark:
         op.join(BENCH_DIR, "link_fastder_gtf", "{scenario}_{param_id}.tsv")
     log:
         op.join(LOG_DIR, "link_fastder_gtf", "{scenario}_{param_id}.log"),
+    resources:
+        mem_mb=1000,
+        runtime=10,
     conda:
         "../envs/base.yaml"
     shell:
         """
         mkdir -p $(dirname {output.gtf})
-        cp -f $(cat {input.gtf_path}) {output.gtf} 2> {log}
+        cp -f {input.gtf} {output.gtf} 2> {log}
+        """
+
+
+# The fastder GTF with every exon as its own record. Exon edges stay where
+# stitching put them; the records carry no structure.
+rule split_fastder_chains:
+    input:
+        gtf=op.join(TOOLS_DIR, "fastder", "{scenario}", "{param_id}", "output.gtf"),
+        script=op.join(WORKFLOW_DIR, "scripts", "split_chains.py"),
+    output:
+        gtf=op.join(TOOLS_DIR, SPLIT_TOOL, "{scenario}", "{param_id}", "output.gtf"),
+    log:
+        op.join(LOG_DIR, "split_fastder_chains", "{scenario}_{param_id}.log"),
+    resources:
+        mem_mb=1000,
+        runtime=10,
+    conda:
+        "../envs/base.yaml"
+    shell:
+        "python3 {input.script} --gtf {input.gtf} --out {output.gtf} > {log} 2>&1"
+
+
+# Scaling sweep: fastder against itself at several core counts, on one
+# scenario. Times how the two parallel stages behave rather than comparing
+# tools, so it is separate from run_fastder and from the cross-tool benchmark.
+#
+# Parsing parallelises up to the number of samples and averaging up to the
+# number of chromosomes, while stitching is serial. On a single-chromosome
+# workload the curve therefore flattens almost at once, so run this on a
+# genome-wide config.
+rule run_fastder_scaling:
+    input:
+        fastder_exe=op.join(FASTDER_BUILD_DIR, "fastder"),
+        extract_done=op.join(FASTDER_DIR, SCALING_SCENARIO, "extract.DONE"),
+    output:
+        done=touch(op.join(FASTDER_DIR, "scaling", "cores{ncores}.DONE")),
+    benchmark:
+        repeat(op.join(BENCH_DIR, "run_fastder_scaling", "cores{ncores}.tsv"), BENCHMARK_REPEATS)
+    log:
+        op.join(LOG_DIR, "run_fastder_scaling", "cores{ncores}.log")
+    params:
+        fastder_dir=op.join(FASTDER_DIR, SCALING_SCENARIO),
+        run_dir=lambda wc: op.join(FASTDER_DIR, "scaling", f"cores{wc.ncores}"),
+        fastder_args=PARAM_CLI_ARGS[PARAM_IDS[0]],
+        stranded_arg="--stranded" if STRANDED else "",
+        chr_args=(
+            "--chr " + " ".join(str(c) for c in FASTDER_CFG["chromosomes"])
+            if FASTDER_CFG.get("chromosomes")
+            else ""
+        ),
+    threads: lambda wc: int(wc.ncores)
+    resources:
+        mem_mb=FASTDER_SCALING_MEM_MB,
+        runtime=240,
+    conda:
+        "../envs/fastder_build.yaml"
+    shell:
+        """
+        mkdir -p {params.run_dir}
+        rm -f {params.run_dir}/FASTDER_RESULT_*.gtf
+        for f in {params.fastder_dir}/*.bw \
+                  {params.fastder_dir}/*.MM \
+                  {params.fastder_dir}/*.RR \
+                  {params.fastder_dir}/*.csv; do
+            [ -e "$f" ] || continue
+            ln -sf "$f" {params.run_dir}/
+        done
+        {input.fastder_exe} \
+            --dir {params.run_dir} \
+            {params.stranded_arg} \
+            {params.fastder_args} \
+            --cores {wildcards.ncores} \
+            {params.chr_args} \
+            > {log} 2>&1
         """

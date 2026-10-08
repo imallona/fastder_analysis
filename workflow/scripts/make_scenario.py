@@ -4,7 +4,6 @@ import gzip
 import os
 import os.path as op
 import re
-import shutil
 import sys
 
 
@@ -96,11 +95,12 @@ def filter_fastq(fq_in, fq_out, template_ids):
     """ASimulatoR read headers look like @read<N>/<transcript_id>;mate1:...,
     so the originating transcript id sits between the first slash and the
     first semicolon (READ_HEADER_TX_RE captures it). Drop records whose
-    transcript id is a template. Output is uncompressed FASTQ to match
-    ASimulatoR's default output format."""
+    transcript id is a template. The output is compressed when its name says
+    so, matching whatever the simulator produced."""
     written = 0
     skipped = 0
-    with open(fq_out, "w") as out:
+    opener = gzip.open if fq_out.endswith(".gz") else open
+    with opener(fq_out, "wt") as out:
         for h, s, p, q in fastq_iter(fq_in):
             m = READ_HEADER_TX_RE.match(h)
             tx = m.group(1) if m else ""
@@ -122,6 +122,14 @@ def passthrough(src, dst):
     os.symlink(op.abspath(src), dst)
 
 
+def hardlink(src, dst):
+    """A second name for src, valid after src is removed."""
+    if op.isfile(dst) or op.islink(dst):
+        os.remove(dst)
+    os.makedirs(op.dirname(dst), exist_ok=True)
+    os.link(src, dst)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--scenario", required=True,
@@ -138,8 +146,8 @@ def main():
 
     if args.scenario == "template_and_variant":
         passthrough(args.gff_in, args.gff_out)
-        passthrough(args.fq1_in, args.fq1_out)
-        passthrough(args.fq2_in, args.fq2_out)
+        hardlink(args.fq1_in, args.fq1_out)
+        hardlink(args.fq2_in, args.fq2_out)
         return
 
     template_ids = template_transcript_ids(args.gff_in)
