@@ -6,6 +6,7 @@ the failure surfaces one rule later.
 
 import gzip
 
+import make_scenario
 from make_scenario import fastq_iter, filter_fastq, hardlink, passthrough
 
 TEMPLATE = "ENST_TEMPLATE"
@@ -80,3 +81,36 @@ def test_passthrough_links_rather_than_copies(tmp_path):
     assert dst.is_symlink()
     with gzip.open(dst, "rt") as fh:
         assert fh.read().count("@read") == 2
+
+
+GFF = (
+    "chr21\tsim\tgene\t1\t100\t.\t+\t.\tgene_id=G1\n"
+    f"chr21\tsim\ttranscript\t1\t100\t.\t+\t.\tgene_id=G1;transcript_id={TEMPLATE};template=TRUE\n"
+    f"chr21\tsim\ttranscript\t1\t100\t.\t+\t.\tgene_id=G1;transcript_id={VARIANT};template=FALSE\n"
+)
+
+
+def run_main(monkeypatch, *arguments):
+    monkeypatch.setattr("sys.argv", ["make_scenario.py", *map(str, arguments)])
+    make_scenario.main()
+
+
+def test_rebuilding_reads_leaves_the_truth_file_alone(tmp_path, monkeypatch):
+    gff_in = tmp_path / "splicing_variants.gff3"
+    gff_out = tmp_path / "variant_only" / "splicing_variants.gff3"
+    fq_in = tmp_path / "sample_01_1.fastq.gz"
+    fq_out = tmp_path / "variant_only" / "sample_01_1.fastq.gz"
+    gff_in.write_text(GFF)
+    write_fastq(fq_in, [TEMPLATE, VARIANT])
+
+    run_main(monkeypatch, "--scenario", "variant_only",
+             "--gff-in", gff_in, "--gff-out", gff_out)
+    assert TEMPLATE not in gff_out.read_text()
+    assert not fq_out.exists()
+    truth_before = gff_out.stat().st_mtime_ns
+
+    run_main(monkeypatch, "--scenario", "variant_only", "--gff-in", gff_in,
+             "--fq1-in", fq_in, "--fq1-out", fq_out)
+    with gzip.open(fq_out, "rt") as fh:
+        assert fh.read().count("@read") == 1
+    assert gff_out.stat().st_mtime_ns == truth_before

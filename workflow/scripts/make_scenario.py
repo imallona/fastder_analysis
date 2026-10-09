@@ -135,27 +135,32 @@ def main():
     ap.add_argument("--scenario", required=True,
                     choices=["template_and_variant", "variant_only"])
     ap.add_argument("--gff-in", required=True)
-    ap.add_argument("--fq1-in", required=True)
-    ap.add_argument("--fq2-in", required=True)
-    ap.add_argument("--gff-out", required=True)
-    ap.add_argument("--fq1-out", required=True)
-    ap.add_argument("--fq2-out", required=True)
+    ap.add_argument("--gff-out")
+    ap.add_argument("--fq1-in")
+    ap.add_argument("--fq2-in")
+    ap.add_argument("--fq1-out")
+    ap.add_argument("--fq2-out")
     args = ap.parse_args()
 
-    os.makedirs(op.dirname(args.gff_out), exist_ok=True)
+    reads = [(args.fq1_in, args.fq1_out), (args.fq2_in, args.fq2_out)]
+    reads = [(src, dst) for src, dst in reads if src and dst]
 
     if args.scenario == "template_and_variant":
-        passthrough(args.gff_in, args.gff_out)
-        hardlink(args.fq1_in, args.fq1_out)
-        hardlink(args.fq2_in, args.fq2_out)
+        if args.gff_out:
+            passthrough(args.gff_in, args.gff_out)
+        for src, dst in reads:
+            hardlink(src, dst)
         return
 
     template_ids = template_transcript_ids(args.gff_in)
     print(f"[make_scenario] {len(template_ids)} template transcripts to drop",
           file=sys.stderr)
-    filter_gff(args.gff_in, args.gff_out, template_ids)
-    filter_fastq(args.fq1_in, args.fq1_out, template_ids)
-    filter_fastq(args.fq2_in, args.fq2_out, template_ids)
+    if args.gff_out:
+        os.makedirs(op.dirname(args.gff_out), exist_ok=True)
+        filter_gff(args.gff_in, args.gff_out, template_ids)
+    for src, dst in reads:
+        os.makedirs(op.dirname(dst), exist_ok=True)
+        filter_fastq(src, dst, template_ids)
 
 
 if __name__ == "__main__":
