@@ -42,16 +42,18 @@ rule run_asimulator:
 
 
 # 2b. Materialise the per-scenario asimulator outputs.
-# template_and_variant links the original ASimulatoR output unchanged.
+# template_and_variant keeps the original ASimulatoR output unchanged.
 # variant_only drops the transcripts with template=TRUE in
 # splicing_variants.gff3 from the truth, and their reads from the FASTQ, so
 # the truth set used by gffcompare contains exactly the transcripts that
 # produced the reads downstream rules will see.
 # Truth and reads are separate rules: the reads are temp, and building them
-# again must leave the truth file and its date alone.
+# again must leave the truth file and its date alone. The input is ancient
+# because run_asimulator writes it again, with the same seed, each time it
+# rebuilds its reads.
 rule make_scenario_truth:
     input:
-        gff=op.join(ASIM_DIR, "{sample}", "splicing_variants.gff3"),
+        gff=ancient(op.join(ASIM_DIR, "{sample}", "splicing_variants.gff3")),
     output:
         gff=op.join(ASIM_DIR, "{sample}", "{scenario}", "splicing_variants.gff3"),
     log:

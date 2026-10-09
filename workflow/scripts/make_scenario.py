@@ -4,6 +4,7 @@ import gzip
 import os
 import os.path as op
 import re
+import shutil
 import sys
 
 
@@ -115,11 +116,10 @@ def filter_fastq(fq_in, fq_out, template_ids):
     print(f"[make_scenario] {fq_in}: wrote {written}, dropped {skipped}", file=sys.stderr)
 
 
-def passthrough(src, dst):
-    if op.isfile(dst) or op.islink(dst):
-        os.remove(dst)
+def copy(src, dst):
+    """An own file, so that a later rewrite of src leaves dst and its date alone."""
     os.makedirs(op.dirname(dst), exist_ok=True)
-    os.symlink(op.abspath(src), dst)
+    shutil.copyfile(src, dst)
 
 
 def hardlink(src, dst):
@@ -147,7 +147,7 @@ def main():
 
     if args.scenario == "template_and_variant":
         if args.gff_out:
-            passthrough(args.gff_in, args.gff_out)
+            copy(args.gff_in, args.gff_out)
         for src, dst in reads:
             hardlink(src, dst)
         return
