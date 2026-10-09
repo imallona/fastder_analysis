@@ -142,3 +142,15 @@ def test_reads_stop_when_the_kept_truth_no_longer_matches(tmp_path, monkeypatch,
     gff_in.write_text(GFF.replace("\t100\t", "\t200\t"))
     with pytest.raises(SystemExit, match="differs from the truth"):
         run_main(monkeypatch, "--scenario", scenario, "--gff-in", gff_in, "--gff-check", truth)
+
+
+@pytest.mark.parametrize("arguments", [
+    [],
+    ["--fq1-in", "sample_01_1.fastq.gz"],
+    ["--fq2-out", "sample_01_2.fastq.gz"],
+])
+def test_a_call_without_a_complete_task_is_refused(tmp_path, monkeypatch, arguments):
+    gff_in = tmp_path / "splicing_variants.gff3"
+    gff_in.write_text(GFF)
+    with pytest.raises(SystemExit):
+        run_main(monkeypatch, "--scenario", "variant_only", "--gff-in", gff_in, *arguments)

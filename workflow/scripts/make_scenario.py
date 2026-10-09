@@ -166,7 +166,11 @@ def main():
     args = ap.parse_args()
 
     reads = [(args.fq1_in, args.fq1_out), (args.fq2_in, args.fq2_out)]
-    reads = [(src, dst) for src, dst in reads if src and dst]
+    if any(bool(src) != bool(dst) for src, dst in reads):
+        ap.error("a FASTQ input needs its output, and the reverse")
+    reads = [(src, dst) for src, dst in reads if src]
+    if not (reads or args.gff_out or args.gff_check):
+        ap.error("nothing to do: give --gff-out, --gff-check or a FASTQ pair")
 
     if args.gff_out:
         write_truth(args.scenario, args.gff_in, args.gff_out)
