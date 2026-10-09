@@ -1,11 +1,13 @@
 """IMPORTANT: produces per-scenario asimulator outputs, where scenario controls whether template + variant transcripts both contribute reads (template_and_variant, the ASimulatoR default) or only the variant transcripts do (variant_only, which removes both the template reads from the FASTQ and the template entries from the GFF so the truth set carries only the alternative isoforms)."""
 import argparse
+import filecmp
 import gzip
 import os
 import os.path as op
 import re
 import shutil
 import sys
+import tempfile
 
 
 GFF_ATTR_RE = re.compile(r'(\w+)=([^;]+)')
@@ -118,8 +120,28 @@ def filter_fastq(fq_in, fq_out, template_ids):
 
 def copy(src, dst):
     """An own file, so that a later rewrite of src leaves dst and its date alone."""
+    if op.isfile(dst) or op.islink(dst):
+        os.remove(dst)
     os.makedirs(op.dirname(dst), exist_ok=True)
     shutil.copyfile(src, dst)
+
+
+def write_truth(scenario, gff_in, gff_out):
+    if scenario == "template_and_variant":
+        copy(gff_in, gff_out)
+        return
+    os.makedirs(op.dirname(gff_out), exist_ok=True)
+    filter_gff(gff_in, gff_out, template_transcript_ids(gff_in))
+
+
+def check_truth(scenario, gff_in, truth):
+    """Stop when gff_in no longer gives the truth file kept from an earlier run."""
+    with tempfile.TemporaryDirectory() as tmp:
+        expected = op.join(tmp, "splicing_variants.gff3")
+        write_truth(scenario, gff_in, expected)
+        if not filecmp.cmp(expected, truth, shallow=False):
+            sys.exit(f"[make_scenario] {truth} differs from the truth in {gff_in}. "
+                     "Remove it and the results built from it.")
 
 
 def hardlink(src, dst):
@@ -136,6 +158,7 @@ def main():
                     choices=["template_and_variant", "variant_only"])
     ap.add_argument("--gff-in", required=True)
     ap.add_argument("--gff-out")
+    ap.add_argument("--gff-check", help="existing scenario truth to compare with")
     ap.add_argument("--fq1-in")
     ap.add_argument("--fq2-in")
     ap.add_argument("--fq1-out")
@@ -145,9 +168,12 @@ def main():
     reads = [(args.fq1_in, args.fq1_out), (args.fq2_in, args.fq2_out)]
     reads = [(src, dst) for src, dst in reads if src and dst]
 
+    if args.gff_out:
+        write_truth(args.scenario, args.gff_in, args.gff_out)
+    if args.gff_check:
+        check_truth(args.scenario, args.gff_in, args.gff_check)
+
     if args.scenario == "template_and_variant":
-        if args.gff_out:
-            copy(args.gff_in, args.gff_out)
         for src, dst in reads:
             hardlink(src, dst)
         return
@@ -155,9 +181,6 @@ def main():
     template_ids = template_transcript_ids(args.gff_in)
     print(f"[make_scenario] {len(template_ids)} template transcripts to drop",
           file=sys.stderr)
-    if args.gff_out:
-        os.makedirs(op.dirname(args.gff_out), exist_ok=True)
-        filter_gff(args.gff_in, args.gff_out, template_ids)
     for src, dst in reads:
         os.makedirs(op.dirname(dst), exist_ok=True)
         filter_fastq(src, dst, template_ids)

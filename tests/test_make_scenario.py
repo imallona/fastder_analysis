@@ -7,6 +7,7 @@ the failure surfaces one rule later.
 import gzip
 
 import make_scenario
+import pytest
 from make_scenario import copy, fastq_iter, filter_fastq, hardlink
 
 TEMPLATE = "ENST_TEMPLATE"
@@ -114,3 +115,30 @@ def test_rebuilding_reads_leaves_the_truth_file_alone(tmp_path, monkeypatch):
     with gzip.open(fq_out, "rt") as fh:
         assert fh.read().count("@read") == 1
     assert gff_out.stat().st_mtime_ns == truth_before
+
+
+def test_copy_replaces_a_link_to_its_source(tmp_path):
+    src = tmp_path / "splicing_variants.gff3"
+    dst = tmp_path / "template_and_variant" / "splicing_variants.gff3"
+    src.write_text(GFF)
+    dst.parent.mkdir()
+    dst.symlink_to(src)
+
+    copy(str(src), str(dst))
+
+    assert not dst.is_symlink()
+    assert dst.read_text() == GFF
+
+
+@pytest.mark.parametrize("scenario", ["template_and_variant", "variant_only"])
+def test_reads_stop_when_the_kept_truth_no_longer_matches(tmp_path, monkeypatch, scenario):
+    gff_in = tmp_path / "splicing_variants.gff3"
+    truth = tmp_path / scenario / "splicing_variants.gff3"
+    gff_in.write_text(GFF)
+    run_main(monkeypatch, "--scenario", scenario, "--gff-in", gff_in, "--gff-out", truth)
+
+    run_main(monkeypatch, "--scenario", scenario, "--gff-in", gff_in, "--gff-check", truth)
+
+    gff_in.write_text(GFF.replace("\t100\t", "\t200\t"))
+    with pytest.raises(SystemExit, match="differs from the truth"):
+        run_main(monkeypatch, "--scenario", scenario, "--gff-in", gff_in, "--gff-check", truth)

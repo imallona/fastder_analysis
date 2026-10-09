@@ -50,7 +50,8 @@ rule run_asimulator:
 # Truth and reads are separate rules: the reads are temp, and building them
 # again must leave the truth file and its date alone. The input is ancient
 # because run_asimulator writes it again, with the same seed, each time it
-# rebuilds its reads.
+# rebuilds its reads. make_scenario stops if that GFF no longer gives the
+# kept truth.
 rule make_scenario_truth:
     input:
         gff=ancient(op.join(ASIM_DIR, "{sample}", "splicing_variants.gff3")),
@@ -77,6 +78,7 @@ rule make_scenario:
         gff=op.join(ASIM_DIR, "{sample}", "splicing_variants.gff3"),
         fq1=op.join(READS_DIR, "{sample}", "sample_01_1.fastq.gz"),
         fq2=op.join(READS_DIR, "{sample}", "sample_01_2.fastq.gz"),
+        truth=op.join(ASIM_DIR, "{sample}", "{scenario}", "splicing_variants.gff3"),
     output:
         # Deleted once aligned. variant_only is a copy, hundreds of GB
         # over four depths. --notemp keeps them.
@@ -97,7 +99,8 @@ rule make_scenario:
     shell:
         """
         python3 {params.script} --scenario {wildcards.scenario} \
-            --gff-in {input.gff} --fq1-in {input.fq1} --fq2-in {input.fq2} \
+            --gff-in {input.gff} --gff-check {input.truth} \
+            --fq1-in {input.fq1} --fq2-in {input.fq2} \
             --fq1-out {output.fq1} --fq2-out {output.fq2} \
             > {log} 2>&1
         """
