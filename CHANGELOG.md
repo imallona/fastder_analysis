@@ -94,6 +94,7 @@
 
 ### Fixed
 
+- `figure_main_1` declares 40 GB; it peaked at 28 GB. `slurm/03_finish.sh` asks for 48 GB; the cross-depth report peaked at 38 GB. Both ran out of memory.
 - `slurm/common.sh` activates conda without the run script's arguments. `sbatch slurm/03_finish.sh figures` looked for an environment named `figures`.
 - `render_meta_report.sh` also looks for R under `CONDA_PREFIX_DIR`. It found no environment when they were kept outside `.snakemake`.
 - `make reports` and `make composites` pass each config's deployment flags. The `config_full_simulation` reports ran without `--use-singularity` before. Its simulation counted as out of date.

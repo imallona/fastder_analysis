@@ -6,12 +6,12 @@
 #   sbatch slurm/03_finish.sh                      # every timed config, figures
 #   sbatch slurm/03_finish.sh tdp43 tdp43-panel    # some of them, no figures
 #
-# The cross-depth report is rendered in this job.
+# The cross-depth report is rendered in this job and peaks at 38 GB.
 #
 #SBATCH --job-name=fastder-finish
 #SBATCH --time=48:00:00
 #SBATCH --cpus-per-task=4
-#SBATCH --mem-per-cpu=4000
+#SBATCH --mem-per-cpu=12000
 #SBATCH --output=slurm/logs/%x-%j.out
 #SBATCH --signal=B:TERM@300
 

@@ -153,7 +153,8 @@ rule figure_main_1:
     log:
         op.join(LOG_DIR, "figure_main_1.log"),
     resources:
-        mem_mb=8000,
+        # Reads the per-base distances of six configs, 2 GB each: 28 GB peak.
+        mem_mb=40000,
         runtime=60,
     conda:
         "../envs/figures.yaml"
