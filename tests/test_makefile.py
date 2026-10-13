@@ -224,3 +224,19 @@ def test_timed_rules_are_the_ones_the_profile_pins():
     pinned = {rule for rule, resources in profile["set-resources"].items()
               if resources.get("constraint")}
     assert set(listed_timed_rules()) == pinned
+
+
+def test_reports_and_composites_use_the_flags_their_configs_were_built_with():
+    result = subprocess.run(["make", "-n", "reports", "composites", "CONDA_INIT=/nonexistent/activate"],
+                            cwd=ROOT, capture_output=True, text=True, check=True)
+    with_container = {}
+    for chunk in result.stdout.split("FASTDER_EVAL_CONFIG=../config/")[1:]:
+        command = chunk.splitlines()[0]
+        assert "--use-conda" in command
+        with_container.setdefault(command.split(".yaml")[0], set()).add("--use-singularity" in command)
+    assert with_container == {
+        "config_full_simulation": {True},
+        "config_klim_2019_tdp43_recount3": {False},
+        "config_gtex_concordance": {False},
+        "config_gtex_comparison": {False},
+    }
