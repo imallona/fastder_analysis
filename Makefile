@@ -151,6 +151,11 @@ pass_untimed = ( $(SNAKEMAKE) $(2) -n || true ) | python3 scripts/check_prepared
 cluster_pass = $(if $(filter untimed,$(PASSES)),$(pass_untimed) &&) \
   $(if $(filter-out prepare untimed,$(PASSES)),$(pass_rest),$(pass_prepare))
 
+## Deployment flags per config family. The reports reuse them: a config read
+## with other flags than it was built with counts as out of date.
+DEPLOY_SIMULATION := --use-conda --use-singularity
+DEPLOY_RECOUNT3 := --use-conda
+
 ## Run one config. Locally in three passes, so that no timed job shares the
 ## machine: everything upstream of the timed rules, the timed rules alone, then
 ## the rest. On the cluster the scheduler places the jobs.
@@ -168,9 +173,10 @@ cd $(WORKFLOW_DIR) && bash -c '$(ACTIVATE) && export FASTDER_EVAL_CONFIG=../conf
   $(SNAKEMAKE) $(2)'
 endef
 
-## Run snakemake targets under one config. $(1) config file, $(2) targets.
+## Run snakemake targets under one config.
+## $(1) config file, $(2) snakemake flags, $(3) targets.
 define snake
-cd $(WORKFLOW_DIR) && bash -c '$(ACTIVATE) && FASTDER_EVAL_CONFIG=../config/$(1) $(SNAKEMAKE) --use-conda $(2)'
+cd $(WORKFLOW_DIR) && bash -c '$(ACTIVATE) && FASTDER_EVAL_CONFIG=../config/$(1) $(SNAKEMAKE) $(2) $(3)'
 endef
 
 .DEFAULT_GOAL := help
@@ -220,52 +226,52 @@ submodules-latest:
 simulations: sim sim-5m sim-30m sim-40m
 
 sim:
-	$(call run,config_full_simulation.yaml,--use-conda --use-singularity)
+	$(call run,config_full_simulation.yaml,$(DEPLOY_SIMULATION))
 
 sim-5m:
-	$(call run,config_full_simulation_5M.yaml,--use-conda --use-singularity)
+	$(call run,config_full_simulation_5M.yaml,$(DEPLOY_SIMULATION))
 
 sim-30m:
-	$(call run,config_full_simulation_30M.yaml,--use-conda --use-singularity)
+	$(call run,config_full_simulation_30M.yaml,$(DEPLOY_SIMULATION))
 
 sim-40m:
-	$(call run,config_full_simulation_40M.yaml,--use-conda --use-singularity)
+	$(call run,config_full_simulation_40M.yaml,$(DEPLOY_SIMULATION))
 
 ## The 10M simulation drawn again under other seeds.
 sim-replicates:
-	$(call run_untimed,config_full_simulation_rep2.yaml,--use-conda --use-singularity)
-	$(call run_untimed,config_full_simulation_rep3.yaml,--use-conda --use-singularity)
+	$(call run_untimed,config_full_simulation_rep2.yaml,$(DEPLOY_SIMULATION))
+	$(call run_untimed,config_full_simulation_rep3.yaml,$(DEPLOY_SIMULATION))
 
 ## The 10M reads aligned against an index built without the annotation.
 ## Reuses the simulated reads, so run after sim.
 sim-unannotated:
-	$(call run_untimed,config_unannotated_alignment.yaml,--use-conda --use-singularity)
+	$(call run_untimed,config_unannotated_alignment.yaml,$(DEPLOY_SIMULATION))
 
 ## Coverage threshold ladder for fastder, derfinder and the megadepth baseline.
 ## Reuses the simulated reads, so run after sim. threshold_choice.csv names
 ## the threshold with the best exon-level F1.
 threshold-ladder:
-	$(call run_untimed,config_threshold_ladder.yaml,--use-conda --use-singularity)
+	$(call run_untimed,config_threshold_ladder.yaml,$(DEPLOY_SIMULATION))
 
 ## min_junction_reads sweep, fastder alone. Reuses the 10M data, so run after sim.
 mjr-sweep:
-	$(call run_untimed,config_min_junction_reads_sweep.yaml,--use-conda --use-singularity)
+	$(call run_untimed,config_min_junction_reads_sweep.yaml,$(DEPLOY_SIMULATION))
 
 ## TDP-43 recount3 showcase: a clean single threshold that isolates the STMN2
 ## cryptic exon. The recount3 backend has no ASimulatoR container step, so no
 ## --use-singularity.
 tdp43:
-	$(call run,config_klim_2019_tdp43_recount3.yaml,--use-conda)
+	$(call run,config_klim_2019_tdp43_recount3.yaml,$(DEPLOY_RECOUNT3))
 
 ## TDP-43 recount3 panel: a low single threshold that emits the wider cryptic
 ## exon panel (STMN2, HDGFL2, ELAVL3, CELF5), recovered via junctions.
 tdp43-panel:
-	$(call run,config_klim_2019_tdp43_recount3_panel.yaml,--use-conda)
+	$(call run,config_klim_2019_tdp43_recount3_panel.yaml,$(DEPLOY_RECOUNT3))
 
 ## TDP-43 recount3 ladder: fastder at every threshold of a ladder, and the
 ## range over which each cryptic exon locus separates knockdown from control.
 tdp43-ladder:
-	$(call run_untimed,config_klim_2019_tdp43_recount3_ladder.yaml,--use-conda)
+	$(call run_untimed,config_klim_2019_tdp43_recount3_ladder.yaml,$(DEPLOY_RECOUNT3))
 
 ## GTEx structural-concordance atlas: fastder run genome-wide, once per tissue
 ## sub-group over the recount3 gtex data source, then the per-sub-group
@@ -273,23 +279,23 @@ tdp43-ladder:
 ## baselines. The recount3 backend has no ASimulatoR container step, so no
 ## --use-singularity.
 gtex:
-	$(call run,config_gtex_concordance.yaml,--use-conda)
+	$(call run,config_gtex_concordance.yaml,$(DEPLOY_RECOUNT3))
 
 ## GTEx tool comparison: the same sub-groups on chr19 with all three tools,
 ## for the fastder-versus-baseline runtime and gffcompare comparison.
 gtex-comparison:
-	$(call run,config_gtex_comparison.yaml,--use-conda)
+	$(call run,config_gtex_comparison.yaml,$(DEPLOY_RECOUNT3))
 
 ## Reduced GTEx run: 2 tissues, 12 BigWigs, one chromosome. Walks the
 ## whole gtex path cheaply; run it before make gtex to validate.
 gtex-smoke:
-	$(call run,config_gtex_smoke.yaml,--use-conda)
+	$(call run,config_gtex_smoke.yaml,$(DEPLOY_RECOUNT3))
 
 ## GTEx coverage threshold ladder: one sub-group per tissue, chr19, three
 ## tools. threshold_choice.csv names the threshold with the best exon-level F1
 ## against the annotation.
 gtex-threshold-ladder:
-	$(call run_untimed,config_gtex_threshold_ladder.yaml,--use-conda)
+	$(call run_untimed,config_gtex_threshold_ladder.yaml,$(DEPLOY_RECOUNT3))
 
 ## Rewrite the recount3.groups block of both GTEx configs to cover the
 ## listed tissues. Existing tissues keep their sample IDs exactly (so
@@ -327,7 +333,7 @@ gtex-pick:
 	  --apply $(GTEX_CONFIGS)'
 
 smoke:
-	$(call run,config_quick_light.yaml,--use-conda --use-singularity)
+	$(call run,config_quick_light.yaml,$(DEPLOY_SIMULATION))
 
 ## Knit the cross-depth report from the config_full_simulation* results.
 ## Per-run reports (summary.html, benchmarks.html, recount3.html) are produced
@@ -339,16 +345,16 @@ meta:
 ## per figure (dev=c('png','pdf')). Cheap: rmarkdown over the existing results,
 ## so it needs the per-config runs already done.
 reports:
-	$(call snake,config_full_simulation.yaml,render_summary_report render_benchmarks_report)
-	$(call snake,config_klim_2019_tdp43_recount3.yaml,render_recount3_report render_summary_report)
-	$(call snake,config_gtex_concordance.yaml,render_gtex_report render_summary_report)
-	$(call snake,config_gtex_comparison.yaml,render_summary_report)
+	$(call snake,config_full_simulation.yaml,$(DEPLOY_SIMULATION),render_summary_report render_benchmarks_report)
+	$(call snake,config_klim_2019_tdp43_recount3.yaml,$(DEPLOY_RECOUNT3),render_recount3_report render_summary_report)
+	$(call snake,config_gtex_concordance.yaml,$(DEPLOY_RECOUNT3),render_gtex_report render_summary_report)
+	$(call snake,config_gtex_comparison.yaml,$(DEPLOY_RECOUNT3),render_summary_report)
 	bash $(WORKFLOW_DIR)/scripts/render_meta_report.sh
 
 ## Assemble the two composite figures. The genome-wide config makes REF_GTF
 ## genome-wide, which the novel-exon count needs.
 composites:
-	$(call snake,config_gtex_concordance.yaml,manuscript_figures)
+	$(call snake,config_gtex_concordance.yaml,$(DEPLOY_RECOUNT3),manuscript_figures)
 
 ## Reports then composites.
 figures: reports composites
