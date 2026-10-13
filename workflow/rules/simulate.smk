@@ -42,18 +42,44 @@ rule run_asimulator:
 
 
 # 2b. Materialise the per-scenario asimulator outputs.
-# template_and_variant links the original ASimulatoR output unchanged.
-# variant_only filters the FASTQ to drop reads whose source transcript carries
-# template=TRUE in splicing_variants.gff3 and rewrites the GFF to keep only
-# the alternative isoforms, so the truth set used by gffcompare contains
-# exactly the transcripts that produced the reads downstream rules will see.
+# template_and_variant keeps the original ASimulatoR output unchanged.
+# variant_only drops the transcripts with template=TRUE in
+# splicing_variants.gff3 from the truth, and their reads from the FASTQ, so
+# the truth set used by gffcompare contains exactly the transcripts that
+# produced the reads downstream rules will see.
+# Truth and reads are separate rules: the reads are temp, and building them
+# again must leave the truth file and its date alone. The input is ancient
+# because run_asimulator writes it again, with the same seed, each time it
+# rebuilds its reads. make_scenario stops if that GFF no longer gives the
+# kept truth.
+rule make_scenario_truth:
+    input:
+        gff=ancient(op.join(ASIM_DIR, "{sample}", "splicing_variants.gff3")),
+    output:
+        gff=op.join(ASIM_DIR, "{sample}", "{scenario}", "splicing_variants.gff3"),
+    log:
+        op.join(LOG_DIR, "make_scenario_truth", "{sample}_{scenario}.log"),
+    params:
+        script=op.join(WORKFLOW_DIR, "scripts", "make_scenario.py"),
+    resources:
+        mem_mb=2000,
+        runtime=10,
+    conda:
+        "../envs/base.yaml"
+    shell:
+        """
+        python3 {params.script} --scenario {wildcards.scenario} \
+            --gff-in {input.gff} --gff-out {output.gff} > {log} 2>&1
+        """
+
+
 rule make_scenario:
     input:
         gff=op.join(ASIM_DIR, "{sample}", "splicing_variants.gff3"),
         fq1=op.join(READS_DIR, "{sample}", "sample_01_1.fastq.gz"),
         fq2=op.join(READS_DIR, "{sample}", "sample_01_2.fastq.gz"),
+        truth=op.join(ASIM_DIR, "{sample}", "{scenario}", "splicing_variants.gff3"),
     output:
-        gff=op.join(ASIM_DIR, "{sample}", "{scenario}", "splicing_variants.gff3"),
         # Deleted once aligned. variant_only is a copy, hundreds of GB
         # over four depths. --notemp keeps them.
         fq1=temp(op.join(READS_DIR, "{sample}", "{scenario}", "sample_01_1.fastq.gz")),
@@ -73,7 +99,8 @@ rule make_scenario:
     shell:
         """
         python3 {params.script} --scenario {wildcards.scenario} \
-            --gff-in {input.gff} --fq1-in {input.fq1} --fq2-in {input.fq2} \
-            --gff-out {output.gff} --fq1-out {output.fq1} --fq2-out {output.fq2} \
+            --gff-in {input.gff} --gff-check {input.truth} \
+            --fq1-in {input.fq1} --fq2-in {input.fq2} \
+            --fq1-out {output.fq1} --fq2-out {output.fq2} \
             > {log} 2>&1
         """

@@ -4,7 +4,7 @@ on:
   push:
     branches: [main, dev]
   pull_request:
-    branches: [main, dev]
+    branches: [main, dev, revision]
 
 jobs:
   pytest:
@@ -26,4 +26,10 @@ jobs:
         run: pip install pytest pyyaml
 
       - name: Run pytest
-        run: pytest tests/ -v
+        run: |
+          set -o pipefail
+          pytest tests/ -v | tee pytest.log
+
+      - name: Report the result
+        if: always()
+        run: tail -n 1 pytest.log >> "$GITHUB_STEP_SUMMARY"

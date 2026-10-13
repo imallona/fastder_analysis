@@ -4,6 +4,10 @@
 
 ### Changed
 
+- `make_scenario_truth` writes the per-scenario truth file. `make_scenario` writes the reads only.
+- Rebuilding removed reads no longer gives the truth a new date.
+- The truth rule reads the simulator's GFF as `ancient`. The `template_and_variant` truth is a copy.
+- `make_scenario` stops if the simulator's GFF no longer gives the kept truth.
 - `fig_sim_schematic` shows the eight simulated event classes. Main Figure 1 reserves panel A when `Figure_1.pdf` is absent. Its legend lists tools only.
 - `scaling.csv` and `supp_scaling.pdf` hold two core sweeps: genome-wide GTEx and the simulation. Each row carries its workload's sample and chromosome counts. The figure marks them. It showed the simulation alone before.
 - Reports write figure files under `results/<config>/<report>_figs/`. They shared `workflow/reports/<report>_figs/` before. Each config overwrote the last one's files.
