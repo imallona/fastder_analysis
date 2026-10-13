@@ -94,6 +94,7 @@
 
 ### Fixed
 
+- `render_meta_report.sh` also looks for R under `CONDA_PREFIX_DIR`. It found no environment when they were kept outside `.snakemake`.
 - `make reports` and `make composites` pass each config's deployment flags. The `config_full_simulation` reports ran without `--use-singularity` before. Its simulation counted as out of date.
 - `figure_sim_event_jaccard.R` leaves out `--no-stitch` runs. Their identifier has no tolerance, so they counted as tolerance 0.
 - `recount3.Rmd` sizes the gene-model track by its transcripts. Past about 25 transcripts the locus was drawn empty.

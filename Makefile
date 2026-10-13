@@ -339,7 +339,7 @@ smoke:
 ## Per-run reports (summary.html, benchmarks.html, recount3.html) are produced
 ## by snakemake inside the run targets above.
 meta:
-	bash $(WORKFLOW_DIR)/scripts/render_meta_report.sh
+	CONDA_PREFIX_DIR=$(CONDA_PREFIX_DIR) bash $(WORKFLOW_DIR)/scripts/render_meta_report.sh
 
 ## Re-render the reports that feed the manuscript figures, emitting a vector PDF
 ## per figure (dev=c('png','pdf')). Cheap: rmarkdown over the existing results,
@@ -349,7 +349,7 @@ reports:
 	$(call snake,config_klim_2019_tdp43_recount3.yaml,$(DEPLOY_RECOUNT3),render_recount3_report render_summary_report)
 	$(call snake,config_gtex_concordance.yaml,$(DEPLOY_RECOUNT3),render_gtex_report render_summary_report)
 	$(call snake,config_gtex_comparison.yaml,$(DEPLOY_RECOUNT3),render_summary_report)
-	bash $(WORKFLOW_DIR)/scripts/render_meta_report.sh
+	CONDA_PREFIX_DIR=$(CONDA_PREFIX_DIR) bash $(WORKFLOW_DIR)/scripts/render_meta_report.sh
 
 ## Assemble the two composite figures. The genome-wide config makes REF_GTF
 ## genome-wide, which the novel-exon count needs.
