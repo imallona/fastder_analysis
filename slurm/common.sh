@@ -18,9 +18,14 @@ fi
 
 # sbatch exports the submitting shell, so an environment activated there is
 # already on PATH. CONDA_INIT and CONDA_ENV are the fallback.
-if ! command -v snakemake > /dev/null && [ -n "${CONDA_INIT:-}" ]; then
+# In a function, so that the targets given to the run script are not read by
+# the activation script as an environment name.
+activate_conda() {
     source "$CONDA_INIT"
     conda activate "${CONDA_ENV:?CONDA_INIT is set, so CONDA_ENV must be too}"
+}
+if ! command -v snakemake > /dev/null && [ -n "${CONDA_INIT:-}" ]; then
+    activate_conda
 fi
 
 # Defaults are repo-relative, so they land wherever the checkout lives and no
