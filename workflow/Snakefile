@@ -1,7 +1,13 @@
 import os
 import os.path as op
 import itertools
+import sys
 from pathlib import Path
+
+sys.path.insert(0, op.join(workflow.basedir, "scripts"))
+import chr_prefix
+import data_layout
+import param_grid
 
 # IMPORTANT: scenarios control whether ASimulatoR template transcripts contribute reads. template_and_variant keeps the default (template + variant both expressed); variant_only post-filters the FASTQ and GFF so the truth set carries only alternative isoforms.
 
@@ -16,11 +22,22 @@ configfile: _CFG_PATH
 # Internal path constants.
 WORKFLOW_DIR = workflow.basedir
 DATA_DIR = op.join(WORKFLOW_DIR, "data")
-LOG_DIR = op.join(WORKFLOW_DIR, "logs")
-# Snakemake benchmark TSVs land under logs/benchmarks/<config>/. The config
-# basename keeps per-config runtime numbers separated so that running a
-# second config does not overwrite the first config's benchmark TSVs.
-BENCH_DIR = op.join(LOG_DIR, "benchmarks", CONFIG_BASENAME)
+# Root of the simulated reads and the monorail_light BAM files.
+# FASTDER_EVAL_SCRATCH names another one.
+SCRATCH_DIR = os.environ.get("FASTDER_EVAL_SCRATCH") or DATA_DIR
+# Logs and benchmark TSVs are kept per config, under logs/<config>/ and
+# logs/benchmarks/<config>/, so one config's run does not overwrite another's.
+LOGS_ROOT = op.join(WORKFLOW_DIR, "logs")
+LOG_DIR = op.join(LOGS_ROOT, CONFIG_BASENAME)
+BENCH_DIR = op.join(LOGS_ROOT, "benchmarks", CONFIG_BASENAME)
+
+# Where Snakemake builds the conda environments: --conda-prefix, or its default
+# under the working directory.
+CONDA_ENVS_DIR = str(workflow.deployment_settings.conda_prefix
+                     or op.join(os.getcwd(), ".snakemake", "conda"))
+
+# Times each timed rule runs. The readers take the median over its repeats.
+BENCHMARK_REPEATS = int(config.get("benchmark_repeats", 1))
 
 # Monorail
 MONORAIL_EXTERNAL = op.join(WORKFLOW_DIR, "external", "monorail-external")
@@ -28,6 +45,9 @@ MONORAIL_REF_DIR = op.join(DATA_DIR, "monorail_refs")
 
 # Singularity images
 CONTAINERS_DIR = op.join(WORKFLOW_DIR, "containers")
+# ASimulatoR 1.0.0. The image has one tag, latest, so it is named by digest.
+ASIMULATOR_IMAGE = ("docker://biomedbigdata/asimulator@sha256:"
+                    "2e2281a0e3a5199289532967dd26256a5f9663774cd56547329d9fb969ff5fc5")
 PUMP_SIF = op.join(CONTAINERS_DIR, "recount-pump-1.1.3.sif")
 UNIFY_SIF = op.join(CONTAINERS_DIR, "recount-unify-1.1.1.sif")
 
@@ -69,6 +89,8 @@ R3_STUDY = RECOUNT3_CFG.get("study_acc", "")
 R3_BASE_URL = RECOUNT3_CFG.get("base_url", "http://duffel.rail.bio/recount3")
 R3_METADATA_URL = RECOUNT3_CFG.get("metadata_url", "http://idies.jhu.edu/recount3/data")
 R3_DIR = op.join(DATA_DIR, "recount3")
+# Per-group junction subsets depend on the config's groups and chromosomes.
+R3_GROUP_DIR = op.join(R3_DIR, "groups", CONFIG_BASENAME)
 
 # recount3 data source: "sra" (default) or "gtex". It selects the
 # data_sources/<source> path component and the "<source>." file-name prefix.
@@ -107,8 +129,10 @@ def _r3_sample_shard(sample):
     return sample.rsplit(".", 1)[0][-2:]
 
 
-# fastder
-FASTDER_DIR = op.join(DATA_DIR, "fastder")
+# Tool inputs and outputs are per config: scenario and parameter names
+# repeat across configs.
+FASTDER_DIR = op.join(DATA_DIR, "fastder", CONFIG_BASENAME)
+TOOLS_DIR = op.join(DATA_DIR, "tools", CONFIG_BASENAME)
 FASTDER_BUILD_DIR = op.join(WORKFLOW_DIR, "external", "fastder", "build")
 # Results live under a per-config subdirectory so multiple configs do not
 # overwrite each other. Reruns of the same config keep going to the same
@@ -122,15 +146,6 @@ LIGHT_DIR = op.join(DATA_DIR, "monorail_light")
 # Experimental design. The asimulator block is optional: configs that use the
 # recount3, sra or local input do not need it.
 ASIM_SAMPLES = list((config.get("asimulator") or {}).get("samples", {}).keys())
-
-# Asimulator outputs are keyed on seq_depth so the depth-sweep configs do not
-# overwrite each other and snakemake does not see a params change between
-# consecutive runs of the same `make all`. Configs without an asimulator block
-# still need ASIM_DIR defined so the rule files parse; the rule never fires
-# there. The tag uses int() so a YAML float (1e7) and an int (10000000) map to
-# the same directory.
-_ASIM_SEQ_DEPTH = (config.get("asimulator") or {}).get("seq_depth", 0)
-ASIM_DIR = op.join(DATA_DIR, "asim", f"depth_{int(_ASIM_SEQ_DEPTH)}")
 
 # Per the IMPORTANT note above, every downstream stage runs once per scenario.
 # The scenario axis depends on the input:
@@ -156,7 +171,7 @@ else:
     SCENARIOS = ["all"]
 
 # Tools to benchmark against fastder. Each tool produces a GTF at the
-# standardised path data/tools/{tool}/{scenario}/{param_id}/output.gtf,
+# standardised path data/tools/<config>/{tool}/{scenario}/{param_id}/output.gtf,
 # which run_gffcompare and eval_fuzzy_metrics consume via the {tool}
 # wildcard.
 #
@@ -169,10 +184,9 @@ else:
 #   --position-tolerance   (n/a)                        --maxregiongap (analogue)
 #   --coverage-tolerance   (n/a)                        (n/a)
 #
-# All three tools normalise per-sample coverage to CPM before averaging,
-# using the same library_size formula (Sum length * value over the user's
-# chromosomes), so a given numeric --cutoff means the same thing
-# everywhere. fastder's --position-tolerance allows a few bp of slack at
+# All tools normalise per-sample coverage to CPM before averaging, using
+# the same library size (Sum length * value over the whole file), so a
+# given numeric --cutoff means the same thing everywhere. fastder's --position-tolerance allows a few bp of slack at
 # SJ-anchored boundaries; derfinder's --maxregiongap bridges a few bp of
 # below-threshold gap inside a region. The two are not identical, but
 # both are tolerance settings in the bp dimension; sweeping both surfaces
@@ -200,9 +214,14 @@ for _t in TOOLS:
 
 # Wildcard constraints keep snakemake from matching path components against
 # unrelated wildcards (e.g. {sample} swallowing a scenario subdir).
+# The stitched fastder output with every exon as its own record: the third
+# configuration of the junction-integration ablation. It is graded like a
+# tool but is not in TOOLS, so no report or summary table includes it.
+SPLIT_TOOL = "fastder_split"
+
 wildcard_constraints:
     scenario="(" + "|".join(SCENARIOS) + ")",
-    tool="(" + "|".join(TOOLS) + ")",
+    tool="(" + "|".join([*TOOLS, SPLIT_TOOL]) + ")",
     sample="[^/]+",
     param_id="[^/]+",
 
@@ -256,6 +275,34 @@ FASTDER_CFG = config.get("fastder") or {}
 # Removing the stranded branches needs the original contributor's agreement.
 STRANDED = FASTDER_CFG.get("stranded", False)
 
+# Cores given to fastder itself, separate from config["cores"], which sizes the
+# rest of the workflow. The cross-tool runtime comparison sets this to 1 so
+# every tool gets the same resources: derfinder, groHMM and the megadepth
+# baseline are single-threaded, so leaving fastder on config["cores"] would
+# compare 12 cores against 1. Runs that are not part of that comparison, such
+# as the genome-wide GTEx atlas, can leave it unset and keep every core.
+FASTDER_CORES = FASTDER_CFG.get("cores", config["cores"])
+
+# Core counts for the scaling sweep, which times fastder against itself rather
+# than against other tools. Empty means the sweep is not part of this run.
+# Use it on a genome-wide workload: parsing parallelises up to the sample count
+# and averaging up to the chromosome count, so on a single-chromosome workload
+# the curve flattens for want of anything to parallelise.
+SCALING_CORES = FASTDER_CFG.get("scaling_cores") or []
+# Scenario the sweep runs on. Defaults to the first, which is enough because
+# the sweep measures fastder against itself on one fixed workload.
+SCALING_SCENARIO = FASTDER_CFG.get("scaling_scenario") or (SCENARIOS[0] if SCENARIOS else "")
+
+# Optional: thresholds at which fastder separates two scenarios at a set of
+# loci. Needs loci (a TSV with ce_start and ce_end), case and control.
+THRESHOLD_RANGE = config.get("threshold_range") or {}
+
+# Memory requests in MB, from the peak resident sets of earlier runs:
+# under 2 GB per chromosome, 30 GB at most genome-wide.
+FASTDER_MEM_MB = 8000 if FASTDER_CFG.get("chromosomes") else 48000
+# Each parsing thread holds one sample, so memory grows with cores.
+FASTDER_SCALING_MEM_MB = 64000
+
 # Human reference download, keyed by chromosome scope. Configs that analyse
 # different chromosome sets get independent, cacheable reference folders
 # instead of clobbering one shared directory, and a chromosome-set change is
@@ -276,6 +323,17 @@ else:
     REF_SCOPE = "full_genome"
 
 REF_DIR = op.join(DATA_DIR, "reference", "GRCh38_Ensembl115_" + REF_SCOPE)
+
+# Asimulator outputs are keyed on the whole asimulator block, the seed and the
+# reference scope, so configs share reads only when they simulate the same
+# thing. Configs without an asimulator block still need ASIM_DIR defined so
+# the rule files parse; the rule never fires there.
+_READS_KEY = data_layout.reads_key(config.get("asimulator"), config["seed"], REF_SCOPE)
+ASIM_DIR = op.join(DATA_DIR, "asim", _READS_KEY)
+READS_DIR = op.join(SCRATCH_DIR, "asim", _READS_KEY)
+# Simulated reads are deleted once aligned. keep_simulated_reads keeps them
+# for a config run later on the same reads.
+simulated_reads = (lambda path: path) if config.get("keep_simulated_reads") else temp
 REF_CHROMS = [str(c).removeprefix("chr")
               for c in (_REF_CHROMS_CFG or [str(i) for i in range(1, 23)] + ["X"])]
 REF_GTF = op.join(REF_DIR, "Homo_sapiens.GRCh38.115.chr.gtf")
@@ -290,44 +348,37 @@ REF_ANNOTATION = (config.get("gffcompare") or {}).get("reference_annotation") or
 # STAR index for the monorail_light backend, keyed by the same scope so a
 # single-chromosome index and a whole-genome index never share a directory.
 # Outputs are the files STAR genomeGenerate always writes, not a directory.
-LIGHT_STAR_IDX = op.join(LIGHT_DIR, "star_idx_" + REF_SCOPE)
+# monorail.annotated_index: false builds it without the annotation, under its
+# own key.
+ANNOTATED_INDEX = config.get("monorail", {}).get("annotated_index", True)
+_INDEX_KEY = data_layout.index_key(REF_SCOPE, ANNOTATED_INDEX)
+LIGHT_STAR_IDX = op.join(LIGHT_DIR, "star_idx_" + _INDEX_KEY)
 STAR_IDX_FILES = ["SA", "SAindex", "Genome", "chrNameLength.txt",
                   "genomeParameters.txt"]
 
-# Maps each parameter name to its (id_abbreviation, CLI flag).
-_PARAM_SPEC = {
-    "min_coverage":       ("mc", "--min-coverage"),
-    "min_length":         ("ml", "--min-length"),
-    "position_tolerance": ("pt", "--position-tolerance"),
-    "coverage_tolerance": ("ct", "--coverage-tolerance"),
-}
+_ALIGN_KEY = data_layout.alignment_key(
+    CONFIG_BASENAME, _PUMP_SOURCE_EARLY, config.get("asimulator"), config["seed"],
+    REF_SCOPE, _INDEX_KEY)
+ALIGN_DIR = op.join(LIGHT_DIR, _ALIGN_KEY)
+BAM_DIR = op.join(SCRATCH_DIR, "monorail_light", _ALIGN_KEY)
 
-# Cross-product of all configured value lists; {} means "run once with all defaults".
-_grid_axes = [
-    [(key, val) for val in FASTDER_CFG[key]]
-    for key in _PARAM_SPEC
-    if key in FASTDER_CFG
-]
-_PARAM_COMBOS = [dict(items) for items in itertools.product(*_grid_axes)] if _grid_axes else [{}]
-
-
-def _param_id(combo):
-    """Short, directory-safe identifier for a parameter combination."""
-    abbr = {k: spec[0] for k, spec in _PARAM_SPEC.items()}
-    parts = [f"{abbr[k]}{v}" for k, v in combo.items()]
-    return "_".join(parts) if parts else "default"
-
-
-def _fastder_cli_args(combo):
-    """CLI flags to pass to fastder for this combination (only explicitly-set params)."""
-    flag = {k: spec[1] for k, spec in _PARAM_SPEC.items()}
-    return " ".join(f"{flag[k]} {v}" for k, v in combo.items())
-
+# The grid itself lives in scripts/param_grid.py so it can be unit tested.
+_PARAM_COMBOS = param_grid.build_combos(FASTDER_CFG)
+_param_id = param_grid.param_id
+_fastder_cli_args = param_grid.fastder_cli_args
+_PARAM_SPEC = param_grid.PARAM_SPEC
 
 PARAM_IDS = [_param_id(c) for c in _PARAM_COMBOS]
 PARAM_CLI_ARGS = {_param_id(c): _fastder_cli_args(c) for c in _PARAM_COMBOS}
 # For the summary CSV: the explicit params for each run
 PARAM_DICT = {_param_id(c): c for c in _PARAM_COMBOS}
+
+# Runs the split-chain configuration is built from: stitched, at the reference
+# point. Empty unless the config sweeps no_stitch.
+SPLIT_PARAM_IDS = (
+    [pid for pid, combo in PARAM_DICT.items() if param_grid.stitched_at_reference(combo)]
+    if "fastder" in TOOLS and any(combo.get("no_stitch") for combo in _PARAM_COMBOS)
+    else [])
 
 # Per-tool param grids. fastder sweeps the full cross-product above.
 # megadepth_baseline shares the min_coverage axis only (its other tunable
@@ -433,6 +484,10 @@ rule all:
         op.join(RESULTS_DIR, "fuzzy_locus_recall.csv"),
         op.join(RESULTS_DIR, "fuzzy_strand.csv"),
         op.join(RESULTS_DIR, "truth_chain_stats.csv"),
+        op.join(RESULTS_DIR, "tool_versions.csv"),
+        *([op.join(RESULTS_DIR, "threshold_range.csv")] if THRESHOLD_RANGE else []),
+        *([op.join(RESULTS_DIR, "threshold_choice.csv")]
+          if config.get("threshold_choice") else []),
         # The recount3 backend adds a report comparing the sample groups.
         # The gtex data source gets the structural-concordance report
         # instead, which compares the per-tissue expressed-region catalogs.
@@ -440,5 +495,11 @@ rule all:
           if BACKEND == "recount3" and R3_DATA_SOURCE == "gtex"
           else [op.join(RESULTS_DIR, "recount3.html")]
           if BACKEND == "recount3" else []),
+        *[op.join(FASTDER_DIR, "scaling", f"cores{n}.DONE") for n in SCALING_CORES],
+        *[op.join(RESULTS_DIR, SPLIT_TOOL, scenario, sample, pid, graded)
+          for scenario in SCENARIOS
+          for sample in SAMPLES_BY_SCENARIO[scenario]
+          for pid in SPLIT_PARAM_IDS
+          for graded in ("gffcompare.stats", "fuzzy_distances.csv")],
         op.join(RESULTS_DIR, "archive.DONE"),
     default_target: True

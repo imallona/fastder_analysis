@@ -48,7 +48,8 @@ recount3:
 
 fastder:
   stranded: false
-  min_coverage: [1.0]
+  # Best exon-level F1 against the annotation on config_gtex_threshold_ladder.
+  min_coverage: [0.005]
   chromosomes: ["chr19"]
 
 gffcompare:

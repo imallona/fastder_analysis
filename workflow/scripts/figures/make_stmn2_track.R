@@ -7,6 +7,7 @@
 # Usage:
 #   Rscript make_stmn2_track.R \
 #     --manifest results/config_klim_2019_tdp43_recount3/recount3_manifest.csv \
+#     --loci ../config/tdp43_cryptic_exons.tsv \
 #     --reference-gtf .../Homo_sapiens.GRCh38.115.chr.gtf \
 #     --out fig_tdp43_stmn2.svg --gene STMN2 --width 12 --height 5
 
@@ -19,6 +20,7 @@ suppressPackageStartupMessages({
 parse_args <- function(args) {
   defaults <- list(
     manifest = "",
+    loci = "",
     `reference-gtf` = "",
     out = "fig_tdp43_stmn2.svg",
     gene = "STMN2",
@@ -44,17 +46,12 @@ width <- as.numeric(opt$width)
 height <- as.numeric(opt$height)
 want_tools <- strsplit(opt$tools, ",")[[1]]
 
-# Cryptic exon panel for the TDP-43 knockdown, hg38. Same table as recount3.Rmd:
-# the plot window is the gene body plus a small flank; ce_start/ce_end mark the
-# cryptic exon read from the knockdown-specific novel splice junctions.
-regions_all <- data.frame(
-  gene = c("STMN2", "HDGFL2", "ELAVL3", "CELF5", "KCNQ2"),
-  chrom = c("chr8", "chr19", "chr19", "chr19", "chr20"),
-  start = c(79606000, 4467000, 11446000, 3219000, 63395000),
-  end = c(79671000, 4507000, 11486000, 3302000, 63478000),
-  ce_start = c(79616821, 4492015, 11463496, 3278200, 63444558),
-  ce_end = c(79617200, 4492152, 11463662, 3278400, 63444758),
-  stringsAsFactors = FALSE)
+# Cryptic exon panel for the TDP-43 knockdown, hg38, from
+# config/tdp43_cryptic_exons.tsv: the plot window is the gene body plus a small
+# flank; ce_start/ce_end mark the cryptic exon.
+if (!nzchar(opt$loci) || !file.exists(opt$loci))
+  stop("missing or unreadable --loci: ", opt$loci)
+regions_all <- read.delim(opt$loci, stringsAsFactors = FALSE)
 r <- regions_all[regions_all$gene == opt$gene, ]
 if (nrow(r) != 1) stop("gene not in panel: ", opt$gene)
 

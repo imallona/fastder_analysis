@@ -1,24 +1,265 @@
-"""Generate the depth-sweep configs for the simulation benchmark.
+"""Generate the derived simulation configs.
 
 config_full_simulation.yaml is the paper-ready default and the 10M point of
-the depth sweep. This script copies it, changing only seq_depth, to produce
-the other depths as config/config_full_simulation_<N>M.yaml.
+the depth sweep. Everything this script writes is a copy of it with one thing
+changed, so a change to the simulation block propagates instead of drifting:
 
-The depth sweep is declared in DEPTHS_MILLIONS below; edit that list and
-rerun the script. Run each config as its own pipeline run (see the Makefile),
-then render the cross-depth report with scripts/render_meta_report.sh.
+- config_full_simulation_<N>M.yaml, the other depths of the sweep.
+- config_full_simulation_rep<N>.yaml, further draws of the 10M run under other
+  seeds.
+- config_min_junction_reads_sweep.yaml, the junction read-support sensitivity
+  run: the same simulated data, fastder alone, its grid fixed at the reference
+  point so min_junction_reads is the only axis that moves.
+- config_unannotated_alignment.yaml, the same reads aligned against an index
+  built without the annotation, fastder alone at the reference point.
+- config_threshold_ladder.yaml, the same reads over a ladder of coverage
+  thresholds for the three tools that take one, to choose the threshold the
+  comparisons are made at.
+
+The depth sweep is declared in DEPTHS_MILLIONS below; edit that list and rerun
+the script. Run each config as its own pipeline run (see the Makefile), then
+render the cross-depth report with scripts/render_meta_report.sh.
 
 Usage:
     python make_sim_configs.py
 """
 import os.path as op
+import re
 
 # Depths to generate. 10 is omitted: that is config_full_simulation.yaml itself.
 DEPTHS_MILLIONS = [5, 30, 40]
 
+# Replicate number to seed. Replicate 1 is config_full_simulation.yaml itself,
+# under the seed it declares.
+REPLICATE_SEEDS = {2: 11, 3: 12}
+
+# Junction read-support thresholds, summed over the loaded samples. 0 is the
+# published behaviour, in which no junction filter exists at all. The rest
+# bracket what a filter does with ten samples per scenario: 1 drops junctions
+# seen once across the whole group, 20 keeps only well-supported ones. Recentre
+# the ladder if the observed counts turn out to sit elsewhere.
+MIN_JUNCTION_READS = [0, 1, 2, 5, 10, 20]
+
+# Coverage thresholds in CPM, in 1-2-5 steps over two and a half decades.
+THRESHOLD_LADDER = [0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2]
+
+# fastder axes the sweep holds still, at the reference point of param_grid.py.
+# Sweeping them alongside the junction filter would multiply the grid and make
+# the sensitivity to the filter itself harder to read.
+FIXED_GRID = {
+    "min_coverage": "[0.005]",
+    "min_length": "[10]",
+    "position_tolerance": "[5]",
+    "no_stitch": "[false]",
+}
+
+# The scaling sweep times fastder against itself on one fixed workload, so it
+# belongs to the 10M config alone. Copying it into the other depths would
+# repeat the same measurement four times.
+SCALING_KEYS = ("scaling_cores", "scaling_scenario")
+
 HERE = op.dirname(op.abspath(__file__))
 CONFIG_DIR = op.normpath(op.join(HERE, "..", "..", "config"))
 BASE = op.join(CONFIG_DIR, "config_full_simulation.yaml")
+
+KEY = re.compile(r"^(\s*)([A-Za-z_]\w*):")
+
+
+def section_of(line, current):
+    """Track which top-level block a line belongs to."""
+    match = KEY.match(line)
+    if match and not match.group(1):
+        return match.group(2)
+    return current
+
+
+def key_at(line, indent):
+    """The key a line declares at the given indent, or None."""
+    match = KEY.match(line)
+    if match and len(match.group(1)) == indent:
+        return match.group(2)
+    return None
+
+
+def write(path, header, lines):
+    with open(path, "w") as fh:
+        fh.write(header)
+        fh.writelines(without_kept_reads(lines))
+    print(f"wrote {path}")
+
+
+def without_kept_reads(lines):
+    """Drops keep_simulated_reads and its comment: a derived config deletes
+    the reads it aligns."""
+    out = []
+    for line in lines:
+        if key_at(line, 0) == "keep_simulated_reads":
+            if out and out[-1].startswith("#"):
+                out.pop()
+            continue
+        out.append(line)
+    return out
+
+
+def without_scaling(base_lines, rewrite):
+    """The base config minus the scaling sweep, each kept line through rewrite."""
+    out, section, pending = [], None, []
+    for line in base_lines:
+        section = section_of(line, section)
+        if line.lstrip().startswith("#"):
+            pending.append(line)
+            continue
+        if section == "fastder" and key_at(line, 2) in SCALING_KEYS:
+            # The key goes and its comment block goes with it.
+            pending = []
+            continue
+        out.extend(pending)
+        pending = []
+        out.append(rewrite(line))
+    out.extend(pending)
+    return out
+
+
+def without_repeats(lines):
+    """Drops benchmark_repeats: no timing is read from the config, so each tool
+    run happens once."""
+    return [line for line in lines
+            if key_at(line, 0) != "benchmark_repeats"
+            and not line.startswith("# Times each timed tool run is repeated")]
+
+
+def depth_config(base_lines, depth_m):
+    reads = depth_m * 1_000_000
+
+    def set_depth(line):
+        stripped = line.lstrip()
+        if not stripped.startswith("seq_depth:"):
+            return line
+        indent = line[: len(line) - len(stripped)]
+        return f"{indent}seq_depth: {reads}  # {depth_m}M reads per sample\n"
+
+    out = without_scaling(base_lines, set_depth)
+    header = (
+        f"# Depth-sweep config: {depth_m}M reads per sample.\n"
+        "# Generated by scripts/make_sim_configs.py from\n"
+        "# config_full_simulation.yaml. Edit that script, not this file.\n\n")
+    return header, out
+
+
+def replicate_config(base_lines, replicate, seed):
+    def set_seed(line):
+        return f"seed: {seed}\n" if key_at(line, 0) == "seed" else line
+
+    out = without_scaling(base_lines, set_seed)
+    if out == without_scaling(base_lines, lambda line: line):
+        raise SystemExit("no top-level seed in the base config")
+    out = without_repeats(out)
+    header = (
+        f"# Replicate {replicate} of the 10M simulation: the same design drawn under\n"
+        f"# seed {seed}.\n"
+        "# Generated by scripts/make_sim_configs.py from\n"
+        "# config_full_simulation.yaml. Edit that script, not this file.\n\n")
+    return header, out
+
+
+def fastder_alone_config(base_lines, tools_comment, grid_lines, tools=("fastder",)):
+    """The base config with a subset of tools and fastder's grid replaced."""
+    out, section, pending, injected = [], None, [], False
+    for line in base_lines:
+        previous, section = section, section_of(line, section)
+        stripped = line.lstrip()
+        if section == "fastder" and previous != "fastder":
+            out.append(tools_comment + f"tools: [{', '.join(tools)}]\n\n")
+        if stripped.startswith("#"):
+            pending.append(line)
+            continue
+        if section == "fastder":
+            key = key_at(line, 2)
+            if key in FIXED_GRID:
+                # The swept keys and their comments are replaced wholesale, so
+                # nothing carried over describes a grid this config does not have.
+                pending = []
+                if not injected:
+                    out.extend(grid_lines)
+                    injected = True
+                continue
+            if key in SCALING_KEYS:
+                pending = []
+                continue
+        out.extend(pending)
+        pending = []
+        out.append(line)
+    out.extend(pending)
+    if not injected:
+        raise SystemExit("no fastder grid keys found in the base config")
+    return out
+
+
+def unannotated_config(base_lines):
+    """The base config aligned without the annotation, each tool at the reference point."""
+    out = fastder_alone_config(
+        base_lines,
+        "# The tools that read the alignment's coverage or junctions, each on two\n"
+        "# alignments of the same reads.\n",
+        ["  # The reference point, the corner the annotated run is compared at.\n",
+         *(f"  {k}: {v}\n" for k, v in FIXED_GRID.items())],
+        tools=("fastder", "derfinder", "megadepth_baseline"))
+    backend = [i for i, line in enumerate(out) if key_at(line, 2) == "backend"]
+    if len(backend) != 1:
+        raise SystemExit("expected one monorail.backend key in the base config")
+    out.insert(backend[0] + 1,
+               "  # STAR index built without --sjdbGTFfile: every junction is found\n"
+               "  # from the reads alone.\n"
+               "  annotated_index: false\n")
+    out = without_repeats(out)
+    header = (
+        "# Alignment without an annotation: the same simulated reads as\n"
+        "# config_full_simulation.yaml, three tools at the reference point.\n"
+        "# Generated by scripts/make_sim_configs.py from\n"
+        "# config_full_simulation.yaml. Edit that script, not this file.\n\n")
+    return header, out
+
+
+def threshold_ladder_config(base_lines):
+    """The base config over a ladder of coverage thresholds, each tool once."""
+    grid = dict(FIXED_GRID, min_coverage=str(THRESHOLD_LADDER))
+    out = fastder_alone_config(
+        base_lines,
+        "# The tools that call regions by a coverage threshold. groHMM takes none.\n",
+        ["  # min_coverage in CPM is the only axis that moves.\n",
+         *(f"  {k}: {v}\n" for k, v in grid.items())],
+        tools=("fastder", "derfinder", "megadepth_baseline"))
+    out = without_repeats(out)
+    out += ["\n", "# Adds threshold_ladder.csv and threshold_choice.csv to the run.\n",
+            "threshold_choice: true\n"]
+    header = (
+        "# Coverage threshold ladder: the same simulated data as\n"
+        "# config_full_simulation.yaml. scripts/choose_threshold.py reads its results\n"
+        "# and picks the threshold with the best exon-level F1.\n"
+        "# Generated by scripts/make_sim_configs.py from\n"
+        "# config_full_simulation.yaml. Edit that script, not this file.\n\n")
+    return header, out
+
+
+def junction_sweep_config(base_lines):
+    """The base config with fastder's grid pinned and the filter swept."""
+    out = fastder_alone_config(
+        base_lines,
+        "# fastder alone: this run asks what the junction filter does, not how\n"
+        "# fastder compares with other tools.\n",
+        ["  # Held at the reference point so the filter is the only axis.\n",
+         *(f"  {k}: {v}\n" for k, v in FIXED_GRID.items()),
+         "  # Junction read support summed over the loaded samples. 0 is the\n"
+         "  # default: no junction filter at all.\n",
+         f"  min_junction_reads: {MIN_JUNCTION_READS}\n"])
+    out = without_repeats(out)
+    header = (
+        "# Junction read-support sensitivity: the same simulated data as\n"
+        "# config_full_simulation.yaml, fastder alone, every parameter but\n"
+        "# min_junction_reads held at its default.\n"
+        "# Generated by scripts/make_sim_configs.py from\n"
+        "# config_full_simulation.yaml. Edit that script, not this file.\n\n")
+    return header, out
 
 
 def main():
@@ -26,25 +267,21 @@ def main():
         base_lines = fh.readlines()
 
     for depth_m in DEPTHS_MILLIONS:
-        reads = depth_m * 1_000_000
-        out_lines = []
-        for line in base_lines:
-            stripped = line.lstrip()
-            if stripped.startswith("seq_depth:"):
-                indent = line[: len(line) - len(stripped)]
-                out_lines.append(
-                    f"{indent}seq_depth: {reads}  # {depth_m}M reads per sample\n")
-            else:
-                out_lines.append(line)
-        header = (
-            f"# Depth-sweep config: {depth_m}M reads per sample.\n"
-            "# Generated by scripts/make_sim_configs.py from\n"
-            "# config_full_simulation.yaml. Edit that script, not this file.\n\n")
-        out_path = op.join(CONFIG_DIR, f"config_full_simulation_{depth_m}M.yaml")
-        with open(out_path, "w") as fh:
-            fh.write(header)
-            fh.writelines(out_lines)
-        print(f"wrote {out_path}  (seq_depth={reads})")
+        header, lines = depth_config(base_lines, depth_m)
+        write(op.join(CONFIG_DIR, f"config_full_simulation_{depth_m}M.yaml"), header, lines)
+
+    for replicate, seed in REPLICATE_SEEDS.items():
+        header, lines = replicate_config(base_lines, replicate, seed)
+        write(op.join(CONFIG_DIR, f"config_full_simulation_rep{replicate}.yaml"), header, lines)
+
+    header, lines = junction_sweep_config(base_lines)
+    write(op.join(CONFIG_DIR, "config_min_junction_reads_sweep.yaml"), header, lines)
+
+    header, lines = unannotated_config(base_lines)
+    write(op.join(CONFIG_DIR, "config_unannotated_alignment.yaml"), header, lines)
+
+    header, lines = threshold_ladder_config(base_lines)
+    write(op.join(CONFIG_DIR, "config_threshold_ladder.yaml"), header, lines)
 
 
 if __name__ == "__main__":

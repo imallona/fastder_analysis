@@ -27,6 +27,9 @@ rule recount3_fetch_metadata:
             f"{_r3_shard(wc.study)}/{wc.study}/"
             f"{R3_DATA_SOURCE}.recount_project.{wc.study}.MD.gz"
         ),
+    resources:
+        mem_mb=2000,
+        runtime=60,
     conda:
         "../envs/base.yaml"
     shell:
@@ -53,6 +56,10 @@ rule recount3_fetch_junctions:
             f"{R3_BASE_URL}/human/data_sources/{R3_DATA_SOURCE}/junctions/"
             f"{_r3_shard(wc.study)}/{wc.study}/{R3_DATA_SOURCE}.junctions.{wc.study}.ALL"
         ),
+    resources:
+        mem_mb=4000,
+        # Bounded by the link: 2.8 GB gzipped per study.
+        runtime=240,
     conda:
         "../envs/base.yaml"
     shell:
@@ -83,6 +90,9 @@ rule recount3_fetch_bigwig:
             f"{_r3_sample_shard(wc.sample)}/"
             f"{R3_DATA_SOURCE}.base_sums.{R3_SAMPLE_STUDY[wc.sample]}_{wc.sample}.ALL.bw"
         ),
+    resources:
+        mem_mb=2000,
+        runtime=60,
     conda:
         "../envs/base.yaml"
     shell:
@@ -102,15 +112,15 @@ rule recount3_group_junctions:
         idf=lambda wc: op.join(R3_DIR, "junctions", f"{R3_GROUP_STUDY[wc.scenario]}.ALL.ID"),
         metadata=lambda wc: op.join(R3_DIR, f"{R3_GROUP_STUDY[wc.scenario]}.recount_project.tsv"),
     output:
-        rr=op.join(R3_DIR, "{scenario}", "junctions.ALL.RR"),
-        mm=op.join(R3_DIR, "{scenario}", "junctions.ALL.MM"),
-        samples_tsv=op.join(R3_DIR, "{scenario}", "junctions.ALL.samples.tsv"),
+        rr=op.join(R3_GROUP_DIR, "{scenario}", "junctions.ALL.RR"),
+        mm=op.join(R3_GROUP_DIR, "{scenario}", "junctions.ALL.MM"),
+        samples_tsv=op.join(R3_GROUP_DIR, "{scenario}", "junctions.ALL.samples.tsv"),
     log:
         op.join(LOG_DIR, "recount3", "group_junctions_{scenario}.log"),
     benchmark:
         op.join(BENCH_DIR, "recount3", "group_junctions_{scenario}.tsv")
     params:
-        out_prefix=lambda wc: op.join(R3_DIR, wc.scenario, "junctions.ALL"),
+        out_prefix=lambda wc: op.join(R3_GROUP_DIR, wc.scenario, "junctions.ALL"),
         study=lambda wc: R3_GROUP_STUDY[wc.scenario],
         sample_args=lambda wc: " ".join(
             f"--sample {s}" for s in R3_GROUPS[wc.scenario]
@@ -120,6 +130,9 @@ rule recount3_group_junctions:
             or [f"chr{i}" for i in range(1, 23)] + ["chrX"]
         ),
         script=op.join(WORKFLOW_DIR, "scripts", "subset_recount3_junctions.py"),
+    resources:
+        mem_mb=16000,
+        runtime=120,
     conda:
         "../envs/base.yaml"
     shell:

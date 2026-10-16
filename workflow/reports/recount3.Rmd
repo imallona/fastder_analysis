@@ -6,16 +6,18 @@ output:
     toc_float: true
     df_print: paged
 params:
+  fig_dir: "recount3_figs/"
   manifest_csv: ""
   summary_csv: ""
   reference_gtf: ""
+  loci_tsv: ""
   study: ""
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE,
                       fig.width = 10, fig.height = 6,
-                      dev = c("png", "pdf"), fig.path = "recount3_figs/")
+                      dev = c("png", "pdf"), fig.path = params$fig_dir)
 suppressPackageStartupMessages({
   library(rtracklayer)
   library(GenomicRanges)
@@ -32,14 +34,14 @@ called regions of the knockdown group and the control group can be placed
 side by side.
 
 This report is specific to the TDP-43 knockdown experiment. The cryptic exon
-panel used below (STMN2, HDGFL2, ELAVL3, CELF5, KCNQ2) is hardcoded for it
+panel used below (STMN2, HDGFL2, ELAVL3, CELF5) is hardcoded for it
 (Klim et al. 2019, recount3 study SRP166282), with loci picked from the
 study's knockdown-specific novel splice junctions. If the recount3 backend is
 run on a different study, the cryptic exon panels still render but are not
 meaningful for it.
 
 Loss of TDP-43 lets cryptic exons appear in many genes. The panel here
-covers STMN2 on chr8, HDGFL2, ELAVL3 and CELF5 on chr19, and KCNQ2 on chr20.
+covers STMN2 on chr8, and HDGFL2, ELAVL3 and CELF5 on chr19.
 These cryptic exons are not part of the Ensembl annotation, so they cannot be
 scored as true positives. The aim is a visual check: a cryptic exon should
 show up as a called region, and usually as coverage, in the knockdown group,
@@ -48,13 +50,12 @@ case. The others are weaker and are clearest as a called region rather than
 as a coverage peak.
 
 This dataset is analysed by two runs that differ only in the `min_coverage`
-threshold. The showcase run (`config_klim_2019_tdp43_recount3.yaml`) uses a
-clean 1.0 CPM threshold that isolates STMN2, the one cryptic exon well above
-the intronic noise floor. The panel run
-(`config_klim_2019_tdp43_recount3_panel.yaml`) uses a low 0.02 CPM threshold
-so the weaker cryptic exons are emitted too, at the cost of noise. This
-report renders for whichever run produced it; see the README section "TDP-43
-cryptic exons: showcase and panel" for the rationale.
+threshold. The showcase run (`config_klim_2019_tdp43_recount3.yaml`) uses
+0.05 CPM, where the STMN2 cryptic exon alone separates knockdown from
+control. The panel run (`config_klim_2019_tdp43_recount3_panel.yaml`) uses
+0.005 CPM, where the most loci separate. Both values come from the ladder run
+(`config_klim_2019_tdp43_recount3_ladder.yaml`). This report renders for
+whichever run produced it.
 
 ```{r load-manifest}
 manifest <- read.csv(params$manifest_csv, stringsAsFactors = FALSE)
@@ -72,18 +73,10 @@ group_colors <- setNames(
 # gene body plus a small flank. The cryptic exon coordinates (ce_start,
 # ce_end) come from the knockdown-specific novel splice junctions in the
 # recount3 junction matrix: for HDGFL2 and ELAVL3 the cryptic exon is the gap
-# between a flanking junction pair; for STMN2, CELF5 and KCNQ2 a single
+# between a flanking junction pair; for STMN2 and CELF5 a single
 # knockdown-specific junction was seen, so the box is anchored on it and on
 # the knockdown coverage peak.
-regions <- data.frame(
-  gene = c("STMN2", "HDGFL2", "ELAVL3", "CELF5", "KCNQ2"),
-  chrom = c("chr8", "chr19", "chr19", "chr19", "chr20"),
-  start = c(79606000, 4467000, 11446000, 3219000, 63395000),
-  end = c(79671000, 4507000, 11486000, 3302000, 63478000),
-  ce_start = c(79616821, 4492015, 11463496, 3278200, 63444558),
-  ce_end = c(79617200, 4492152, 11463662, 3278400, 63444758),
-  stringsAsFactors = FALSE
-)
+regions <- read.delim(params$loci_tsv, stringsAsFactors = FALSE)
 knitr::kable(regions, caption = "Cryptic exon panel: plot window and expected cryptic exon (hg38)")
 ```
 
@@ -141,8 +134,9 @@ tool_labels <- c(fastder = "fastder",
 # instead shows each ER component as a separate bar, so the cryptic exon
 # block is visible. The other tools emit single-exon transcripts, so their
 # tracks look the same under either filter.
+# A tool left out of the run has an empty manifest cell, which reads as NA.
 load_regions <- function(gtf) {
-  if (length(gtf) == 0 || !nzchar(gtf) || !file.exists(gtf)) return(GRanges())
+  if (length(gtf) == 0 || is.na(gtf) || !nzchar(gtf) || !file.exists(gtf)) return(GRanges())
   gr <- tryCatch(import(gtf), error = function(e) GRanges())
   if (length(gr) > 0 && "type" %in% colnames(mcols(gr))) {
     ex <- gr[!is.na(gr$type) & gr$type == "exon"]
@@ -219,7 +213,9 @@ for (i in seq_len(nrow(regions))) {
         body <- c(body, AnnotationTrack(
           in_window, name = "Ensembl", group = in_window$transcript_id,
           stacking = "squish", fill = "grey60", col = NA))
-        body_sizes <- c(body_sizes, 1.4)
+        # One row per transcript: a fixed height stops fitting past about 20.
+        n_transcripts <- length(unique(in_window$transcript_id))
+        body_sizes <- c(body_sizes, 1.4 * max(1, n_transcripts / 20))
       }
     }
 

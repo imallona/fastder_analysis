@@ -8,7 +8,7 @@
 rule run_gffcompare:
     input:
         chr_prefix_done=op.join(FASTDER_DIR, "{scenario}", "match_chr_prefix.DONE"),
-        gtf=op.join(DATA_DIR, "tools", "{tool}", "{scenario}", "{param_id}", "output.gtf"),
+        gtf=op.join(TOOLS_DIR, "{tool}", "{scenario}", "{param_id}", "output.gtf"),
     output:
         stats=op.join(RESULTS_DIR, "{tool}", "{scenario}", "{sample}", "{param_id}", "gffcompare.stats"),
     benchmark:
@@ -20,6 +20,9 @@ rule run_gffcompare:
         out_prefix=lambda wc: os.path.join(
             str(RESULTS_DIR), wc.tool, wc.scenario, wc.sample, wc.param_id, "gffcompare",
         ),
+    resources:
+        mem_mb=4000,
+        runtime=60,
     conda:
         "../envs/gffcompare.yaml"
     shell:
@@ -43,6 +46,9 @@ rule collect_results:
         op.join(BENCH_DIR, "collect_results.tsv")
     params:
         parser=op.join(WORKFLOW_DIR, "scripts", "parse_gffcompare.py"),
+    resources:
+        mem_mb=4000,
+        runtime=60,
     run:
         import csv
         import sys
@@ -85,6 +91,9 @@ rule collect_chain_stats:
     input:
         gtf_paths=expand(op.join(FASTDER_DIR, "{scenario}", "run_fastder_{param_id}.gtf_path"),
                          scenario=SCENARIOS, param_id=PARAM_IDS),
+        # Read through gtf_paths; listed so new calls rerun this rule.
+        gtfs=expand(op.join(FASTDER_DIR, "{scenario}", "runs", "{param_id}", "fastder.gtf"),
+                    scenario=SCENARIOS, param_id=PARAM_IDS),
     output:
         op.join(RESULTS_DIR, "chain_stats.csv"),
     benchmark:
@@ -95,6 +104,9 @@ rule collect_chain_stats:
         script=op.join(WORKFLOW_DIR, "scripts", "collect_chain_stats.py"),
         scenarios=SCENARIOS,
         param_ids=PARAM_IDS,
+    resources:
+        mem_mb=4000,
+        runtime=60,
     run:
         # Each gtf_path file is at FASTDER_DIR/<scenario>/run_fastder_<pid>.gtf_path
         # so we recover (scenario, param_id) by matching the path components.
@@ -117,7 +129,7 @@ rule collect_chain_stats:
 rule eval_fuzzy_metrics:
     input:
         chr_prefix_done=op.join(FASTDER_DIR, "{scenario}", "match_chr_prefix.DONE"),
-        gtf=op.join(DATA_DIR, "tools", "{tool}", "{scenario}", "{param_id}", "output.gtf"),
+        gtf=op.join(TOOLS_DIR, "{tool}", "{scenario}", "{param_id}", "output.gtf"),
     output:
         jaccard=op.join(RESULTS_DIR, "{tool}", "{scenario}", "{sample}", "{param_id}", "fuzzy_jaccard.csv"),
         distances=op.join(RESULTS_DIR, "{tool}", "{scenario}", "{sample}", "{param_id}", "fuzzy_distances.csv"),
@@ -130,6 +142,9 @@ rule eval_fuzzy_metrics:
     params:
         ref_gff=lambda wc: op.join(FASTDER_DIR, wc.scenario, f"{wc.sample}_label{LABEL_EXT}"),
         script=op.join(WORKFLOW_DIR, "scripts", "eval_fuzzy.py"),
+    resources:
+        mem_mb=8000,
+        runtime=60,
     conda:
         "../envs/bedtools.yaml"
     shell:
@@ -164,6 +179,9 @@ rule collect_fuzzy_metrics:
         strand=op.join(RESULTS_DIR, "fuzzy_strand.csv"),
     benchmark:
         op.join(BENCH_DIR, "collect_fuzzy_metrics.tsv")
+    resources:
+        mem_mb=4000,
+        runtime=60,
     run:
         import csv as _csv
         # The per-(tool, scenario, sample, param_id) CSVs do not carry a
@@ -211,6 +229,9 @@ rule collect_truth_stats:
         op.join(LOG_DIR, "collect_truth_stats.log"),
     params:
         script=op.join(WORKFLOW_DIR, "scripts", "collect_truth_stats.py"),
+    resources:
+        mem_mb=4000,
+        runtime=60,
     run:
         if not input.gffs:
             with open(output[0], "w") as fh:

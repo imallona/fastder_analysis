@@ -51,6 +51,14 @@ simulate_alternative_splicing(
 # The staged reference is scratch; drop it once the simulation has succeeded.
 unlink(input_dir, recursive = TRUE)
 
+# ASimulatoR writes plain FASTQ. At four depths over ten samples that is some
+# 400 GB, against about 100 GB compressed, and STAR reads gzip directly.
+fastqs <- list.files(outdir, pattern = "\\.fastq$", full.names = TRUE)
+for (fastq in fastqs) {
+  status <- system2("gzip", c("-f", shQuote(fastq)))
+  if (status != 0) stop("gzip failed on ", fastq)
+}
+
 # Save metadata (written after successful simulation only)
 library(yaml)
 
@@ -68,4 +76,11 @@ metadata <- list(
   )
 )
 
-write_yaml(metadata, file.path(outdir, "simulation_metadata.yaml"))
+write_yaml(metadata, snakemake@output[["meta"]])
+
+# The simulator writes the annotation next to the reads.
+gff_out <- snakemake@output[["gff"]]
+gff_sim <- file.path(outdir, basename(gff_out))
+if (normalizePath(gff_sim) != normalizePath(gff_out, mustWork = FALSE)) {
+  if (!file.copy(gff_sim, gff_out, overwrite = TRUE)) stop("copy failed: ", gff_sim)
+}

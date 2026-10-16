@@ -2,7 +2,7 @@
 # Troponin ER exons in the marker gene windows, read from the per-sub-group
 # gffcompare GTFs, plus the Ensembl reference gene models for the same genes.
 # Usage: extract_marker_loci.sh <fastder_dir> <out.csv> [reference_gtf]
-# fastder_dir holds one <tissue>_<n>/reference/mc1.0/gffcompare.annotated.gtf
+# fastder_dir holds one <tissue>_<n>/reference/<param_id>/gffcompare.annotated.gtf
 # per sub-group. Windows are hg38 (TNNT2 chr1, TNNT3 chr11, TNNI3 chr19). When
 # reference_gtf is given, the reference exons of the three genes are appended
 # with tissue "Ensembl" so the panel can draw them as a reference row.
@@ -12,8 +12,22 @@ fastder_dir=$1
 out=$2
 reference_gtf=${3:-}
 
+gtfs=()
+for sub_group in "$fastder_dir"/*/reference; do
+    found=("$sub_group"/*/gffcompare.annotated.gtf)
+    if [ "${#found[@]}" -ne 1 ] || [ ! -f "${found[0]}" ]; then
+        echo "expected one gffcompare.annotated.gtf under $sub_group" >&2
+        exit 1
+    fi
+    gtfs+=("${found[0]}")
+done
+if [ "${#gtfs[@]}" -eq 0 ]; then
+    echo "no sub-group under $fastder_dir" >&2
+    exit 1
+fi
+
 echo "gene,tissue,start,end" > "$out"
-for gtf in "$fastder_dir"/*/reference/mc1.0/gffcompare.annotated.gtf; do
+for gtf in "${gtfs[@]}"; do
     rel=${gtf#"$fastder_dir"/}
     sub=${rel%%/*}
     tissue=${sub%_*}

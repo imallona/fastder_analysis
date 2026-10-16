@@ -15,8 +15,10 @@ dependencies:
   - r-magick
   - r-png
   - r-rcolorbrewer
+  - r-svglite
   - bioconductor-complexheatmap
   - bioconductor-rtracklayer
+  - bioconductor-gviz
   - python
   - matplotlib
   - poppler

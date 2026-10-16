@@ -22,6 +22,9 @@ rule download_reference:
         chr_args=" ".join(str(c) for c in FASTDER_CFG["chromosomes"])
             if FASTDER_CFG.get("chromosomes")
             else "",
+    resources:
+        mem_mb=4000,
+        runtime=120,
     conda:
         "../envs/reference_download.yaml"
     shell:

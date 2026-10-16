@@ -17,6 +17,9 @@ rule archive_reports:
         op.join(LOG_DIR, "archive_reports.log"),
     params:
         archive_root=op.join(RESULTS_DIR, "archive"),
+    resources:
+        mem_mb=2000,
+        runtime=30,
     conda:
         "../envs/base.yaml"
     shell:
@@ -45,7 +48,7 @@ def _report_tool_gtf(tool):
     def _f(wildcards):
         if tool not in PARAM_IDS_BY_TOOL:
             return []
-        return op.join(DATA_DIR, "tools", tool, _REPORT_SCENARIO,
+        return op.join(TOOLS_DIR, tool, _REPORT_SCENARIO,
                        PARAM_IDS_BY_TOOL[tool][0], "output.gtf")
     return _f
 
@@ -79,6 +82,9 @@ rule render_summary_report:
     params:
         truth_gff=_REPORT_TRUTH,
         track_scenario=_REPORT_SCENARIO,
+    resources:
+        mem_mb=16000,
+        runtime=120,
     conda:
         "../envs/rmarkdown.yaml"
     shell:
@@ -92,7 +98,8 @@ rule render_summary_report:
         Rscript -e "rmarkdown::render(
             input = '{input.rmd}',
             output_file = '$(realpath -m {output})',
-            params = list(summary_csv = '$(realpath {input.summary})',
+            params = list(fig_dir = '$(dirname $(realpath -m {output}))/summary_figs/',
+                          summary_csv = '$(realpath {input.summary})',
                           chain_stats_csv = '$(realpath {input.chain_stats})',
                           truth_chain_stats_csv = '$(realpath {input.truth_chain_stats})',
                           fuzzy_jaccard_csv = '$(realpath {input.jaccard})',
@@ -110,10 +117,83 @@ rule render_summary_report:
 
 
 # 15. Render the Rmarkdown benchmarks report from logs/benchmarks/.
+# The machine the timings came from, recorded by the job itself.
+rule record_host_info:
+    input:
+        script=op.join(WORKFLOW_DIR, "scripts", "record_host_info.py"),
+    output:
+        tsv=op.join(RESULTS_DIR, "host_info.tsv"),
+    benchmark:
+        op.join(BENCH_DIR, "record_host_info.tsv")
+    log:
+        op.join(LOG_DIR, "record_host_info.log"),
+    resources:
+        mem_mb=1000,
+        runtime=10,
+    conda:
+        "../envs/base.yaml"
+    shell:
+        "python3 {input.script} --out {output.tsv} > {log} 2>&1"
+
+
+# ASimulatoR's version, read inside the container that runs it.
+rule asimulator_version:
+    output:
+        op.join(RESULTS_DIR, "asimulator_version.txt"),
+    log:
+        op.join(LOG_DIR, "asimulator_version.log"),
+    resources:
+        mem_mb=2000,
+        runtime=10,
+    container:
+        ASIMULATOR_IMAGE
+    shell:
+        """
+        Rscript -e 'cat(as.character(packageVersion("ASimulatoR")), "\n")' \
+            > {output} 2> {log}
+        """
+
+
+# Versions of the tools behind this run's results. It depends on summary.csv
+# so every tool environment is built by the time it reads them.
+rule collect_tool_versions:
+    input:
+        script=op.join(WORKFLOW_DIR, "scripts", "collect_tool_versions.py"),
+        summary=op.join(RESULTS_DIR, "summary.csv"),
+        asimulator=([op.join(RESULTS_DIR, "asimulator_version.txt")]
+                    if HAS_SIM_TRUTH else []),
+    output:
+        csv=op.join(RESULTS_DIR, "tool_versions.csv"),
+        tex=op.join(RESULTS_DIR, "tool_versions.tex"),
+    log:
+        op.join(LOG_DIR, "collect_tool_versions.log"),
+    params:
+        conda_dir=CONDA_ENVS_DIR,
+        envs_dir=op.join(WORKFLOW_DIR, "envs"),
+        fastder_src=op.join(WORKFLOW_DIR, "external", "fastder"),
+        asimulator=lambda wc, input: (f"--asimulator-version {input.asimulator}"
+                                      if input.asimulator else ""),
+    resources:
+        mem_mb=1000,
+        runtime=10,
+    conda:
+        "../envs/base.yaml"
+    shell:
+        """
+        python3 {input.script} \
+            --conda-dir {params.conda_dir} \
+            --envs-dir {params.envs_dir} \
+            --fastder-src {params.fastder_src} \
+            {params.asimulator} \
+            --out-csv {output.csv} --out-tex {output.tex} > {log} 2>&1
+        """
+
+
 rule render_benchmarks_report:
     input:
         summary=op.join(RESULTS_DIR, "summary.csv"),
         rmd=op.join(WORKFLOW_DIR, "reports", "benchmarks.Rmd"),
+        host_info=op.join(RESULTS_DIR, "host_info.tsv"),
     output:
         op.join(RESULTS_DIR, "benchmarks.html"),
     log:
@@ -121,6 +201,9 @@ rule render_benchmarks_report:
     params:
         bench_dir=BENCH_DIR,
         scenarios=",".join(SCENARIOS),
+    resources:
+        mem_mb=8000,
+        runtime=60,
     conda:
         "../envs/rmarkdown.yaml"
     shell:
@@ -128,9 +211,68 @@ rule render_benchmarks_report:
         Rscript -e "rmarkdown::render(
             input = '{input.rmd}',
             output_file = '$(realpath -m {output})',
-            params = list(bench_dir = '$(realpath {params.bench_dir})',
-                          scenarios = '{params.scenarios}'),
+            params = list(fig_dir = '$(dirname $(realpath -m {output}))/benchmarks_figs/',
+                          bench_dir = '$(realpath {params.bench_dir})',
+                          scenarios = '{params.scenarios}',
+                          host_info = '$(realpath {input.host_info})'),
             quiet = TRUE)" > {log} 2>&1
+        """
+
+
+# The coverage threshold with the best exon-level F1 over a ladder run.
+rule choose_threshold:
+    input:
+        script=op.join(WORKFLOW_DIR, "scripts", "choose_threshold.py"),
+        summary=op.join(RESULTS_DIR, "summary.csv"),
+    output:
+        ladder=op.join(RESULTS_DIR, "threshold_ladder.csv"),
+        choice=op.join(RESULTS_DIR, "threshold_choice.csv"),
+    log:
+        op.join(LOG_DIR, "choose_threshold.log"),
+    resources:
+        mem_mb=2000,
+        runtime=10,
+    conda:
+        "../envs/base.yaml"
+    shell:
+        """
+        python3 {input.script} --summary {input.summary} \
+            --out-ladder {output.ladder} --out-choice {output.choice} > {log} 2>&1
+        """
+
+
+# Thresholds at which the case scenario has a called region at each locus and
+# the control scenario has none.
+rule collect_threshold_range:
+    input:
+        script=op.join(WORKFLOW_DIR, "scripts", "collect_threshold_range.py"),
+        loci=lambda wc: THRESHOLD_RANGE["loci"],
+        gtfs=lambda wc: expand(
+            op.join(TOOLS_DIR, "fastder", "{scenario}", "{param_id}", "output.gtf"),
+            scenario=[THRESHOLD_RANGE["case"], THRESHOLD_RANGE["control"]],
+            param_id=PARAM_IDS),
+    output:
+        table=op.join(RESULTS_DIR, "threshold_range.csv"),
+        summary=op.join(RESULTS_DIR, "threshold_range_summary.csv"),
+        counts=op.join(RESULTS_DIR, "threshold_range_counts.csv"),
+    log:
+        op.join(LOG_DIR, "collect_threshold_range.log"),
+    params:
+        case=lambda wc: op.join(TOOLS_DIR, "fastder", THRESHOLD_RANGE["case"]),
+        control=lambda wc: op.join(TOOLS_DIR, "fastder", THRESHOLD_RANGE["control"]),
+        param_ids=" ".join(PARAM_IDS),
+    resources:
+        mem_mb=4000,
+        runtime=30,
+    conda:
+        "../envs/base.yaml"
+    shell:
+        """
+        python3 {input.script} --loci {input.loci} \
+            --case {params.case} --control {params.control} \
+            --param-id {params.param_ids} \
+            --out {output.table} --out-summary {output.summary} \
+            --out-counts {output.counts} > {log} 2>&1
         """
 
 
@@ -143,7 +285,7 @@ def _manifest_tool_gtfs(tool):
     def _f(wildcards):
         if tool not in PARAM_IDS_BY_TOOL:
             return []
-        return expand(op.join(DATA_DIR, "tools", tool, "{scenario}",
+        return expand(op.join(TOOLS_DIR, tool, "{scenario}",
                               PARAM_IDS_BY_TOOL[tool][0], "output.gtf"),
                       scenario=SCENARIOS)
     return _f
@@ -161,6 +303,9 @@ rule recount3_report_manifest:
         manifest=op.join(RESULTS_DIR, "recount3_manifest.csv"),
     params:
         groups=R3_GROUPS,
+    resources:
+        mem_mb=2000,
+        runtime=30,
     run:
         import csv as _csv
 
@@ -200,6 +345,7 @@ rule render_recount3_report:
         manifest=op.join(RESULTS_DIR, "recount3_manifest.csv"),
         summary=op.join(RESULTS_DIR, "summary.csv"),
         reference_gtf=(REF_GTF if BACKEND == "recount3" else []),
+        loci=op.join(WORKFLOW_DIR, "..", "config", "tdp43_cryptic_exons.tsv"),
         rmd=op.join(WORKFLOW_DIR, "reports", "recount3.Rmd"),
     output:
         op.join(RESULTS_DIR, "recount3.html"),
@@ -208,6 +354,9 @@ rule render_recount3_report:
     params:
         study=R3_STUDY,
         reference_gtf=REF_ANNOTATION,
+    resources:
+        mem_mb=16000,
+        runtime=120,
     conda:
         "../envs/rmarkdown.yaml"
     shell:
@@ -215,9 +364,11 @@ rule render_recount3_report:
         Rscript -e "rmarkdown::render(
             input = '{input.rmd}',
             output_file = '$(realpath -m {output})',
-            params = list(manifest_csv = '$(realpath {input.manifest})',
+            params = list(fig_dir = '$(dirname $(realpath -m {output}))/recount3_figs/',
+                          manifest_csv = '$(realpath {input.manifest})',
                           summary_csv = '$(realpath {input.summary})',
                           reference_gtf = '{params.reference_gtf}',
+                          loci_tsv = '$(realpath {input.loci})',
                           study = '{params.study}'),
             quiet = TRUE)" > {log} 2>&1
         """
@@ -230,7 +381,7 @@ rule render_recount3_report:
 rule render_gtex_report:
     input:
         fastder_gtfs=expand(
-            op.join(DATA_DIR, "tools", "fastder", "{scenario}",
+            op.join(TOOLS_DIR, "fastder", "{scenario}",
                     PARAM_IDS_BY_TOOL["fastder"][0], "output.gtf"),
             scenario=SCENARIOS),
         reference_gtf=(REF_GTF if BACKEND == "recount3" else []),
@@ -242,10 +393,13 @@ rule render_gtex_report:
     params:
         reference_gtf=REF_ANNOTATION,
         # Sub-group name per fastder GTF, in input order. The GTF path
-        # component data/tools/fastder/{scenario}/... is the sub-group; the
+        # component {scenario} of each fastder GTF path is the sub-group; the
         # report reads the tissue from the part before the _<n> suffix.
         subgroups=lambda wc, input: ",".join(
             Path(g).parts[-3] for g in input.fastder_gtfs),
+    resources:
+        mem_mb=16000,
+        runtime=120,
     conda:
         "../envs/rmarkdown.yaml"
     shell:
@@ -254,7 +408,8 @@ rule render_gtex_report:
         Rscript -e "rmarkdown::render(
             input = '{input.rmd}',
             output_file = '$(realpath -m {output})',
-            params = list(fastder_gtfs = '$gtfs',
+            params = list(fig_dir = '$(dirname $(realpath -m {output}))/gtex_concordance_figs/',
+                          fastder_gtfs = '$gtfs',
                           subgroups = '{params.subgroups}',
                           reference_gtf = '{params.reference_gtf}'),
             quiet = TRUE)" > {log} 2>&1

@@ -6,6 +6,7 @@ output:
     toc_float: true
     code_folding: hide
 params:
+  fig_dir: "summary_custom_figs/"
   summary_csv: NULL
   chain_stats_csv: NULL
   truth_chain_stats_csv: NULL
@@ -30,7 +31,7 @@ knitr::opts_chunk$set(
   fig.height = 5,
   fig.align = "center",
   dev = c("png", "pdf"),
-  fig.path = "summary_custom_figs/"
+  fig.path = params$fig_dir
 )
 library(readr)
 library(dplyr)
