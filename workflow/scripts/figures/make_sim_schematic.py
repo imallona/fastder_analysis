@@ -64,10 +64,9 @@ def transcript(ax, y, present, alt=None, skip=None, retained=None):
             exon(ax, y, span, EXON)
 
 
-# Wide and short: event classes on the left, expression scenarios on the right,
-# so the panel sits as one method row across the full figure width.
+# Drawn at print size (about 105 mm wide) so fonts stay at 6.5 to 7.5 pt.
 fig, (ax, ax2) = plt.subplots(
-    1, 2, figsize=(10.5, 4.6), gridspec_kw={"width_ratios": [5, 3], "wspace": 0.06})
+    1, 2, figsize=(4.4, 2.4), gridspec_kw={"width_ratios": [5, 3], "wspace": 0.06})
 
 SITE_SHIFT = 0.03  # how far an alternative splice site moves an exon edge
 # label, exons drawn as reference, exons drawn as alternative, exons skipped,
@@ -90,24 +89,24 @@ TOP = len(rows) + 1.0  # shared top, so both headers line up
 y = len(rows)
 for label, present, alt, skip, retained in rows:
     transcript(ax, y, present, alt, skip, retained)
-    ax.text(LABEL_X, y, label, ha="right", va="center", fontsize=10, color="#222222")
+    ax.text(LABEL_X, y, label, ha="right", va="center", fontsize=7, color="#222222")
     y -= 1
 
 ax.set_xlim(-0.42, 1.0)
-ax.set_ylim(-0.2, TOP)
+ax.set_ylim(0.4, TOP)
 ax.axis("off")
-ax.text(LABEL_X, len(rows) + 0.7, "Alternative-splicing event classes",
-        fontsize=10.5, color=HEADER, ha="left")
+ax.text(LABEL_X - 0.75, len(rows) + 0.7, "Alternative-splicing event classes",
+        fontsize=7.5, color=HEADER, ha="left")
 
-# Legend strip below the transcripts.
-lx = 0.0
-ax.add_patch(Rectangle((lx, 0.12), 0.045, 0.16, facecolor=EXON))
-ax.text(lx + 0.055, 0.2, "reference exon", fontsize=8.5, va="center", color="#222222")
-ax.add_patch(Rectangle((lx + 0.22, 0.12), 0.045, 0.16, facecolor=ALT))
-ax.text(lx + 0.275, 0.2, "alternative exon, splice site or retained intron", fontsize=8.5, va="center", color="#222222")
-ax.add_patch(Rectangle((lx + 0.80, 0.12), 0.045, 0.16, facecolor="white",
-                       edgecolor=SKIP_EDGE, linestyle=(0, (3, 2)), lw=0.9))
-ax.text(lx + 0.855, 0.2, "skipped", fontsize=8.5, va="center", color="#222222")
+# Legend under the scenarios, one item per line.
+legend_items = [("reference exon", dict(facecolor=EXON)),
+                ("alternative exon, splice\nsite or retained intron", dict(facecolor=ALT)),
+                ("skipped exon", dict(facecolor="white", edgecolor=SKIP_EDGE,
+                                      linestyle=(0, (3, 2)), lw=0.9))]
+for k, (text, style) in enumerate(legend_items):
+    ly = 2.6 - 1.0 * k
+    ax2.add_patch(Rectangle((0.0, ly - 0.2), 0.1, 0.4, **style))
+    ax2.text(0.14, ly, text, fontsize=6.5, va="center", color="#222222")
 
 
 def coverage(ax, y, heights):
@@ -119,14 +118,14 @@ def coverage(ax, y, heights):
 
 
 # Scenario labels sit above each track, since the right panel is narrow.
-ax2.text(0.0, len(rows) + 0.7, "Expression scenarios (es example)",
-         fontsize=10.5, color=HEADER, ha="left")
-ax2.text(0.0, TOP - 2.45, "reference and variant", ha="left", va="bottom", fontsize=9.5, color="#222222")
+ax2.text(0.0, len(rows) + 0.7, "Expression scenarios\n(es example)",
+         fontsize=7.5, color=HEADER, ha="left")
+ax2.text(0.0, TOP - 2.45, "reference and variant", ha="left", va="bottom", fontsize=7, color="#222222")
 coverage(ax2, TOP - 3.15, [1, 1, 0.5, 1, 1, 1])
-ax2.text(0.0, TOP - 4.25, "variant", ha="left", va="bottom", fontsize=9.5, color="#222222")
+ax2.text(0.0, TOP - 4.25, "variant", ha="left", va="bottom", fontsize=7, color="#222222")
 coverage(ax2, TOP - 4.95, [1, 1, 0.0, 1, 1, 1])
 ax2.set_xlim(-0.05, 1.0)
-ax2.set_ylim(-0.2, TOP)
+ax2.set_ylim(0.4, TOP)
 ax2.axis("off")
 
 fig.savefig("fig_sim_schematic.pdf", bbox_inches="tight")
