@@ -1,5 +1,14 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+
+- Main figures laid out at 180 mm, fonts from 6.5 pt.
+- Simulation figures at reference parameters, framed panels.
+- Locus tracks for STMN2, HDGFL2 and ELAVL3 from one rule.
+- New figures: Jaccard, locus recall, tolerance, parameter grid.
+
 ## [0.2.0] - 2026-10-16
 
 Runs fastder 0.2.0 (`dbaf750`).
