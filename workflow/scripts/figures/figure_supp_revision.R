@@ -10,6 +10,7 @@ out_dir <- if (length(args) >= 1) args[[1]] else "."
 
 source(file.path(dirname(sub("--file=", "",
   grep("--file=", commandArgs(FALSE), value = TRUE))), "helpers.R"))
+BASE_SIZE <- 8
 
 
 save_both <- function(plot, name, width, height) {

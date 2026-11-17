@@ -147,6 +147,7 @@ rule figure_main_1:
     input:
         helpers=op.join(FIG_SCRIPTS, "helpers.R"),
         script=op.join(FIG_SCRIPTS, "figure_main_1.R"),
+        overview=op.join(WORKFLOW_DIR, "resources", "pipeline_overview.pdf"),
         schematics=op.join(FIG_DIR, "fig_sim_schematic.pdf"),
     output:
         op.join(FIG_DIR, "figure_main_1.pdf"),
@@ -181,19 +182,30 @@ rule figure_gtex_concordance:
         "{_fig_exports} Rscript {input.script} > {log} 2>&1"
 
 
-# Coverage and calls at the STMN2 locus of the TDP-43 run. The BigWigs the
-# manifest names must be on disk.
+# Coverage and calls at one cryptic-exon locus of a TDP-43 run, at print size.
+# The BigWigs the manifest names must be on disk.
+TRACK_CONFIGS = {"stmn2": "config_klim_2019_tdp43_recount3",
+                 "hdgfl2": "config_klim_2019_tdp43_recount3_panel",
+                 "elavl3": "config_klim_2019_tdp43_recount3_panel"}
+TRACK_HEIGHT = {"stmn2": 2.8, "hdgfl2": 3.2, "elavl3": 3.2}
+
+
 rule figure_tdp43_track:
     input:
         script=op.join(FIG_SCRIPTS, "make_stmn2_track.R"),
-        manifest=tdp43_manifest("config_klim_2019_tdp43_recount3"),
+        manifest=lambda wc: tdp43_manifest(TRACK_CONFIGS[wc.gene]),
         loci=op.join(WORKFLOW_DIR, "..", "config", "tdp43_cryptic_exons.tsv"),
         reference_gtf=REF_GTF,
     output:
-        svg=op.join(FIG_DIR, "fig_tdp43_stmn2.svg"),
-        pdf=op.join(FIG_DIR, "fig_tdp43_stmn2.pdf"),
+        svg=op.join(FIG_DIR, "fig_tdp43_{gene}.svg"),
+        pdf=op.join(FIG_DIR, "fig_tdp43_{gene}.pdf"),
+    wildcard_constraints:
+        gene="|".join(TRACK_CONFIGS),
     log:
-        op.join(LOG_DIR, "figure_tdp43_track.log"),
+        op.join(LOG_DIR, "figure_tdp43_track_{gene}.log"),
+    params:
+        gene=lambda wc: wc.gene.upper(),
+        height=lambda wc: TRACK_HEIGHT[wc.gene],
     resources:
         mem_mb=8000,
         runtime=60,
@@ -202,8 +214,8 @@ rule figure_tdp43_track:
     shell:
         """
         Rscript {input.script} --manifest {input.manifest} --loci {input.loci} \
-            --reference-gtf {input.reference_gtf} --gene STMN2 \
-            --out {output.svg} --width 12 --height 5 > {log} 2>&1
+            --reference-gtf {input.reference_gtf} --gene {params.gene} \
+            --out {output.svg} --width 7 --height {params.height} --fontsize 7 > {log} 2>&1
         """
 
 
@@ -212,6 +224,7 @@ rule figure_main_2:
         helpers=op.join(FIG_SCRIPTS, "helpers.R"),
         script=op.join(FIG_SCRIPTS, "figure_main_2.R"),
         schematics=op.join(FIG_DIR, "fig_tdp43_scheme.pdf"),
+        track=op.join(FIG_DIR, "fig_tdp43_stmn2.pdf"),
         concordance=op.join(FIG_DIR, "fig_gtex_concordance.png"),
         markers=op.join(FIG_DIR, "marker_loci.csv"),
         novel=op.join(FIG_DIR, "novel_exons.csv"),
@@ -219,8 +232,6 @@ rule figure_main_2:
         tdp43_jaccard=op.join(FIG_DIR, "tdp43_jaccard.csv"),
     output:
         composite=op.join(FIG_DIR, "figure_main_2.pdf"),
-        # Demoted from the composite, kept visible.
-        supp=op.join(FIG_DIR, "supp_gtex_transcript_precision.pdf"),
     log:
         op.join(LOG_DIR, "figure_main_2.log"),
     resources:
@@ -372,7 +383,10 @@ rule figure_supp_revision:
 # Figures drawn by one script each, from the results of finished configs.
 SINGLE_FIGURES = {
     "fig_sim_granularity.pdf": "figure_sim_granularity.R",
-    "fig_sim_event_jaccard.png": "figure_sim_event_jaccard.R",
+    "fig_sim_event_jaccard.pdf": "figure_sim_event_jaccard.R",
+    "fig_sim_jaccard.pdf": "figure_sim_jaccard.R",
+    "fig_sim_locus_recall.pdf": "figure_sim_locus_recall.R",
+    "fig_sim_tolerance.pdf": "figure_sim_tolerance.R",
     "fig_gtexcmp_genomic_dist.pdf": "figure_gtex_genomic_dist.R",
     "fig_tdp43_similarity.pdf": "figure_tdp43_similarity.R",
 }
@@ -461,7 +475,6 @@ rule manuscript_figures:
     input:
         op.join(FIG_DIR, "figure_main_1.pdf"),
         op.join(FIG_DIR, "figure_main_2.pdf"),
-        op.join(FIG_DIR, "supp_gtex_transcript_precision.pdf"),
         op.join(FIG_DIR, "tool_capabilities.tex"),
         op.join(FIG_DIR, "supp_ablation.pdf"),
         op.join(FIG_DIR, "supp_min_junction_reads.pdf"),
@@ -469,4 +482,4 @@ rule manuscript_figures:
         op.join(FIG_DIR, "annotation.csv"),
         op.join(FIG_DIR, "reported_numbers.csv"),
         expand(op.join(FIG_DIR, "{figure}"), figure=SINGLE_FIGURES),
-        op.join(FIG_DIR, "fig_tdp43_stmn2.pdf"),
+        expand(op.join(FIG_DIR, "fig_tdp43_{gene}.pdf"), gene=TRACK_CONFIGS),

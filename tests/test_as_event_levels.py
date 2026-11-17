@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CONFIG_DIR = ROOT / "config"
 R_FILES = (
     ROOT / "workflow" / "reports" / "summary.Rmd",
-    ROOT / "workflow" / "scripts" / "figures" / "figure_sim_event_jaccard.R",
+    ROOT / "workflow" / "scripts" / "figures" / "helpers.R",
 )
 
 VECTOR = re.compile(r"as_event_(levels|labels|palette) <- c\(")

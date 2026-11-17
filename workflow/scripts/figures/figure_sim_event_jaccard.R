@@ -1,44 +1,36 @@
-# Per-event Jaccard over the parameter grid. min_length on x; min_coverage and
-# position_tolerance as facet rows so pt invariance shows as near-identical bands.
-# Reads config_full_simulation; rebuilds from the local mirror.
+# Median best exonic Jaccard of fastder per event class, one line per
+# parameter combination of the grid; the reference combination is drawn black.
 
 args <- commandArgs(trailingOnly = TRUE)
 fig_dir <- Sys.getenv("FASTDER_FIG_DIR", file.path("results", "figures"))
-out <- if (length(args) >= 1) args[[1]] else file.path(fig_dir, "fig_sim_event_jaccard.png")
+out <- if (length(args) >= 1) args[[1]] else file.path(fig_dir, "fig_sim_event_jaccard.pdf")
 
 source(file.path(dirname(sub("--file=", "",
   grep("--file=", commandArgs(FALSE), value = TRUE))), "helpers.R"))
+BASE_SIZE <- 8
 
-# Keyed by the sample names the configs use; an unlisted sample becomes NA.
-as_event_levels <- c("es", "mes", "ir", "a3", "a5", "mee", "afe", "ale",
-  "mixed", "mixed_terminal", "mixed_internal")
-# Codes, not names: ten columns leave no room for more.
-as_event_labels <- c(es = "ES", mes = "MES", ir = "IR", a3 = "A3", a5 = "A5",
-  mee = "MEE", afe = "AFE", ale = "ALE", mixed = "mixed",
-  mixed_terminal = "mixed\nterminal", mixed_internal = "mixed\ninternal")
-label_as <- function(v) factor(v, levels = as_event_levels, labels = as_event_labels[as_event_levels])
-scenario_palette <- c("Reference and variant" = "#1b9e77", "Variant" = "#d95f02")
-parse_param_id <- function(d) d %>% mutate(
-  min_coverage = as.numeric(str_extract(param_id, "(?<=mc)[0-9.]+")),
-  min_length = as.numeric(str_extract(param_id, "(?<=ml)[0-9.]+")),
-  position_tolerance = { v <- as.numeric(str_extract(param_id, "(?<=pt)[0-9.]+")); ifelse(is.na(v), 0, v) })
-
-fj <- read_result("config_full_simulation", "fuzzy_jaccard.csv") %>%
+reference_id <- sprintf("mc%s_ml10_pt5_ns0", format(REFERENCE_MIN_COVERAGE, trim = TRUE))
+medians <- read_result("config_full_simulation", "fuzzy_jaccard.csv") %>%
   filter(tool == "fastder") %>%
   default_grid() %>%
-  mutate(jaccard = as.numeric(jaccard), as_event = label_as(sample),
-         scenario = relabel_scenario(scenario)) %>%
-  parse_param_id() %>% mutate(param_sub = paste0("ml", min_length))
+  mutate(jaccard = as.numeric(jaccard),
+         min_coverage = paste(extract_mc(param_id), "CPM")) %>%
+  group_by(param_id, min_coverage, scenario, sample) %>%
+  summarise(median_jaccard = median(jaccard), .groups = "drop") %>%
+  mutate(scenario = relabel_scenario(scenario), event = relabel_event(sample),
+         reference = param_id == reference_id)
+save_panel_data(medians, "panel_event_jaccard")
 
-p <- ggplot(fj, aes(param_sub, jaccard, fill = scenario)) +
-  geom_boxplot(outlier.size = 0.25, linewidth = 0.3) +
-  scale_fill_manual(values = scenario_palette, name = NULL) +
-  labs(x = "min_length", y = "Best exonic Jaccard against reference") +
+p <- ggplot(medians, aes(event, median_jaccard, group = param_id)) +
+  geom_line(data = filter(medians, !reference), aes(colour = min_coverage),
+            linewidth = 0.35, alpha = 0.7) +
+  geom_line(data = filter(medians, reference), colour = "black", linewidth = 0.8) +
+  geom_point(data = filter(medians, reference), colour = "black", size = 1.4) +
+  scale_colour_manual(values = c("0.005 CPM" = "#9ecae1", "0.05 CPM" = "#fdae6b"), name = NULL) +
+  facet_wrap(~ scenario, ncol = 1) +
   coord_cartesian(ylim = c(0, 1)) +
-  facet_grid(min_coverage + position_tolerance ~ as_event,
-             labeller = labeller(min_coverage = function(v) paste0("mc ", v),
-                                 position_tolerance = function(v) paste0("pt ", v))) +
-  theme_pub() + theme(legend.position = "bottom")
+  labs(x = "Event class", y = "Median best exonic Jaccard") +
+  theme_pub()
 
-ggsave(out, p, width = 12, height = 11, dpi = 200)
+ggsave(out, p, width = 7, height = 4.6)
 cat("wrote", out, "\n")
