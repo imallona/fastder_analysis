@@ -1,5 +1,5 @@
-# Median best exonic Jaccard of fastder per event class, one line per
-# parameter combination of the grid; the reference combination is drawn black.
+# Median best exonic Jaccard of fastder per event class: range over the
+# parameter grid per min_coverage, and the reference combination in black.
 
 args <- commandArgs(trailingOnly = TRUE)
 fig_dir <- Sys.getenv("FASTDER_FIG_DIR", file.path("results", "figures"))
@@ -21,12 +21,16 @@ medians <- read_result("config_full_simulation", "fuzzy_jaccard.csv") %>%
          reference = param_id == reference_id)
 save_panel_data(medians, "panel_event_jaccard")
 
-p <- ggplot(medians, aes(event, median_jaccard, group = param_id)) +
-  geom_line(data = filter(medians, !reference), aes(colour = min_coverage),
-            linewidth = 0.35, alpha = 0.7) +
-  geom_line(data = filter(medians, reference), colour = "black", linewidth = 0.8) +
-  geom_point(data = filter(medians, reference), colour = "black", size = 1.4) +
-  scale_colour_manual(values = c("0.005 CPM" = "#9ecae1", "0.05 CPM" = "#fdae6b"), name = NULL) +
+ranges <- medians %>%
+  group_by(min_coverage, scenario, event) %>%
+  summarise(low = min(median_jaccard), high = max(median_jaccard), .groups = "drop")
+dodge <- position_dodge(width = 0.5)
+
+p <- ggplot(ranges, aes(event, colour = min_coverage)) +
+  geom_linerange(aes(ymin = low, ymax = high), linewidth = 1.6, position = dodge) +
+  geom_point(data = filter(medians, reference), aes(y = median_jaccard),
+             colour = "black", size = 1.2, position = position_nudge(x = -0.125)) +
+  scale_colour_manual(values = c("0.005 CPM" = "#6baed6", "0.05 CPM" = "#fd8d3c"), name = NULL) +
   facet_wrap(~ scenario, ncol = 1) +
   coord_cartesian(ylim = c(0, 1)) +
   labs(x = "Event class", y = "Median best exonic Jaccard") +
