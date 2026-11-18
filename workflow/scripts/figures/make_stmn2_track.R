@@ -133,6 +133,14 @@ extract_min_cov <- function() {
 }
 min_cov_cpm <- extract_min_cov()
 
+# One y scale for all samples, so knockdown and control compare directly.
+window <- GRanges(r$chrom, IRanges(r$start, r$end))
+coverage_max <- max(vapply(seq_len(nrow(manifest)), function(j) {
+  scores <- import(manifest$bigwig[j], which = window)$score
+  max(c(0, scores)) * manifest$cpm_factor[j]
+}, numeric(1)))
+top_tick <- max(Filter(function(v) v > 0 && v <= coverage_max, pretty(c(0, coverage_max))))
+
 build_tracks <- function() {
   # Labels below the scale line so they are not clipped at the top of the canvas.
   axis_track <- GenomeAxisTrack(labelPos = "below", fontsize = fontsize - 1)
@@ -163,6 +171,7 @@ build_tracks <- function() {
       name = paste0(group_short[m$group], "\u00a0", m$idx),
       type = c("histogram", "h"),
       transformation = local({ factor <- f; function(x) x * factor }),
+      ylim = c(0, coverage_max * 1.05), yTicksAt = top_tick,
       baseline = min_cov_cpm,
       col.baseline = "#d73027", lty.baseline = 2, lwd.baseline = 0.7,
       col = group_colors[m$group],
@@ -180,7 +189,7 @@ build_tracks <- function() {
       body <- c(body, AnnotationTrack(
         gr, name = paste0(tool_labels[tool], "\u00a0", group_short[group]),
         chromosome = r$chrom, fill = tool_colors[tool], col = NA,
-        stacking = "squish", shape = "box"))
+        stacking = "dense", shape = "box"))
       body_sizes <- c(body_sizes, 0.8)
     }
   }
