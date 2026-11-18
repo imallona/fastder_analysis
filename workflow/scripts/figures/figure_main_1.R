@@ -36,7 +36,7 @@ fig <- cowplot::plot_grid(panels, make_combined_legend(strand = FALSE),
                           ncol = 1, rel_heights = c(1, 0.04))
 
 width_in <- 160 / 25.4
-height_in <- 190 / 25.4
+height_in <- 160 / 25.4
 ggsave(out, fig, width = width_in, height = height_in)
 ggsave(sub("\\.pdf$", ".svg", out), fig, width = width_in, height = height_in)
 cat("wrote", out, "and", sub("\\.pdf$", ".svg", out), "\n")

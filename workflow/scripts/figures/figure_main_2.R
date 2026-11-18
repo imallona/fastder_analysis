@@ -38,7 +38,7 @@ fig <- tdp_design + tdp_novel + tdp_jaccard + stmn2_track + gtex_design +
         plot.tag.location = "margin")
 
 width_in <- 160 / 25.4
-height_in <- 195 / 25.4
+height_in <- 188 / 25.4
 ggsave(out, fig, width = width_in, height = height_in)
 ggsave(sub("\\.pdf$", ".svg", out), fig, width = width_in, height = height_in)
 cat("wrote", out, "and", sub("\\.pdf$", ".svg", out), "\n")
