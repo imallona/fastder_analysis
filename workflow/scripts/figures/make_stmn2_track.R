@@ -198,7 +198,7 @@ draw <- function(tr) {
              from = r$start, to = r$end, chromosome = r$chrom,
              background.title = "white", col.title = "black",
              col.axis = "black", fontsize = fontsize, cex.title = 0.9, cex.axis = 0.75,
-             rotation.title = 0, title.width = 3.2, sizes = c(1.0, tr$sizes))
+             rotation.title = 0, title.width = 2.2, sizes = c(1.6, tr$sizes))
 }
 
 tr <- build_tracks()
