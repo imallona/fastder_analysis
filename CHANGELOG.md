@@ -4,10 +4,11 @@
 
 ### Changed
 
-- Main figures laid out at 180 mm, fonts from 6.5 pt.
+- fastder v0.2.1: each minus-strand chain written once.
+- Simulation junction matrices with read counts.
+- Main figures at 160 mm, pipeline schematic redrawn.
 - Simulation figures at reference parameters, framed panels.
-- Locus tracks for STMN2, HDGFL2 and ELAVL3 from one rule.
-- New figures: Jaccard, locus recall, tolerance, parameter grid.
+- New figures: Jaccard, locus recall, tolerance.
 
 ## [0.2.0] - 2026-10-16
 
