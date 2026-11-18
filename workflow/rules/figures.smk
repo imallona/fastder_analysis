@@ -30,9 +30,11 @@ _fig_exports = " ".join(f"{k}={v}" for k, v in FIG_ENV.items())
 # design, and the two worked-example sample designs.
 rule figure_schematics:
     input:
+        pipeline=op.join(FIG_SCRIPTS, "make_pipeline_schematic.py"),
         sim=op.join(FIG_SCRIPTS, "make_sim_schematic.py"),
         samples=op.join(FIG_SCRIPTS, "make_sample_schematics.py"),
     output:
+        op.join(FIG_DIR, "fig_pipeline_schematic.pdf"),
         op.join(FIG_DIR, "fig_sim_schematic.pdf"),
         op.join(FIG_DIR, "fig_tdp43_scheme.pdf"),
         op.join(FIG_DIR, "fig_gtex_scheme.pdf"),
@@ -45,7 +47,8 @@ rule figure_schematics:
         "../envs/figures.yaml"
     shell:
         "mkdir -p {FIG_DIR} && cd {FIG_DIR} && "
-        "python {input.sim} > {log} 2>&1 && python {input.samples} >> {log} 2>&1"
+        "python {input.pipeline} > {log} 2>&1 && python {input.sim} >> {log} 2>&1 && "
+        "python {input.samples} >> {log} 2>&1"
 
 
 # Troponin ER exons in the marker windows, pulled from the per-sub-group GTFs.
@@ -147,7 +150,7 @@ rule figure_main_1:
     input:
         helpers=op.join(FIG_SCRIPTS, "helpers.R"),
         script=op.join(FIG_SCRIPTS, "figure_main_1.R"),
-        overview=op.join(WORKFLOW_DIR, "resources", "pipeline_overview.pdf"),
+        pipeline=op.join(FIG_DIR, "fig_pipeline_schematic.pdf"),
         schematics=op.join(FIG_DIR, "fig_sim_schematic.pdf"),
     output:
         op.join(FIG_DIR, "figure_main_1.pdf"),
@@ -187,7 +190,7 @@ rule figure_gtex_concordance:
 TRACK_CONFIGS = {"stmn2": "config_klim_2019_tdp43_recount3",
                  "hdgfl2": "config_klim_2019_tdp43_recount3_panel",
                  "elavl3": "config_klim_2019_tdp43_recount3_panel"}
-TRACK_HEIGHT = {"stmn2": 2.8, "hdgfl2": 3.2, "elavl3": 3.2}
+TRACK_HEIGHT = {"stmn2": 2.9, "hdgfl2": 3.4, "elavl3": 3.4}
 
 
 rule figure_tdp43_track:
@@ -215,7 +218,7 @@ rule figure_tdp43_track:
         """
         Rscript {input.script} --manifest {input.manifest} --loci {input.loci} \
             --reference-gtf {input.reference_gtf} --gene {params.gene} \
-            --out {output.svg} --width 7 --height {params.height} --fontsize 7 > {log} 2>&1
+            --out {output.svg} --width 6.3 --height {params.height} --fontsize 8 > {log} 2>&1
         """
 
 
