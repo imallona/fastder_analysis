@@ -43,14 +43,14 @@ for i, (g, c) in enumerate(groups):
     y = 0.60 - i * 0.20
     ax.add_patch(Rectangle((0.0, y), 0.40, 0.15, facecolor=LIGHT, edgecolor=c, lw=1.2))
     ax.text(0.20, y + 0.075, g, ha="center", va="center", fontsize=6.5)
-ax.text(0.0, 0.05, "called separately", fontsize=6, color=GREY, ha="left", style="italic")
+ax.text(0.0, 0.05, "groups called separately", fontsize=6, color=GREY, ha="left", style="italic")
 # Arrows from each group box to the evaluated cryptic-exon genes.
 for y in (0.675, 0.475):
     ax.annotate("", xy=(0.56, 0.58), xytext=(0.40, y),
                 arrowprops=dict(arrowstyle="-|>", color=GREY, lw=1.1))
 ax.text(0.58, 0.62, "cryptic-exon genes\nSTMN2, HDGFL2,\nELAVL3, CELF5",
         fontsize=6.5, ha="left", va="center")
-ax.text(0.58, 0.30, "0.05 CPM: STMN2 only\n0.005 CPM: wider panel",
+ax.text(0.58, 0.30, "fastder, 0.05 and\n0.005 CPM; chr8, chr19",
         fontsize=6, color=GREY, ha="left", va="center")
 ax.set_xlim(0, 1.0)
 ax.set_ylim(0.0, 1.02)

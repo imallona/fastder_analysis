@@ -1,4 +1,4 @@
-# Main Figure 2: two recount3 examples, two columns at 180 mm width.
+# Main Figure 2: two recount3 examples, two columns at 160 mm width.
 #   TDP-43: A design, B novel exons per group, C knockdown against control
 #           Jaccard, D STMN2 track.
 #   GTEx:   E design, F concordance heatmap, G novel exons per tissue,
@@ -32,12 +32,13 @@ HHHHHHHHIIII
 "
 fig <- tdp_design + tdp_novel + tdp_jaccard + stmn2_track + gtex_design +
   concordance + gtex_novel + marker_loci + precision +
-  plot_layout(design = design, heights = c(1.6, 2.4, 1.3, 1.7, 1.7)) +
+  plot_layout(design = design, heights = c(1.5, 3.0, 1.2, 1.6, 1.6)) +
   plot_annotation(tag_levels = "A") &
-  theme(plot.tag = element_text(face = "bold", size = 10))
+  theme(plot.tag = element_text(face = "bold", size = 10),
+        plot.tag.location = "margin")
 
-width_in <- 180 / 25.4
-height_in <- 225 / 25.4
+width_in <- 160 / 25.4
+height_in <- 195 / 25.4
 ggsave(out, fig, width = width_in, height = height_in)
 ggsave(sub("\\.pdf$", ".svg", out), fig, width = width_in, height = height_in)
 cat("wrote", out, "and", sub("\\.pdf$", ".svg", out), "\n")

@@ -439,7 +439,7 @@ panel_novel <- function(csv = NOVEL_CSV) {
     geom_col(width = 0.45) +
     geom_text(aes(label = lab), vjust = -0.2, size = 2.4, lineheight = 0.85) +
     scale_fill_manual(values = tissue_palette, guide = "none") +
-    expand_limits(y = max(d$novel) * 1.25) +
+    expand_limits(y = max(d$novel) * 1.45) +
     labs(x = NULL, y = "Novel exons (count)") +
     theme_pub() + theme(axis.text.x = element_text(angle = 30, hjust = 1))
 }
@@ -464,7 +464,7 @@ panel_novel_tdp43 <- function(csv = TDP43_NOVEL_CSV) {
     geom_col(width = 0.7) +
     geom_text(aes(label = lab), vjust = -0.2, size = 2.4, lineheight = 0.85) +
     scale_fill_manual(values = TDP_GROUP_FILL, guide = "none") +
-    expand_limits(y = max(d$novel) * 1.25) +
+    expand_limits(y = max(d$novel) * 1.45) +
     labs(x = NULL, y = "Novel exons (count)") +
     theme_pub() + theme(axis.text.x = element_text(angle = 20, hjust = 1))
 }
@@ -505,7 +505,7 @@ panel_tdp43_jaccard <- function(csv = TDP43_JACCARD_CSV) {
     geom_text(aes(label = sprintf("%.2f", jaccard)), vjust = -0.3, size = 2.4) +
     scale_fill_manual(values = c("#9ecae1", "#3182bd"), guide = "none") +
     coord_cartesian(ylim = c(0, 1)) +
-    labs(x = "min_coverage", y = "Jaccard, WT against KD") +
+    labs(x = "min_coverage", y = "Exonic Jaccard") +
     theme_pub() + theme(axis.text.x = element_text(angle = 30, hjust = 1))
 }
 
@@ -736,8 +736,7 @@ panel_scaling <- function(path = file.path(FIG_DIR, "scaling.csv")) {
     tidyr::pivot_longer(c(samples, chromosomes), names_to = "stage", values_to = "cores") %>%
     filter(cores <= top) %>%
     mutate(metric = factor(metric_order[1], levels = metric_order),
-           label = ifelse(stage == "samples", "parsing: one thread per sample",
-                          "averaging: one thread per chromosome"))
+           label = ifelse(stage == "samples", "samples", "chromosomes"))
   p <- ggplot(long, aes(cores, value)) +
     geom_line(linewidth = 0.7, colour = "#FC8D62") +
     geom_point(size = 2.4, colour = "#FC8D62") +
@@ -750,8 +749,8 @@ panel_scaling <- function(path = file.path(FIG_DIR, "scaling.csv")) {
     p <- p +
       geom_vline(data = ceilings, aes(xintercept = cores),
                  linetype = "dotted", colour = "#7F7F7F") +
-      geom_text(data = ceilings, aes(x = cores, y = value, label = label),
-                angle = 90, hjust = 1, vjust = -0.4, size = 2.5, colour = "#7F7F7F")
+      geom_text(data = ceilings, aes(x = cores, y = 0, label = label),
+                angle = 90, hjust = 0, vjust = -0.4, size = 2.5, colour = "#7F7F7F")
   }
   p
 }
