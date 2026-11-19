@@ -27,6 +27,7 @@ parse_args <- function(args) {
     tools = "fastder,derfinder,megadepth_baseline,grohmm",
     width = "4.5",
     height = "6.5",
+    fontsize = "10",
     pdf = "true")
   i <- 1
   while (i <= length(args)) {
@@ -44,6 +45,7 @@ if (!nzchar(opt$manifest) || !file.exists(opt$manifest))
 
 width <- as.numeric(opt$width)
 height <- as.numeric(opt$height)
+fontsize <- as.numeric(opt$fontsize)
 want_tools <- strsplit(opt$tools, ",")[[1]]
 
 # Cryptic exon panel for the TDP-43 knockdown, hg38, from
@@ -73,7 +75,7 @@ tools <- tools[names(tools) %in% want_tools]
 tool_colors <- c(derfinder = "#66C2A5", fastder = "#FC8D62",
                  grohmm = "#8DA0CB", megadepth_baseline = "#E78AC3")
 tool_labels <- c(fastder = "fastder", derfinder = "derfinder",
-                 megadepth_baseline = "megadepth", grohmm = "grohmm")
+                 megadepth_baseline = "baseline", grohmm = "groHMM")
 
 # Ensembl models: the GTF drops the "chr" prefix the BigWigs and tool GTFs use.
 gene_models <- NULL
@@ -131,9 +133,17 @@ extract_min_cov <- function() {
 }
 min_cov_cpm <- extract_min_cov()
 
+# One y scale for all samples, so knockdown and control compare directly.
+window <- GRanges(r$chrom, IRanges(r$start, r$end))
+coverage_max <- max(vapply(seq_len(nrow(manifest)), function(j) {
+  scores <- import(manifest$bigwig[j], which = window)$score
+  max(c(0, scores)) * manifest$cpm_factor[j]
+}, numeric(1)))
+top_tick <- max(Filter(function(v) v > 0 && v <= coverage_max, pretty(c(0, coverage_max))))
+
 build_tracks <- function() {
   # Labels below the scale line so they are not clipped at the top of the canvas.
-  axis_track <- GenomeAxisTrack(labelPos = "below", fontsize = 9)
+  axis_track <- GenomeAxisTrack(labelPos = "below", fontsize = fontsize - 1)
   body <- list()
   body_sizes <- numeric(0)
 
@@ -158,9 +168,10 @@ build_tracks <- function() {
     f <- m$cpm_factor
     body <- c(body, DataTrack(
       range = m$bigwig, genome = "hg38", chromosome = r$chrom,
-      name = paste0(group_short[m$group], " ", m$idx),
+      name = paste0(group_short[m$group], "\u00a0", m$idx),
       type = c("histogram", "h"),
       transformation = local({ factor <- f; function(x) x * factor }),
+      ylim = c(0, coverage_max * 1.05), yTicksAt = top_tick,
       baseline = min_cov_cpm,
       col.baseline = "#d73027", lty.baseline = 2, lwd.baseline = 0.7,
       col = group_colors[m$group],
@@ -176,10 +187,10 @@ build_tracks <- function() {
         gr <- gr[seqnames(gr) == r$chrom & start(gr) <= r$end & end(gr) >= r$start]
       }
       body <- c(body, AnnotationTrack(
-        gr, name = paste0(tool_labels[tool], " ", group_short[group]),
+        gr, name = paste0(tool_labels[tool], "\u00a0", group_short[group]),
         chromosome = r$chrom, fill = tool_colors[tool], col = NA,
-        stacking = "squish", shape = "box"))
-      body_sizes <- c(body_sizes, 0.7)
+        stacking = "dense", shape = "box"))
+      body_sizes <- c(body_sizes, 0.8)
     }
   }
 
@@ -195,8 +206,8 @@ draw <- function(tr) {
   plotTracks(list(tr$axis, tr$highlight),
              from = r$start, to = r$end, chromosome = r$chrom,
              background.title = "white", col.title = "black",
-             col.axis = "black", fontsize = 10, cex.title = 0.85, cex.axis = 0.85,
-             rotation.title = 0, title.width = 1.6, sizes = c(1.0, tr$sizes))
+             col.axis = "black", fontsize = fontsize, cex.title = 0.9, cex.axis = 0.75,
+             rotation.title = 0, title.width = 2.2, sizes = c(1.6, tr$sizes))
 }
 
 tr <- build_tracks()

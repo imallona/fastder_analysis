@@ -11,9 +11,9 @@ Outputs:
                      resident set.
 
     <out_prefix>.MM  MatrixMarket coordinate-format sparse matrix
-                     (n_junctions x n_samples).  fastder uses MM only as a
-                     presence mask (Parser.cpp:213 stores sj_id but ignores
-                     count), so a count of 1 per (sj, sample) pair is enough.
+                     (n_junctions x n_samples) of read counts, unique plus
+                     multi-mapping. fastder sums them over samples for
+                     --min-junction-reads.
 
 Junctions are filtered to the chromosomes listed in --chromosomes (matching
 fastder's --chr restriction).  Restricting RR to the analysed chromosomes
@@ -138,9 +138,7 @@ def main():
         for key, reads in calls.items():
             if reads < args.min_reads:
                 continue
-            sj_id = key_to_sjid[key]
-            # fastder ignores the count value, so write 1 to keep MM compact
-            triples.append((sj_id, sample_idx, 1))
+            triples.append((key_to_sjid[key], sample_idx, reads))
 
     # MatrixMarket header: n_rows n_cols n_nonzero
     n_rows = len(sorted_keys)
@@ -151,8 +149,6 @@ def main():
         out.write("%%MatrixMarket matrix coordinate integer general\n")
         out.write("%-----------------------------------------------\n")
         out.write(f"{n_rows}\t{n_cols}\t{n_nz}\n")
-        # MatrixMarket convention is column-major, but fastder treats MM as a
-        # sparse presence list and doesn't require sorted order.
         for sj_id, sample_id, count in triples:
             out.write(f"{sj_id}\t{sample_id}\t{count}\n")
 

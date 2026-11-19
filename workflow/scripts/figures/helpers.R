@@ -76,10 +76,13 @@ tool_labels <- c(
   megadepth_baseline = "baseline", grohmm = "groHMM"
 )
 
+# Every panel framed, so each facet carries its own axes.
 theme_pub <- function(base_size = BASE_SIZE) {
   theme_classic(base_size = base_size) +
     theme(
       panel.grid = element_blank(),
+      axis.line = element_blank(),
+      panel.border = element_rect(colour = "black", fill = NA, linewidth = 0.4),
       strip.background = element_blank(),
       strip.text = element_text(size = base_size),
       axis.text = element_text(size = base_size - 1),
@@ -169,7 +172,7 @@ panel_speed <- function(bench_dir) {
     # No tool legend here; the shared legend comes from the line panels, whose
     # keys show the line type and point symbol together.
     guides(colour = "none") +
-    labs(x = "Wall time per run (s)", y = "Peak resident memory (MiB)") +
+    labs(x = "Wall time per run (s)", y = "Peak resident memory (MB)") +
     theme_pub_square()
 }
 
@@ -285,7 +288,18 @@ panel_boundary <- function(tools = TOOLS) {
 # --- summary.Rmd helpers, ported verbatim so strand and multi-exon panels
 # select the same parameter combinations the report figures used. ---
 
-scenario_labels <- c(template_and_variant = "Reference and variant", variant_only = "Variant")
+scenario_labels <- c(template_and_variant = "Reference and variant", variant_only = "Variant only")
+
+# ASimulatoR event classes and the two mixtures, in the order of the design panel.
+as_event_levels <- c("es", "mes", "ir", "a3", "a5", "mee", "afe", "ale",
+                     "mixed", "mixed_terminal", "mixed_internal")
+as_event_labels <- c(es = "es", mes = "mes", ir = "ir", a3 = "a3", a5 = "a5",
+                     mee = "mee", afe = "afe", ale = "ale", mixed = "mixed",
+                     mixed_terminal = "mixed\nterminal", mixed_internal = "mixed\ninternal")
+relabel_event <- function(v) {
+  present <- intersect(as_event_levels, unique(v))
+  factor(v, levels = present, labels = as_event_labels[present])
+}
 relabel_scenario <- function(v) {
   factor(v, levels = names(scenario_labels), labels = scenario_labels[names(scenario_labels)])
 }
@@ -296,24 +310,19 @@ extract_pt <- function(pid) {
   ifelse(is.na(v), 0, v)
 }
 
-# Best parameter per tool by median Jaccard, matching baselines to fastder on
-# the shared mc (and pt for derfinder) axes; grohmm at its own best.
-best_pids <- function(jaccard) {
-  # Default runs only, or an unstitched run can win and be drawn as fastder.
-  jaccard <- default_grid(jaccard)
-  best_fastder <- jaccard %>% filter(tool == "fastder") %>%
-    mutate(jaccard = as.numeric(jaccard)) %>%
-    group_by(param_id) %>% summarise(m = median(jaccard), .groups = "drop") %>%
-    slice_max(m, n = 1, with_ties = FALSE) %>% pull(param_id)
-  mc <- extract_mc(best_fastder); pt <- extract_pt(best_fastder)
+# Parameters of the reported numbers: tool defaults at the reference threshold,
+# groHMM at its best median Jaccard. Mirrors reference_params() in
+# collect_reported_numbers.py.
+reference_pids <- function(jaccard) {
+  mc <- format(REFERENCE_MIN_COVERAGE, trim = TRUE)
   best_grohmm <- jaccard %>% filter(tool == "grohmm") %>%
     mutate(jaccard = as.numeric(jaccard)) %>%
     group_by(param_id) %>% summarise(m = median(jaccard), .groups = "drop") %>%
     slice_max(m, n = 1, with_ties = FALSE) %>% pull(param_id)
   if (length(best_grohmm) == 0) best_grohmm <- NA_character_
-  list(fastder = best_fastder,
-       megadepth_baseline = sprintf("mc%s", format(mc, trim = TRUE)),
-       derfinder = sprintf("mc%s_pt%s", format(mc, trim = TRUE), format(pt, trim = TRUE)),
+  list(fastder = sprintf("mc%s_ml10_pt5_ns0", mc),
+       megadepth_baseline = sprintf("mc%s", mc),
+       derfinder = sprintf("mc%s_pt5", mc),
        grohmm = best_grohmm)
 }
 
@@ -333,7 +342,7 @@ read_result <- function(config, file_name) {
 # compact pools the five AS-event samples into two scenario cells (main figure);
 # the default keeps the full per-sample grid (supplement).
 panel_strand <- function(config = "config_full_simulation", compact = FALSE) {
-  pids <- best_pids(read_result(config, "fuzzy_jaccard.csv"))
+  pids <- reference_pids(read_result(config, "fuzzy_jaccard.csv"))
   fs <- read_result(config, "fuzzy_strand.csv") %>%
     pick_tool_param(pids) %>%
     mutate(n = as.integer(n_fastder_transcripts), scenario = relabel_scenario(scenario))
@@ -364,7 +373,7 @@ panel_strand <- function(config = "config_full_simulation", compact = FALSE) {
 # tool_multiexon, restyled. Baselines emit none, pinned to 1 on the log axis.
 # No per-point labels (they collided); tools read from the shared legend.
 panel_multiexon <- function(config = "config_full_simulation") {
-  pids <- best_pids(read_result(config, "fuzzy_jaccard.csv"))
+  pids <- reference_pids(read_result(config, "fuzzy_jaccard.csv"))
   d <- read_result(config, "summary.csv") %>%
     pick_tool_param(pids) %>%
     distinct(tool, scenario, param_id, query_mrnas, query_multi_exon) %>%
@@ -390,7 +399,7 @@ panel_multiexon <- function(config = "config_full_simulation") {
 # reference boundary. Verbatim from summary.Rmd tool_boundary_ecdf, restyled;
 # a steep left rise means boundaries land on splice sites.
 panel_boundary_cdf <- function(config = "config_full_simulation") {
-  pids <- best_pids(read_result(config, "fuzzy_jaccard.csv"))
+  pids <- reference_pids(read_result(config, "fuzzy_jaccard.csv"))
   fd <- read_result(config, "fuzzy_distances.csv") %>%
     pick_tool_param(pids) %>%
     mutate(abs_distance = abs(as.integer(distance)),
@@ -428,10 +437,10 @@ panel_novel <- function(csv = NOVEL_CSV) {
            lab = paste0(novel, "\n(", pct, "%)"))
   ggplot(d, aes(tissue, novel, fill = tissue)) +
     geom_col(width = 0.45) +
-    geom_text(aes(label = lab), vjust = -0.2, size = 3, lineheight = 0.85) +
+    geom_text(aes(label = lab), vjust = -0.2, size = 2.4, lineheight = 0.85) +
     scale_fill_manual(values = tissue_palette, guide = "none") +
-    expand_limits(y = max(d$novel) * 1.25) +
-    labs(x = "tissue", y = "Novel ER exons (count)") +
+    expand_limits(y = max(d$novel) * 1.45) +
+    labs(x = NULL, y = "Novel exons (count)") +
     theme_pub() + theme(axis.text.x = element_text(angle = 30, hjust = 1))
 }
 
@@ -453,10 +462,10 @@ panel_novel_tdp43 <- function(csv = TDP43_NOVEL_CSV) {
            lab = paste0(novel, "\n(", pct, "%)"))
   ggplot(d, aes(group, novel, fill = group)) +
     geom_col(width = 0.7) +
-    geom_text(aes(label = lab), vjust = -0.2, size = 3, lineheight = 0.85) +
+    geom_text(aes(label = lab), vjust = -0.2, size = 2.4, lineheight = 0.85) +
     scale_fill_manual(values = TDP_GROUP_FILL, guide = "none") +
-    expand_limits(y = max(d$novel) * 1.25) +
-    labs(x = "group", y = "Novel ER exons (count)") +
+    expand_limits(y = max(d$novel) * 1.45) +
+    labs(x = NULL, y = "Novel exons (count)") +
     theme_pub() + theme(axis.text.x = element_text(angle = 20, hjust = 1))
 }
 
@@ -493,10 +502,10 @@ panel_tdp43_jaccard <- function(csv = TDP43_JACCARD_CSV) {
     mutate(cpm = paste0(cpm, " CPM"), cpm = factor(cpm, levels = unique(cpm)))
   ggplot(d, aes(cpm, jaccard, fill = cpm)) +
     geom_col(width = 0.6) +
-    geom_text(aes(label = sprintf("%.2f", jaccard)), vjust = -0.3, size = 3) +
+    geom_text(aes(label = sprintf("%.2f", jaccard)), vjust = -0.3, size = 2.4) +
     scale_fill_manual(values = c("#9ecae1", "#3182bd"), guide = "none") +
     coord_cartesian(ylim = c(0, 1)) +
-    labs(x = "min coverage", y = "TDP-43 WT vs KD Jaccard") +
+    labs(x = "min_coverage", y = "Exonic Jaccard") +
     theme_pub() + theme(axis.text.x = element_text(angle = 30, hjust = 1))
 }
 
@@ -506,14 +515,19 @@ panel_gtexcmp_precision <- function(config = GTEXCMP, level = "exon") {
   col <- if (level == "transcript") "transcript_prec" else "exon_prec"
   # groHMM is left out at the exon level, as in the simulation panels.
   tools <- if (level == "exon") EXON_LEVEL_TOOLS else TOOLS
-  d <- read_result(config, "summary.csv") %>%
-    group_by(tool) %>% summarise(prec = median(.data[[col]], na.rm = TRUE), .groups = "drop") %>%
-    filter(tool %in% tools)
-  ggplot(d, aes(reorder(tool, -prec), prec, fill = tool)) +
-    geom_col(width = 0.45) +
-    scale_fill_manual(values = tool_palette, guide = "none") +
+  per_catalog <- read_result(config, "summary.csv") %>%
+    filter(tool %in% tools) %>%
+    mutate(prec = .data[[col]])
+  med <- per_catalog %>% group_by(tool) %>%
+    summarise(prec = median(prec, na.rm = TRUE), .groups = "drop")
+  ggplot(per_catalog, aes(reorder(tool, -prec), prec, colour = tool)) +
+    geom_jitter(width = 0.15, height = 0, size = 0.9, alpha = 0.6) +
+    geom_crossbar(data = med, aes(ymin = prec, ymax = prec), width = 0.5,
+                  colour = "black", linewidth = 0.3) +
+    scale_colour_manual(values = tool_palette, guide = "none") +
     scale_x_discrete(labels = tool_labels) +
-    labs(x = "tool", y = paste0(tools::toTitleCase(level), " precision (%)")) +
+    expand_limits(y = 0) +
+    labs(x = NULL, y = paste0(tools::toTitleCase(level), " precision (%)")) +
     theme_pub() + theme(axis.text.x = element_text(angle = 30, hjust = 1))
 }
 
@@ -593,6 +607,8 @@ panel_marker_loci <- function(csv = MARKER_CSV) {
                       guide = "none") +
     scale_y_continuous(breaks = seq_along(ylevels), labels = ylevels,
                        limits = c(0.5, length(ylevels) + 0.5), expand = c(0, 0)) +
+    scale_x_continuous(breaks = scales::breaks_pretty(n = 3),
+                       labels = function(x) sprintf("%.2f", x)) +
     facet_wrap(~ gene, scales = "free_x", nrow = 1, labeller = labeller(
       gene = c(TNNT2 = "TNNT2 (chr1)", TNNT3 = "TNNT3 (chr11)", TNNI3 = "TNNI3 (chr19)"))) +
     labs(x = "position (Mb)", y = NULL) +
@@ -706,7 +722,7 @@ panel_scaling <- function(path = file.path(FIG_DIR, "scaling.csv")) {
            workload = factor(workload, levels = unique(workload)))
   save_panel_data(d, "panel_scaling")
   # Wall time first; memory is its cost.
-  metric_order <- c("Wall time (s)", "Peak resident memory (GiB)")
+  metric_order <- c("Wall time (s)", "Peak resident memory (GB)")
   long <- bind_rows(
     d %>% transmute(workload, cores, value = wall_s, metric = metric_order[1]),
     d %>% filter(!is.na(peak_rss_gb)) %>%
@@ -720,21 +736,21 @@ panel_scaling <- function(path = file.path(FIG_DIR, "scaling.csv")) {
     tidyr::pivot_longer(c(samples, chromosomes), names_to = "stage", values_to = "cores") %>%
     filter(cores <= top) %>%
     mutate(metric = factor(metric_order[1], levels = metric_order),
-           label = ifelse(stage == "samples", "parsing: one thread per sample",
-                          "averaging: one thread per chromosome"))
+           label = ifelse(stage == "samples", "samples", "chromosomes"))
   p <- ggplot(long, aes(cores, value)) +
     geom_line(linewidth = 0.7, colour = "#FC8D62") +
     geom_point(size = 2.4, colour = "#FC8D62") +
     scale_x_continuous(trans = "log2", breaks = sort(unique(long$cores))) +
     facet_wrap(workload ~ metric, scales = "free_y", ncol = 2) +
+    expand_limits(y = 0) +
     labs(x = "Cores given to fastder", y = NULL) +
     theme_pub_square()
   if (nrow(ceilings) > 0) {
     p <- p +
       geom_vline(data = ceilings, aes(xintercept = cores),
                  linetype = "dotted", colour = "#7F7F7F") +
-      geom_text(data = ceilings, aes(x = cores, y = value, label = label),
-                angle = 90, hjust = 1, vjust = -0.4, size = 2.1, colour = "#7F7F7F")
+      geom_text(data = ceilings, aes(x = cores, y = 0, label = label),
+                angle = 90, hjust = 0, vjust = -0.4, size = 2.5, colour = "#7F7F7F")
   }
   p
 }

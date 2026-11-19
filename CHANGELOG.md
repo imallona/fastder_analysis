@@ -1,5 +1,15 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+
+- fastder v0.2.1: each minus-strand chain written once.
+- Simulation junction matrices with read counts.
+- Main figures at 160 mm, pipeline schematic redrawn.
+- Simulation figures at reference parameters, framed panels.
+- New figures: Jaccard, locus recall, tolerance.
+
 ## [0.2.0] - 2026-10-16
 
 Runs fastder 0.2.0 (`dbaf750`).

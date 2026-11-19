@@ -78,7 +78,7 @@ set-resources:
   render_recount3_report:
     mem_mb_per_cpu: 16000
   render_summary_report:
-    mem_mb_per_cpu: 16000
+    mem_mb_per_cpu: 32000
   run_asimulator:
     mem_mb_per_cpu: 2700
   run_derfinder:

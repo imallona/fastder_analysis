@@ -69,7 +69,9 @@ for (i in seq_len(n)) for (j in i:n) {
 
 ann_df <- data.frame(tissue = factor(tissue_of, levels = tissue_levels))
 top_ann <- HeatmapAnnotation(df = ann_df, col = list(tissue = tissue_cols),
-                             show_annotation_name = FALSE)
+                             show_annotation_name = FALSE,
+                             annotation_legend_param = list(tissue = list(
+                               labels_gp = gpar(fontsize = 8), title_gp = gpar(fontsize = 8))))
 left_ann <- rowAnnotation(df = ann_df, col = list(tissue = tissue_cols),
                           show_annotation_name = FALSE, show_legend = FALSE)
 clust <- hclust(as.dist(1 - sim))
@@ -80,15 +82,16 @@ ht <- Heatmap(sim, name = "Jaccard",
               top_annotation = top_ann, left_annotation = left_ann,
               show_row_names = FALSE, show_column_names = FALSE,
               show_row_dend = FALSE,
-              heatmap_legend_param = list(labels_gp = gpar(fontsize = 9),
-                                          title_gp = gpar(fontsize = 9)))
+              width = unit(2.1, "in"), height = unit(2.1, "in"),
+              heatmap_legend_param = list(labels_gp = gpar(fontsize = 8),
+                                          title_gp = gpar(fontsize = 8)))
 
 png_out <- file.path(FIG_DIR, paste0(out_base, ".png"))
 pdf_out <- file.path(FIG_DIR, paste0(out_base, ".pdf"))
-png(png_out, width = 5.2, height = 4.2, units = "in", res = 300)
+png(png_out, width = 3.1, height = 2.7, units = "in", res = 300)
 draw(ht, merge_legend = TRUE)
 invisible(dev.off())
-cairo_pdf(pdf_out, width = 5.2, height = 4.2)
+cairo_pdf(pdf_out, width = 3.1, height = 2.7)
 draw(ht, merge_legend = TRUE)
 invisible(dev.off())
 cat("wrote", png_out, "and", pdf_out, "\n")
